@@ -1,0 +1,127 @@
+name: rescuesync
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rescuesync}
+      POSTGRES_USER: ${POSTGRES_USER:-rescuesync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuesync_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+      target: production
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-environment
+      APP_ENV: development
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-rescuesync}
+      POSTGRES_USER: ${POSTGRES_USER:-rescuesync}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuesync_dev}
+      CORS_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5173}"]'
+      BONITA_BASE_URL: ${BONITA_BASE_URL:-http://host.docker.internal:8080/bonita}
+      BONITA_USERNAME: ${BONITA_USERNAME:-install}
+      BONITA_PASSWORD: ${BONITA_PASSWORD:-install}
+      BONITA_PROCESS_DEFINITION_ID: ${BONITA_PROCESS_DEFINITION_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      target: development
+    command:
+      - fastapi
+      - dev
+      - app/main.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment: *backend-environment
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=2)
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Bonita Runtime opcional (misma versión con la que se creó rescuesync.bos).
+  #
+  # IMPORTANTE:
+  # - El Runtime no puede importar un archivo .bos directamente.
+  # - rescuesync.bos debe abrirse con Bonita Studio 10.4, compilarse/exportarse
+  #   como artefacto desplegable y luego instalarse y activarse en este Runtime.
+  # - Si se habilita este servicio, cambiar BONITA_BASE_URL en .env a:
+  #   http://bonita:8080/bonita
+  #
+  # bonita:
+  #   image: bonita:10.4.0
+  #   hostname: bonita
+  #   environment:
+  #     BONITA_RUNTIME_ADMIN_USERNAME: ${BONITA_USERNAME:-install}
+  #     BONITA_RUNTIME_ADMIN_PASSWORD: ${BONITA_PASSWORD:-install}
+  #     PLATFORM_LOGIN: ${BONITA_PLATFORM_USERNAME:-platformAdmin}
+  #     PLATFORM_PASSWORD: ${BONITA_PLATFORM_PASSWORD:-platform}
+  #     MONITORING_USERNAME: ${BONITA_MONITORING_USERNAME:-monitoring}
+  #     MONITORING_PASSWORD: ${BONITA_MONITORING_PASSWORD:-monitoring_dev}
+  #   ports:
+  #     - "${BONITA_PORT:-8080}:8080"
+  #   volumes:
+  #     - bonita_temp:/opt/bonita/server/temp
+  #     - bonita_work:/opt/bonita/server/work
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+  frontend_node_modules:
+  # Descomentar junto con el servicio bonita.
+  # bonita_temp:
+  # bonita_work:

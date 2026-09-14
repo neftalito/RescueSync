@@ -1,0 +1,2 @@
+"""RescueSync backend package."""
+
