@@ -5,6 +5,41 @@ set -eu
 repository_root=$(git rev-parse --show-toplevel)
 cd "$repository_root"
 
+current_branch=$(git branch --show-current)
+
+case "$current_branch" in
+  main | develop)
+    echo "No se permiten commits directos sobre '$current_branch'." >&2
+    echo "Creá una rama para la tarea antes de confirmar los cambios." >&2
+    exit 1
+    ;;
+  "")
+    echo "No se permiten commits con HEAD desacoplado." >&2
+    exit 1
+    ;;
+esac
+
+branch_type=${current_branch%%/*}
+branch_description=${current_branch#*/}
+
+case "$branch_type" in
+  feature | fix | hotfix | refactor | test | docs | ci | chore | release)
+    ;;
+  *)
+    echo "Tipo de rama no permitido en '$current_branch'." >&2
+    echo "Consultá la sección 'Flujo y nombres de ramas' de AGENTS.md." >&2
+    exit 1
+    ;;
+esac
+
+case "$branch_description" in
+  "" | -* | *- | *--* | *[!a-z0-9-]*)
+    echo "Descripción de rama inválida en '$current_branch'." >&2
+    echo "Usá minúsculas, números y guiones medios." >&2
+    exit 1
+    ;;
+esac
+
 staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 backend_changed=false
 frontend_changed=false

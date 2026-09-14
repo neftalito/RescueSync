@@ -11,6 +11,30 @@ de lotes, ofertas básicas de ONGs, autenticación/RBAC local e integración ini
 con Bonita. No adelantar componentes de la API Nacional de la Entrega 3 salvo
 que sean necesarios para mantener un contrato claro.
 
+## Flujo y nombres de ramas
+
+- `main` contiene versiones estables y `develop` integra el trabajo de la próxima
+  entrega. Son ramas protegidas: no implementar cambios, crear commits ni hacer
+  push directo sobre ninguna de las dos.
+- Antes de modificar archivos, comprobar la rama con `git branch --show-current`.
+  Para una tarea normal, partir de `develop` actualizado y crear una rama nueva.
+  Los hotfix son la única excepción: parten de `main` y luego deben integrarse
+  también en `develop`.
+- Una rama debe corresponder a una sola tarea. No mezclar correcciones o
+  refactors ajenos aunque resulten convenientes durante la implementación.
+- Usar el formato `<tipo>/<descripcion>` o `<tipo>/<ticket>-<descripcion>`, con
+  uno de estos tipos: `feature`, `fix`, `hotfix`, `refactor`, `test`, `docs`,
+  `ci`, `chore` o `release`.
+- La descripción usa minúsculas ASCII, números y guiones medios; no usa espacios,
+  guiones bajos, acentos, barras adicionales ni guiones al principio o al final.
+  Ejemplos: `feature/rs-123-alta-emergencia`, `fix/cantidad-oferta` y
+  `ci/controles-calidad`.
+- Si hay cambios sin confirmar que no pertenecen a la tarea actual, no moverlos,
+  descartarlos ni incluirlos en la rama nueva. Detenerse y solicitar indicaciones.
+- Integrar siempre mediante pull request. Antes de solicitar revisión, actualizar
+  la rama con su base y verificar que el check obligatorio `quality` finalice
+  correctamente.
+
 ## Invariantes de arquitectura
 
 - El frontend solo consume la API de FastAPI; nunca llama directamente a Bonita
