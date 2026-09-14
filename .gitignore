@@ -13,8 +13,10 @@ htmlcov/
 node_modules/
 dist/
 
+# Documentación generada
+docs/generated/
+
 # Editors and operating systems
 .idea/
 .vscode/
 .DS_Store
-
