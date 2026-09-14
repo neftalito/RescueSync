@@ -1,0 +1,62 @@
+#!/bin/sh
+
+set -eu
+
+repository_root=$(git rev-parse --show-toplevel)
+cd "$repository_root"
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+backend_changed=false
+frontend_changed=false
+
+while IFS= read -r file; do
+  case "$file" in
+    backend/*.py)
+      backend_changed=true
+      ;;
+    frontend/*.js | frontend/*.jsx | frontend/*.ts | frontend/*.tsx | frontend/package.json | frontend/package-lock.json | frontend/tsconfig.json)
+      frontend_changed=true
+      ;;
+  esac
+done <<EOF
+$staged_files
+EOF
+
+if [ "$backend_changed" = false ] && [ "$frontend_changed" = false ]; then
+  exit 0
+fi
+
+require_docker_compose() {
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "No se encontraron las herramientas locales ni Docker Compose." >&2
+    echo "Prepará el entorno indicado en README.md antes de confirmar cambios." >&2
+    exit 1
+  fi
+}
+
+if [ "$backend_changed" = true ]; then
+  echo "Verificando Ruff..."
+  if command -v ruff >/dev/null 2>&1; then
+    (
+      cd backend
+      ruff check .
+      ruff format --check .
+    )
+  else
+    require_docker_compose
+    docker compose run --rm --no-deps backend ruff check .
+    docker compose run --rm --no-deps backend ruff format --check .
+  fi
+fi
+
+if [ "$frontend_changed" = true ]; then
+  echo "Verificando ESLint y TypeScript..."
+  if [ -x frontend/node_modules/.bin/eslint ] && [ -x frontend/node_modules/.bin/tsc ]; then
+    npm --prefix frontend run lint
+    npm --prefix frontend run typecheck
+  else
+    require_docker_compose
+    docker compose run --rm --no-deps --volume /app/node_modules frontend npm run lint
+    docker compose run --rm --no-deps --volume /app/node_modules frontend npm run typecheck
+  fi
+fi

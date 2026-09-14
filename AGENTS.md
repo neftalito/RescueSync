@@ -187,6 +187,12 @@ que sean necesarios para mantener un contrato claro.
 
 ## Comandos de verificación
 
+Después de clonar el repositorio, activar los hooks compartidos con
+`git config core.hooksPath .githooks`. El hook `pre-commit` ejecuta los linters y
+el typecheck que correspondan a los archivos staged. No usar `--no-verify` salvo
+una emergencia documentada; los checks obligatorios de CI siguen siendo la
+fuente de verdad para integrar cambios.
+
 Desde la raíz, con las imágenes construidas:
 
 ```bash
@@ -220,5 +226,6 @@ Una tarea está terminada cuando:
 - contempla carga, vacío, error y éxito en la interfaz afectada;
 - incluye o actualiza pruebas relevantes;
 - pasa lint, pruebas y build de las capas modificadas;
+- obtiene un resultado exitoso del check `quality` en GitHub Actions;
 - actualiza configuración y documentación cuando corresponde;
 - no deja secretos, artefactos generados ni cambios ajenos a la tarea.

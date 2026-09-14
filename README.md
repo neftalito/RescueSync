@@ -27,6 +27,8 @@ producción:
 
 ```text
 RescueSync/
+├── .github/workflows/         # Verificaciones automáticas de GitHub Actions
+├── .githooks/                 # Hooks de Git compartidos por el equipo
 ├── backend/                  # API y acceso a datos
 │   ├── alembic/              # Configuración y versiones de las migraciones
 │   ├── app/
@@ -186,6 +188,22 @@ navegador administrado por Playwright:
 El proyecto ya incluye una prueba básica del montaje de la interfaz, además de
 los runners, los mocks y sus scripts de ejecución. Los casos funcionales y el
 recorrido E2E se incorporarán junto con las funcionalidades de la Entrega 2.
+
+### Controles automáticos de calidad
+
+El workflow `.github/workflows/quality.yml` se ejecuta en cada pull request y en
+cada push a `develop` o `main`. Verifica Ruff, migraciones y pruebas del backend,
+además de tipos, ESLint, pruebas y build del frontend. El job final se llama
+`quality` para poder configurarlo como status check obligatorio en GitHub.
+
+Activar una vez el hook local versionado después de clonar el repositorio:
+
+    git config core.hooksPath .githooks
+
+El hook `pre-commit` ejecuta Ruff cuando hay Python staged y ESLint junto con el
+typecheck cuando hay JavaScript o TypeScript staged. Usa las herramientas locales
+si están disponibles; de lo contrario usa las imágenes de Docker Compose, que
+deben haberse construido previamente.
 
 ## Imágenes de producción
 

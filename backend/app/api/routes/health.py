@@ -34,4 +34,3 @@ def database_health() -> HealthResponse:
         ) from exc
 
     return HealthResponse(service="database")
-
