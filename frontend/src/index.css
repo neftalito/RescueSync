@@ -17,7 +17,11 @@ body {
 }
 
 button,
+input {
+  font: inherit;
+}
+
+button,
 a {
   -webkit-tap-highlight-color: transparent;
 }
-

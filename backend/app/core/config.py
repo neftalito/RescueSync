@@ -1,11 +1,17 @@
 from functools import lru_cache
+from secrets import token_urlsafe
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
 
 class Settings(BaseSettings):
+    _session_secret_desarrollo: str = PrivateAttr(
+        default_factory=lambda: token_urlsafe(48)
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -32,6 +38,62 @@ class Settings(BaseSettings):
     bonita_username: str = "install"
     bonita_password: str = "install"
     bonita_process_definition_id: str = ""
+
+    session_secret: SecretStr | None = Field(
+        default=None,
+        validation_alias="SESSION_SECRET",
+    )
+    session_cookie_name: str = "rescuesync_session"
+    session_max_age_seconds: int = Field(default=28_800, ge=300, le=604_800)
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    session_cookie_secure: bool | None = None
+
+    @field_validator("session_secret", mode="before")
+    @classmethod
+    def normalizar_session_secret(cls, valor: object) -> object:
+        """Interpreta una variable vacía como configuración no provista."""
+
+        return None if valor == "" else valor
+
+    @field_validator("session_secret")
+    @classmethod
+    def validar_session_secret(cls, valor: SecretStr | None) -> SecretStr | None:
+        """Rechaza secretos configurados que no sean suficientemente robustos."""
+
+        if valor is not None and len(valor.get_secret_value()) < 32:
+            raise ValueError("SESSION_SECRET debe tener al menos 32 caracteres")
+        return valor
+
+    @model_validator(mode="after")
+    def exigir_secret_en_produccion(self) -> Self:
+        """Impide iniciar con configuraciones de sesión inseguras."""
+
+        if self.app_env.casefold() == "production" and self.session_secret is None:
+            raise ValueError("SESSION_SECRET es obligatorio en producción")
+        if (
+            self.app_env.casefold() == "production"
+            and self.session_cookie_secure is False
+        ):
+            raise ValueError("las cookies de sesión deben ser Secure en producción")
+        if self.session_cookie_samesite == "none" and not self.cookies_seguras:
+            raise ValueError("SameSite=None requiere cookies Secure")
+        return self
+
+    @property
+    def clave_firma_sesion(self) -> str:
+        """Devuelve la clave configurada o una efímera exclusiva de desarrollo."""
+
+        if self.session_secret is not None:
+            return self.session_secret.get_secret_value()
+        return self._session_secret_desarrollo
+
+    @property
+    def cookies_seguras(self) -> bool:
+        """Activa cookies Secure por defecto fuera del entorno de desarrollo."""
+
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.app_env.casefold() not in {"development", "test"}
 
     @property
     def sqlalchemy_database_uri(self) -> str:
