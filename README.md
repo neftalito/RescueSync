@@ -344,6 +344,17 @@ Para observar el arranque y el despliegue:
 docker compose logs -f bonita bonita-deploy
 ```
 
+Para comprobar la API sin crear casos ni modificar datos:
+
+```bash
+docker compose exec backend python -m app.scripts.check_bonita_api
+```
+
+El script usa la configuración `BONITA_*` del backend y valida conectividad,
+login, cookie CSRF y que exista una única definición del proceso configurado en
+estados `RESOLVED` y `ENABLED`. Devuelve código `0` si todo está listo y `1`
+ante un fallo, sin imprimir la contraseña.
+
 Para ejecutar la prueba E2E controlada de la API de Bonita —contrato de inicio,
 variables y primera tarea del Coordinador— con el Runtime levantado:
 
