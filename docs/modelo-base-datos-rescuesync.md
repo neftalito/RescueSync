@@ -13,7 +13,7 @@
 Este documento propone el modelo relacional de RescueSync a partir de los
 requisitos de [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>),
 [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso definido en
-[`rescuesync.bos`](./rescuesync.bos).
+[`RescueSync-1.1.bar`](./RescueSync-1.1.bar).
 
 El modelo busca cubrir:
 

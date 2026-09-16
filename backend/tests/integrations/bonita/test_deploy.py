@@ -12,7 +12,6 @@ from app.integrations.bonita.deploy import (
     _configured_bar_content,
     deploy,
     ensure_actor_users,
-    ensure_organization,
 )
 
 BASE_URL = "http://bonita:8080/bonita"
@@ -21,8 +20,6 @@ BASE_URL = "http://bonita:8080/bonita"
 def _config(
     tmp_path: Path,
     *,
-    organization_group: str | None = None,
-    bos_path: Path | None = None,
     actor_usernames: tuple[str, ...] = (),
 ) -> Config:
     """Crea una configuración aislada con un BAR de prueba."""
@@ -46,8 +43,6 @@ def _config(
             ("ventanaOfertasMs", "7200000"),
         ),
         bar_path=bar_path,
-        bos_path=bos_path,
-        organization_group=organization_group,
         startup_timeout_seconds=1,
         request_timeout_seconds=1,
     )
@@ -183,43 +178,4 @@ def test_crea_los_usuarios_referenciados_por_los_actores(tmp_path: Path) -> None
         b'{"userName":"api.rescuesync","password":"clave-actores",'
         b'"password_confirm":"clave-actores","firstname":"Api",'
         b'"lastname":"Rescuesync","enabled":"true"}'
-    )
-
-
-def test_importa_la_organizacion_del_bos_si_falta(tmp_path: Path) -> None:
-    bos_path = tmp_path / "rescuesync.bos"
-    with ZipFile(bos_path, "w") as archive:
-        archive.writestr(
-            "rescuesync/app/organizations/ACME.xml",
-            "<organization:Organization/>",
-        )
-    config = _config(
-        tmp_path,
-        organization_group="acme",
-        bos_path=bos_path,
-    )
-
-    with respx.mock(assert_all_called=True) as router:
-        group_search = router.get(f"{BASE_URL}/API/identity/group").mock(
-            side_effect=[
-                httpx.Response(200, json=[]),
-                httpx.Response(200, json=[{"id": "1", "name": "acme"}]),
-            ]
-        )
-        organization_upload = router.post(f"{BASE_URL}/portal/organizationUpload").mock(
-            return_value=httpx.Response(200, text="tmp_acme.xml")
-        )
-        organization_import = router.post(
-            f"{BASE_URL}/services/organization/import"
-        ).mock(return_value=httpx.Response(200))
-
-        with httpx.Client() as client:
-            ensure_organization(client, config)
-
-    assert group_search.call_count == 2
-    assert organization_upload.call_count == 1
-    assert organization_import.call_count == 1
-    assert (
-        organization_import.calls.last.request.content
-        == b"organizationDataUpload=tmp_acme.xml&importPolicy=MERGE_DUPLICATES"
     )

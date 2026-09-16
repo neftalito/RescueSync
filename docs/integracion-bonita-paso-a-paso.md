@@ -6,17 +6,27 @@
 **Proceso:** `RescueSync`  
 **Prioridad:** Entrega 2 — integración inicial con Bonita
 
+> **Estado actual (16/09/2026).** Este documento conserva el diagnóstico hecho
+> sobre el `.bos` original, que ya se eliminó por estar desactualizado. La
+> referencia vigente es `docs/RescueSync-1.1.bar`, que ya incorpora el contrato
+> de instanciación, las variables, el índice `idEmergencia`, los actores
+> funcionales, las condiciones de las compuertas y el timer `EsperarOfertas`.
+> El ID de la definición ya no se configura a mano: FastAPI lo resuelve por
+> nombre y versión. Los defectos que todavía bloquean el flujo y el uso del
+> cliente de FastAPI se documentan en la sección *Integración con Bonita* del
+> README.
+
 ## 1. Objetivo y alcance
 
 Este documento describe qué falta incorporar al proyecto
-[`rescuesync.bos`](./rescuesync.bos) para que el proceso pueda integrarse de
+`rescuesync.bos` original para que el proceso pueda integrarse de
 forma segura y trazable con la aplicación RescueSync.
 
 El análisis se basa en:
 
 - [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>).
 - [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>).
-- [`rescuesync.bos`](./rescuesync.bos).
+- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.1.bar`](./RescueSync-1.1.bar).
 - [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>), como descripción complementaria del modelo existente.
 
 La prioridad inmediata es la Entrega 2: registrar una emergencia en la base

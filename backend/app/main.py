@@ -1,15 +1,30 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Comparte un único cliente de Bonita y cierra su pool al apagar la API."""
+
+    with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
+        app.state.cliente_bonita = cliente
+        yield
+
 
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
     description="API local para la coordinación de emergencias de RescueSync.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

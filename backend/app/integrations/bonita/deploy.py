@@ -34,17 +34,12 @@ class Config:
     process_version: str
     process_parameters: tuple[tuple[str, str], ...]
     bar_path: Path
-    bos_path: Path | None
-    organization_group: str | None
     startup_timeout_seconds: int
     request_timeout_seconds: float
 
     @classmethod
     def from_environment(cls) -> Config:
         """Construye la configuración desde variables de entorno."""
-
-        bos_path_value = os.getenv("BONITA_BOS_PATH", "").strip()
-        organization_group = os.getenv("BONITA_ORGANIZATION_GROUP", "").strip()
 
         return cls(
             base_url=_required_environment("BONITA_BASE_URL").rstrip("/"),
@@ -91,8 +86,6 @@ class Config:
                 ),
             ),
             bar_path=Path(_required_environment("BONITA_BAR_PATH")),
-            bos_path=Path(bos_path_value) if bos_path_value else None,
-            organization_group=organization_group or None,
             startup_timeout_seconds=int(
                 os.getenv("BONITA_STARTUP_TIMEOUT_SECONDS", "300")
             ),
@@ -231,92 +224,6 @@ def login_when_ready(client: httpx.Client, config: Config) -> None:
     raise DeploymentError(
         "Bonita no estuvo disponible antes de finalizar el tiempo de espera."
     )
-
-
-def _organization_exists(client: httpx.Client, config: Config) -> bool:
-    """Comprueba si existe el grupo raíz requerido por los actores."""
-
-    if config.organization_group is None:
-        return True
-
-    response = client.get(
-        f"{config.base_url}/API/identity/group",
-        params=[
-            ("p", "0"),
-            ("c", "1"),
-            ("f", f"name={config.organization_group}"),
-        ],
-    )
-    _ensure_success(response, "La consulta de la organización", {200})
-    payload = _decode_json(response, "la consulta de la organización")
-    if not isinstance(payload, list):
-        raise DeploymentError(
-            "Bonita devolvió una respuesta inválida al consultar la organización."
-        )
-    return bool(payload)
-
-
-def _organization_from_bos(bos_path: Path) -> tuple[str, bytes]:
-    """Extrae la única organización incluida en un proyecto BOS."""
-
-    if not bos_path.is_file():
-        raise DeploymentError(f"No se encontró el archivo BOS en {bos_path}.")
-
-    try:
-        with ZipFile(bos_path) as archive:
-            candidates = [
-                name
-                for name in archive.namelist()
-                if "/app/organizations/" in name and name.endswith(".xml")
-            ]
-            if len(candidates) != 1:
-                raise DeploymentError(
-                    "El BOS debe contener exactamente una organización XML."
-                )
-            name = candidates[0]
-            return Path(name).name, archive.read(name)
-    except BadZipFile as error:
-        raise DeploymentError(f"El archivo {bos_path} no es un BOS válido.") from error
-
-
-def ensure_organization(client: httpx.Client, config: Config) -> None:
-    """Importa desde el BOS la organización requerida cuando todavía no existe."""
-
-    if _organization_exists(client, config):
-        LOGGER.info("La organización requerida ya está disponible en Bonita.")
-        return
-    if config.bos_path is None:
-        raise DeploymentError(
-            "Falta BONITA_BOS_PATH para importar la organización requerida."
-        )
-
-    file_name, content = _organization_from_bos(config.bos_path)
-    response = client.post(
-        f"{config.base_url}/portal/organizationUpload",
-        files={"file": (file_name, BytesIO(content), "application/xml")},
-    )
-    _ensure_success(response, "La subida de la organización", {200})
-
-    temporary_name = response.text.strip().strip('"')
-    if not temporary_name:
-        raise DeploymentError(
-            "Bonita no devolvió el nombre temporal de la organización."
-        )
-
-    import_response = client.post(
-        f"{config.base_url}/services/organization/import",
-        data={
-            "organizationDataUpload": temporary_name,
-            "importPolicy": "MERGE_DUPLICATES",
-        },
-    )
-    _ensure_success(import_response, "La importación de la organización", {200})
-
-    if not _organization_exists(client, config):
-        raise DeploymentError(
-            "Bonita aceptó la organización pero no creó el grupo requerido."
-        )
-    LOGGER.info("Organización %s importada en Bonita.", file_name)
 
 
 def _resolve_bar_path(path: Path) -> Path:
@@ -601,7 +508,6 @@ def deploy(config: Config) -> None:
         headers={"Accept": "application/json"},
     ) as client:
         login_when_ready(client, config)
-        ensure_organization(client, config)
         ensure_actor_users(client, config, bar_path)
         process = find_process(client, config)
         if process is None:
