@@ -97,35 +97,57 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Bonita Runtime opcional (misma versión con la que se creó rescuesync.bos).
-  #
-  # IMPORTANTE:
-  # - El Runtime no puede importar un archivo .bos directamente.
-  # - rescuesync.bos debe abrirse con Bonita Studio 10.4, compilarse/exportarse
-  #   como artefacto desplegable y luego instalarse y activarse en este Runtime.
-  # - Si se habilita este servicio, cambiar BONITA_BASE_URL en .env a:
-  #   http://bonita:8080/bonita
-  #
-  # bonita:
-  #   image: bonita:10.4.0
-  #   hostname: bonita
-  #   environment:
-  #     BONITA_RUNTIME_ADMIN_USERNAME: ${BONITA_USERNAME:-install}
-  #     BONITA_RUNTIME_ADMIN_PASSWORD: ${BONITA_PASSWORD:-install}
-  #     PLATFORM_LOGIN: ${BONITA_PLATFORM_USERNAME:-platformAdmin}
-  #     PLATFORM_PASSWORD: ${BONITA_PLATFORM_PASSWORD:-platform}
-  #     MONITORING_USERNAME: ${BONITA_MONITORING_USERNAME:-monitoring}
-  #     MONITORING_PASSWORD: ${BONITA_MONITORING_PASSWORD:-monitoring_dev}
-  #   ports:
-  #     - "${BONITA_PORT:-8080}:8080"
-  #   volumes:
-  #     - bonita_temp:/opt/bonita/server/temp
-  #     - bonita_work:/opt/bonita/server/work
-  #   restart: unless-stopped
+  bonita-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${BONITA_DB_NAME:-bonita}
+      POSTGRES_USER: ${BONITA_DB_USER:-bonita}
+      POSTGRES_PASSWORD: ${BONITA_DB_PASS:-bpm}
+      BIZ_DB_NAME: ${BONITA_BIZ_DB_NAME:-business_data}
+      BIZ_DB_USER: ${BONITA_BIZ_DB_USER:-business_data}
+      BIZ_DB_PASS: ${BONITA_BIZ_DB_PASS:-bpm}
+    volumes:
+      - bonita_db_data:/var/lib/postgresql/data
+      - ./docker/bonita-db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BONITA_DB_USER:-bonita} -d ${BONITA_DB_NAME:-bonita}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  bonita:
+    image: bonita:10.4.0
+    hostname: bonita
+    depends_on:
+      bonita-db:
+        condition: service_healthy
+    environment:
+      DB_VENDOR: postgres
+      DB_HOST: bonita-db
+      DB_PORT: 5432
+      DB_NAME: ${BONITA_DB_NAME:-bonita}
+      DB_USER: ${BONITA_DB_USER:-bonita}
+      DB_PASS: ${BONITA_DB_PASS:-bpm}
+      BIZ_DB_NAME: ${BONITA_BIZ_DB_NAME:-business_data}
+      BIZ_DB_USER: ${BONITA_BIZ_DB_USER:-business_data}
+      BIZ_DB_PASS: ${BONITA_BIZ_DB_PASS:-bpm}
+      BONITA_RUNTIME_ADMIN_USERNAME: ${BONITA_USERNAME:-install}
+      BONITA_RUNTIME_ADMIN_PASSWORD: ${BONITA_PASSWORD:-install}
+      PLATFORM_LOGIN: ${BONITA_PLATFORM_USERNAME:-platformAdmin}
+      PLATFORM_PASSWORD: ${BONITA_PLATFORM_PASSWORD:-platform}
+      MONITORING_USERNAME: ${BONITA_MONITORING_USERNAME:-monitoring}
+      MONITORING_PASSWORD: ${BONITA_MONITORING_PASSWORD:-monitoring_dev}
+    ports:
+      - "${BONITA_PORT:-8080}:8080"
+    volumes:
+      - bonita_temp:/opt/bonita/server/temp
+      - bonita_work:/opt/bonita/server/work
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   frontend_node_modules:
-  # Descomentar junto con el servicio bonita.
-  # bonita_temp:
-  # bonita_work:
+  bonita_db_data:
+  bonita_temp:
+  bonita_work:
