@@ -4,6 +4,7 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.core.config import get_settings
+from app.db import models  # noqa: F401
 from app.db.base import Base
 
 config = context.config
@@ -17,8 +18,6 @@ config.set_main_option(
     "sqlalchemy.url", settings.sqlalchemy_database_uri.replace("%", "%%")
 )
 
-# Importar los módulos de modelos aquí cuando se agreguen. De ese modo sus
-# tablas quedan registradas en Base.metadata para --autogenerate.
 target_metadata = Base.metadata
 
 
