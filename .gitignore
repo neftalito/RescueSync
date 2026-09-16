@@ -16,8 +16,7 @@ dist/
 # Documentación generada
 docs/generated/
 
-# Artefacto de Bonita (.bar): se genera con "./build.sh" desde rescuesync2,
-# no se comitea porque se desincroniza fácil del .proc fuente.
+# Artefactos de Bonita generados desde Studio.
 deploy/
 
 # Editors and operating systems

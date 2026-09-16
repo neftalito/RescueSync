@@ -34,9 +34,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rescuesync}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuesync_dev}
       CORS_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5173}"]'
-      BONITA_BASE_URL: ${BONITA_BASE_URL:-http://host.docker.internal:8080/bonita}
+      BONITA_BASE_URL: ${BONITA_BASE_URL:-http://bonita:8080/bonita}
       BONITA_USERNAME: ${BONITA_USERNAME:-install}
       BONITA_PASSWORD: ${BONITA_PASSWORD:-install}
+      BONITA_PROCESS_NAME: ${BONITA_PROCESS_NAME:-RescueSync}
+      BONITA_PROCESS_VERSION: ${BONITA_PROCESS_VERSION:-1.1}
       BONITA_PROCESS_DEFINITION_ID: ${BONITA_PROCESS_DEFINITION_ID:-}
     depends_on:
       db:
@@ -110,7 +112,9 @@ services:
       - bonita_db_data:/var/lib/postgresql/data
       - ./docker/bonita-db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${BONITA_DB_USER:-bonita} -d ${BONITA_DB_NAME:-bonita}"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
       retries: 10
@@ -144,6 +148,35 @@ services:
       - bonita_temp:/opt/bonita/server/temp
       - bonita_work:/opt/bonita/server/work
     restart: unless-stopped
+
+  bonita-deploy:
+    build:
+      context: ./backend
+      target: production
+    command: ["python", "-m", "app.integrations.bonita.deploy"]
+    environment:
+      BONITA_BASE_URL: http://bonita:8080/bonita
+      BONITA_USERNAME: ${BONITA_USERNAME:-install}
+      BONITA_PASSWORD: ${BONITA_PASSWORD:-install}
+      BONITA_ACTOR_PASSWORD: ${BONITA_ACTOR_PASSWORD:-}
+      BONITA_PROCESS_NAME: ${BONITA_PROCESS_NAME:-RescueSync}
+      BONITA_PROCESS_VERSION: ${BONITA_PROCESS_VERSION:-1.1}
+      BONITA_BAR_PATH: /bonita-source
+      BONITA_BOS_PATH: /bonita-source/rescuesync.bos
+      BONITA_ORGANIZATION_GROUP: ${BONITA_ORGANIZATION_GROUP:-acme}
+      BONITA_STARTUP_TIMEOUT_SECONDS: ${BONITA_STARTUP_TIMEOUT_SECONDS:-300}
+      BONITA_REQUEST_TIMEOUT_SECONDS: ${BONITA_REQUEST_TIMEOUT_SECONDS:-30}
+      BONITA_BACKEND_BASE_URL: ${BONITA_BACKEND_BASE_URL:-http://backend:8000}
+      BONITA_NATIONAL_API_BASE_URL: ${BONITA_NATIONAL_API_BASE_URL:-http://national-api:8000}
+      BONITA_OFFER_WINDOW_MS: ${BONITA_OFFER_WINDOW_MS:-7200000}
+      BONITA_CONNECT_TIMEOUT_MS: ${BONITA_CONNECT_TIMEOUT_MS:-5000}
+      BONITA_READ_TIMEOUT_MS: ${BONITA_READ_TIMEOUT_MS:-30000}
+    volumes:
+      - ./docs:/bonita-source:ro
+    depends_on:
+      bonita:
+        condition: service_started
+    restart: "no"
 
 volumes:
   postgres_data:

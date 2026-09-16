@@ -8,8 +8,8 @@
 - **backend**: FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Incluye pwdlib con
   Argon2 para el hash de contraseñas e itsdangerous para las sesiones locales.
 - **db**: PostgreSQL 16 para los datos locales de RescueSync.
-- **Bonita 10.4**: se ejecuta desde Bonita Studio en el host durante esta etapa,
-  hasta completar la configuración del archivo .bos.
+- **Bonita 10.4**: Runtime dockerizado con PostgreSQL propio y despliegue
+  idempotente del proceso generado desde el proyecto `.bos`.
 
 Las herramientas de pruebas y calidad están separadas de las dependencias de
 producción:
@@ -54,9 +54,12 @@ RescueSync/
 │   ├── package.json          # Dependencias y scripts de npm
 │   ├── tsconfig.json         # Compilación estricta de TypeScript
 │   └── vite.config.js        # Configuración de Vite y Tailwind CSS
+├── docker/
+│   └── bonita-db-init/       # Inicialización de la base de negocio de Bonita
 ├── docs/                     # Documentación funcional y proyecto de Bonita
 │   ├── *.pdf                 # Requisitos, grooming y descripción del flujo
-│   └── rescuesync.bos        # Proyecto fuente para Bonita Studio 10.4
+│   ├── rescuesync.bos        # Proyecto fuente para Bonita Studio 10.4
+│   └── *.bar                 # Artefacto local ignorado por Git
 ├── .env.example              # Plantilla de variables de entorno
 ├── AGENTS.md                # Convenciones de arquitectura, código y pruebas
 ├── compose.yaml              # Entorno local: frontend, backend y PostgreSQL
@@ -70,7 +73,7 @@ generan durante el desarrollo y no forman parte del código fuente. El archivo
 ## Requisitos
 
 - Docker Engine con Docker Compose v2, o Docker Desktop.
-- Bonita Studio 10.4 para importar y ejecutar rescuesync.bos.
+- Bonita Studio 10.4 para modificar `rescuesync.bos` y generar el `.bar`.
 
 Si se utiliza WSL 2, Docker Desktop debe tener habilitada la integración con la
 distribución Linux donde está clonado este repositorio.
@@ -122,26 +125,34 @@ que no cumplen esta convención.
 
        cp .env.example .env
 
-2. Construir y levantar el entorno:
+2. Generar el proceso `RescueSync` desde Bonita Studio 10.4 y copiar el único
+   archivo `.bar` resultante al directorio `docs/`. La versión debe coincidir
+   con `BONITA_PROCESS_VERSION` en `.env`.
+
+3. Construir y levantar el entorno:
 
        docker compose up --build
 
-3. Abrir los servicios:
+4. Abrir los servicios:
 
    - Frontend: <http://localhost:5173>
    - API: <http://localhost:8000>
    - Swagger UI: <http://localhost:8000/docs>
+   - Bonita Runtime: <http://localhost:8080/bonita>
    - Health de PostgreSQL: <http://localhost:8000/api/v1/health/database>
 
 Compose espera a que PostgreSQL esté saludable, ejecuta las migraciones y recién
-después inicia FastAPI y Vite.
+después inicia FastAPI y Vite. En paralelo, `bonita-deploy` espera al Runtime,
+importa la organización requerida, instala el `.bar` si falta y habilita el
+proceso. El contenedor de despliegue queda con estado `Exited (0)` al terminar;
+ese estado es esperado.
 
 Para detener los contenedores sin borrar los datos:
 
     docker compose down
 
-El comando docker compose down --volumes también elimina la base de datos local
-y las dependencias de Node guardadas en volúmenes.
+El comando docker compose down --volumes también elimina las bases de datos de
+RescueSync y Bonita, además de las dependencias de Node guardadas en volúmenes.
 
 ## Autenticación local
 
@@ -281,49 +292,81 @@ revisión correctiva.
 
 ## Integración con Bonita
 
-El archivo rescuesync.bos fue generado con Bonita Studio 10.4.0. Durante el
-desarrollo se debe abrir en esa versión del Studio y ejecutar su Runtime en el
-puerto 8080.
+El archivo `docs/rescuesync.bos` fue generado con Bonita Studio 10.4.0 y es la
+fuente editable del proceso. El Runtime no consume archivos `.bos`: Studio debe
+construir un `.bar` compatible con la misma versión 10.4 y ese artefacto debe
+copiarse a `docs/`.
 
-Dentro de Docker, FastAPI usa esta URL:
+El entorno contiene los siguientes servicios adicionales:
 
-    http://host.docker.internal:8080/bonita
+- `bonita-db`: PostgreSQL exclusivo para el motor y el BDM de Bonita;
+- `bonita`: Runtime 10.4.0 expuesto en el puerto configurado;
+- `bonita-deploy`: inicializador de ejecución única que despliega el proceso.
+
+FastAPI y el inicializador acceden al Runtime mediante la red interna de
+Compose:
+
+    http://bonita:8080/bonita
+
+El despliegue es idempotente por nombre y versión. Antes de instalar crea, cuando
+faltan, los usuarios declarados en `actorMapping.xml`. Luego aplica los parámetros
+del proceso desde las variables `BONITA_BACKEND_BASE_URL`,
+`BONITA_NATIONAL_API_BASE_URL`, `BONITA_OFFER_WINDOW_MS`,
+`BONITA_CONNECT_TIMEOUT_MS` y `BONITA_READ_TIMEOUT_MS`. Si `RescueSync` con la
+versión configurada ya existe, no vuelve a instalarlo; si está deshabilitado y
+resuelto, lo habilita. Para publicar cambios del BPM se debe crear una nueva
+versión en Studio, generar otro `.bar` y actualizar `BONITA_PROCESS_VERSION`. No
+se elimina ni reemplaza automáticamente una definición existente porque podría
+tener casos activos.
+
+En un Runtime nuevo, `bonita-deploy` importa la organización incluida en
+`docs/rescuesync.bos` y crea los usuarios asignados directamente a los actores
+antes de instalar el proceso. La contraseña inicial de esos usuarios proviene de
+`BONITA_ACTOR_PASSWORD`; si queda vacía, el inicializador genera una aleatoria y
+no la registra. Definirla solo en el `.env` local si se necesita iniciar sesión
+directamente con esos usuarios en Bonita.
 
 Antes de implementar el inicio de una instancia hay que completar en el proceso:
 
 - contrato de instanciación;
 - variables idEmergencia, gravedad y zona como mínimo;
 - despliegue y activación del proceso;
-- valor de BONITA_PROCESS_DEFINITION_ID en .env.
+- coincidencia de nombre y versión con `BONITA_PROCESS_NAME` y
+  `BONITA_PROCESS_VERSION`.
 
 Las credenciales y la URL de Bonita están centralizadas en .env. El frontend
 no debe comunicarse directamente con Bonita: FastAPI será el adaptador y
 mantendrá la sesión, cookies y token CSRF de la API REST.
 
-### Runtime Docker opcional
+Para observar el arranque y el despliegue:
 
-compose.yaml contiene un servicio Bonita 10.4.0 preparado pero completamente
-comentado. También contiene, comentados, los volúmenes utilizados por ese
-servicio. Para habilitarlo:
+```bash
+docker compose logs -f bonita bonita-deploy
+```
 
-1. Descomentar el servicio bonita y los volúmenes bonita_temp y bonita_work.
-2. Cambiar en .env el valor de BONITA_BASE_URL:
+Para ejecutar la prueba E2E controlada de la API de Bonita —contrato de inicio,
+variables y primera tarea del Coordinador— con el Runtime levantado:
 
-       BONITA_BASE_URL=http://bonita:8080/bonita
+```bash
+docker compose run --rm -e RUN_BONITA_E2E=1 backend \
+  pytest tests/e2e/test_bonita_runtime.py -m bonita_e2e
+```
 
-3. Levantar el Runtime:
+La prueba crea un caso temporal, ejecuta `Generar lotes de necesidades`, verifica
+que el flujo llegue al timer `EsperarOfertas` y cancela el caso al finalizar. La
+suite normal la omite para no depender de un Runtime real. Si una actividad
+automática falla durante el recorrido, el resultado muestra su nombre y estado
+para ubicar el conector o callback de FastAPI que interrumpió el proceso.
 
-       docker compose up -d bonita
+Si el `.bar` contiene configuraciones sin resolver —por ejemplo actores,
+parámetros o conectores faltantes— `bonita-deploy` termina con error y no intenta
+ocultarlo. Corregir la configuración en Studio, incrementar la versión del
+proceso y generar nuevamente el `.bar`.
 
-4. Acceder al portal desde <http://localhost:8080/bonita>.
-
-El Runtime de Bonita no consume archivos .bos directamente. rescuesync.bos es
-el proyecto fuente: debe importarse en Bonita Studio 10.4, compilarse/exportarse
-como artefacto desplegable y luego desplegarse y activarse en el Runtime.
-
-Mientras el bloque continúe comentado, el entorno utiliza Bonita Studio en el
-host mediante host.docker.internal y Compose mantiene solamente frontend,
-backend y PostgreSQL.
+> **Sincronización del modelo:** el `.bar` 1.1 disponible corrige el evento de
+> borde `timerOfertas`, pero el `docs/rescuesync.bos` versionado todavía conserva
+> el modelo anterior sin transición saliente. Antes del próximo cambio de versión
+> se debe exportar desde Studio el `.bos` que realmente originó el `.bar` 1.1.
 
 ## Calidad y pruebas
 
