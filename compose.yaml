@@ -26,7 +26,8 @@ services:
       target: production
     command: ["alembic", "upgrade", "head"]
     environment: &backend-environment
-      APP_ENV: development
+      APP_ENV: ${APP_ENV:-development}
+      SESSION_SECRET: ${SESSION_SECRET:-}
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-rescuesync}
