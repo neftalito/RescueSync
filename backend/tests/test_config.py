@@ -62,3 +62,18 @@ def test_produccion_acepta_un_callback_token_propio() -> None:
     )
 
     assert settings.bonita_callback_token is not None
+
+
+def test_administrador_inicial_tiene_defaults_documentados() -> None:
+    settings = Settings(_env_file=None)
+
+    assert str(settings.admin_email) == "admin@rescuesync.org"
+    assert settings.admin_initial_password.get_secret_value() == "administrador123"
+
+
+def test_password_inicial_del_administrador_respeta_la_politica() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="ADMIN_INITIAL_PASSWORD debe tener entre 8 y 128 caracteres",
+    ):
+        Settings(_env_file=None, admin_initial_password="corta")

@@ -7,16 +7,12 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.roles import TIPO_ORGANIZACION_POR_ROL
 from app.core.security import generar_password_hash
-from app.db.models import Organizacion, RolUsuario, TipoOrganizacion, Usuario
+from app.db.models import Organizacion, RolUsuario, Usuario
 from app.db.session import SessionLocal
 
 _email_adapter = TypeAdapter(EmailStr)
-_TIPO_POR_ROL: dict[RolUsuario, TipoOrganizacion] = {
-    RolUsuario.OPERADOR_MUNICIPAL: TipoOrganizacion.MUNICIPIO,
-    RolUsuario.COORDINADOR_REGIONAL: TipoOrganizacion.CENTRO_COORDINADOR,
-    RolUsuario.REPRESENTANTE_ONG: TipoOrganizacion.ONG,
-}
 
 
 def _rol(valor: str) -> RolUsuario:
@@ -57,10 +53,10 @@ def _obtener_organizacion(
     rol: RolUsuario,
     nombre: str | None,
 ) -> Organizacion | None:
-    tipo = _TIPO_POR_ROL.get(rol)
+    tipo = TIPO_ORGANIZACION_POR_ROL.get(rol)
     if tipo is None:
         if nombre is not None:
-            raise ValueError("el rol AUDITOR_DIRECTIVO no requiere una organización")
+            raise ValueError("el rol seleccionado no admite una organización")
         return None
     if nombre is None or not nombre.strip():
         raise ValueError("el rol seleccionado requiere --organizacion")

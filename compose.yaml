@@ -34,6 +34,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rescuesync}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuesync_dev}
       CORS_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5173}"]'
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@rescuesync.org}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-administrador123}
       BONITA_BASE_URL: ${BONITA_BASE_URL:-http://bonita:8080/bonita}
       BONITA_USERNAME: ${BONITA_USERNAME:-install}
       BONITA_PASSWORD: ${BONITA_PASSWORD:-install}

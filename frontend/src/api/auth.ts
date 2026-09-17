@@ -1,5 +1,6 @@
 import {
   sessionSchema,
+  type ChangePasswordForm,
   type LoginCredentials,
   type Session,
 } from "../schemas/auth";
@@ -20,5 +21,19 @@ export function logout(csrfToken: string): Promise<void> {
   return apiRequestVoid("/auth/logout", {
     method: "POST",
     headers: { "X-CSRF-Token": csrfToken },
+  });
+}
+
+export function changePassword(
+  values: ChangePasswordForm,
+  csrfToken: string,
+): Promise<Session> {
+  return apiRequest("/auth/password", sessionSchema, {
+    method: "POST",
+    headers: { "X-CSRF-Token": csrfToken },
+    body: JSON.stringify({
+      password_actual: values.password_actual,
+      password_nueva: values.password_nueva,
+    }),
   });
 }

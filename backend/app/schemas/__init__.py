@@ -1,4 +1,5 @@
 from app.schemas.auth import (
+    CambioPasswordRequest,
     LoginRequest,
     OrganizacionSesion,
     SesionResponse,
@@ -7,6 +8,7 @@ from app.schemas.auth import (
 from app.schemas.errors import ErrorResponse
 
 __all__ = [
+    "CambioPasswordRequest",
     "ErrorResponse",
     "LoginRequest",
     "OrganizacionSesion",

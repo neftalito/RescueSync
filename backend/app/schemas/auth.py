@@ -30,8 +30,14 @@ class UsuarioSesion(BaseModel):
     email: str
     rol: RolUsuario
     organizacion: OrganizacionSesion | None
+    requiere_cambio_password: bool
 
 
 class SesionResponse(BaseModel):
     usuario: UsuarioSesion
     csrf_token: str
+
+
+class CambioPasswordRequest(BaseModel):
+    password_actual: SecretStr = Field(min_length=8, max_length=128)
+    password_nueva: SecretStr = Field(min_length=8, max_length=128)

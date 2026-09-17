@@ -18,7 +18,7 @@ disponible en el repositorio.
 
 El modelo busca cubrir:
 
-- Organizaciones, usuarios y los cuatro roles requeridos.
+- Organizaciones, usuarios, los cuatro roles operativos y el rol administrador.
 - Registro de emergencias por un municipio.
 - Asignación y seguimiento por un Centro Coordinador Regional.
 - Creación y publicación de lotes de necesidades.
@@ -91,6 +91,8 @@ erDiagram
         varchar password_hash
         rol_usuario rol
         boolean activo
+        boolean requiere_cambio_password
+        integer version_sesion
         timestamptz creado_en
         timestamptz actualizado_en
     }
@@ -228,6 +230,8 @@ erDiagram
         varchar password_hash
         rol_usuario rol
         boolean activo
+        boolean requiere_cambio_password
+        integer version_sesion
         timestamptz creado_en
         timestamptz actualizado_en
     }
@@ -393,6 +397,7 @@ OPERADOR_MUNICIPAL
 COORDINADOR_REGIONAL
 REPRESENTANTE_ONG
 AUDITOR_DIRECTIVO
+ADMINISTRADOR
 ```
 
 ### `gravedad_emergencia`
@@ -505,19 +510,21 @@ Reglas principales:
 
 ### 5.2. `usuario`
 
-Contiene las credenciales y el rol local. La cookie de sesión solo debe incluir
-el identificador mínimo del usuario; en cada petición se recuperan desde la base
-su organización, rol y estado vigentes.
+Contiene las credenciales y el rol local. La cookie de sesión solo incluye el
+identificador y la versión de sesión; en cada petición se recuperan desde la
+base su organización, rol y estado vigentes.
 
 Reglas principales:
 
 - `email` es único sin distinguir mayúsculas y minúsculas.
 - `password_hash` almacena exclusivamente un hash Argon2 generado con `pwdlib`.
+- `requiere_cambio_password` restringe una credencial temporal hasta que el
+  usuario la reemplace.
+- `version_sesion` es positiva y se incrementa para invalidar cookies emitidas.
 - Los operadores municipales pertenecen a un municipio.
 - Los coordinadores pertenecen a un Centro Coordinador.
 - Los representantes pertenecen a una ONG.
-- El rol Auditor/Directivo puede pertenecer a una organización administrativa
-  o admitir `organizacion_id` nulo si el dominio lo define expresamente.
+- Auditor/Directivo y Administrador no pertenecen a una organización.
 
 La compatibilidad entre rol y tipo de organización debe validarse en el servicio
 y, si se quiere una garantía estricta en PostgreSQL, mediante un trigger. Un
@@ -810,8 +817,10 @@ Entrega 2:
 - Las claves primarias son `bigint` autoincrementales.
 - La gravedad admite `BAJA`, `MEDIA`, `ALTA` y `CRITICA`.
 - Cada usuario posee un único rol local. Los roles operativos requieren una
-  organización del tipo correspondiente; Auditor/Directivo puede no pertenecer
-  a una organización.
+  organización del tipo correspondiente; Auditor/Directivo y Administrador no
+  pertenecen a una organización.
+- La revisión `20260917_0002` incorpora el administrador, el cambio obligatorio
+  de contraseñas temporales y el versionado de sesiones.
 - Una ONG puede registrar más de una oferta en una convocatoria. Cada oferta
   conserva su propia secuencia inmutable de versiones.
 - Las unidades se almacenan como texto no vacío. La compatibilidad entre

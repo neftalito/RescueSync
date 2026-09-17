@@ -11,6 +11,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     String,
     func,
     text,
@@ -37,6 +38,7 @@ class Usuario(Base):
             "password_hash LIKE '$argon2%'",
             name="password_hash_argon2",
         ),
+        CheckConstraint("version_sesion > 0", name="version_sesion_positiva"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -55,6 +57,18 @@ class Usuario(Base):
         nullable=False,
         default=True,
         server_default=text("true"),
+    )
+    requiere_cambio_password: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    version_sesion: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
     )
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

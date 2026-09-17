@@ -29,7 +29,10 @@ export function LoginPage(): ReactElement {
     mutationFn: login,
     onSuccess: (session: Session) => {
       queryClient.setQueryData(sessionQueryKey, session);
-      navigate("/", { replace: true });
+      navigate(
+        session.usuario.requiere_cambio_password ? "/cambiar-password" : "/",
+        { replace: true },
+      );
     },
   });
 

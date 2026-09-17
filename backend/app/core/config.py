@@ -2,7 +2,14 @@ from functools import lru_cache
 from secrets import token_urlsafe
 from typing import Literal, Self
 
-from pydantic import Field, PrivateAttr, SecretStr, field_validator, model_validator
+from pydantic import (
+    EmailStr,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -55,6 +62,9 @@ class Settings(BaseSettings):
     session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     session_cookie_secure: bool | None = None
 
+    admin_email: EmailStr = "admin@rescuesync.org"
+    admin_initial_password: SecretStr = SecretStr("administrador123")
+
     @field_validator("session_secret", "bonita_callback_token", mode="before")
     @classmethod
     def normalizar_secreto_vacio(cls, valor: object) -> object:
@@ -78,6 +88,17 @@ class Settings(BaseSettings):
 
         if valor is not None and len(valor.get_secret_value()) < 32:
             raise ValueError("SESSION_SECRET debe tener al menos 32 caracteres")
+        return valor
+
+    @field_validator("admin_initial_password")
+    @classmethod
+    def validar_admin_initial_password(cls, valor: SecretStr) -> SecretStr:
+        """Exige que la contraseña inicial cumpla la política local."""
+
+        if not 8 <= len(valor.get_secret_value()) <= 128:
+            raise ValueError(
+                "ADMIN_INITIAL_PASSWORD debe tener entre 8 y 128 caracteres"
+            )
         return valor
 
     @model_validator(mode="after")
