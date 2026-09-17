@@ -15,7 +15,16 @@ from zipfile import BadZipFile, ZipFile
 
 import httpx
 
+from app.integrations.bonita.contratos import (
+    PARAMETRO_CALLBACK_TOKEN,
+)
+
 LOGGER = logging.getLogger("bonita-deploy")
+
+SECRET_PARAMETERS = frozenset({PARAMETRO_CALLBACK_TOKEN})
+"""Parámetros cuyo valor nunca se registra ni se incluye en errores."""
+
+MINIMUM_CALLBACK_TOKEN_LENGTH = 32
 
 
 class DeploymentError(RuntimeError):
@@ -33,6 +42,7 @@ class Config:
     process_name: str
     process_version: str
     process_parameters: tuple[tuple[str, str], ...]
+    """Parámetros inyectados en el BAR. Solo se aplican al instalar."""
     bar_path: Path
     startup_timeout_seconds: int
     request_timeout_seconds: float
@@ -50,10 +60,6 @@ class Config:
             process_name=_required_environment("BONITA_PROCESS_NAME"),
             process_version=_required_environment("BONITA_PROCESS_VERSION"),
             process_parameters=(
-                (
-                    "callbackToken",
-                    _required_environment("BONITA_CALLBACK_TOKEN"),
-                ),
                 (
                     "backendBaseUrl",
                     os.getenv("BONITA_BACKEND_BASE_URL", "http://backend:8000").rstrip(
@@ -88,6 +94,7 @@ class Config:
                         _positive_integer_environment("BONITA_READ_TIMEOUT_MS", 30_000)
                     ),
                 ),
+                (PARAMETRO_CALLBACK_TOKEN, _callback_token_environment()),
             ),
             bar_path=Path(_required_environment("BONITA_BAR_PATH")),
             startup_timeout_seconds=int(
@@ -145,6 +152,18 @@ def _required_environment(name: str) -> str:
     if not value:
         raise DeploymentError(f"La variable de entorno {name} es obligatoria.")
     return value
+
+
+def _callback_token_environment() -> str:
+    """Obtiene el token compartido con FastAPI sin revelar su contenido."""
+
+    token = _required_environment("BONITA_CALLBACK_TOKEN")
+    if len(token) < MINIMUM_CALLBACK_TOKEN_LENGTH:
+        raise DeploymentError(
+            "BONITA_CALLBACK_TOKEN debe tener al menos "
+            f"{MINIMUM_CALLBACK_TOKEN_LENGTH} caracteres."
+        )
+    return token
 
 
 def _positive_integer_environment(name: str, default: int) -> int:
@@ -248,6 +267,35 @@ def _resolve_bar_path(path: Path) -> Path:
     if candidates[0].suffix.casefold() != ".bar":
         raise DeploymentError(f"El archivo {candidates[0]} no tiene extensión .bar.")
     return candidates[0]
+
+
+def ensure_bar_matches_contract(bar_path: Path, config: Config) -> None:
+    """Verifica que el BAR sea la versión para la que se escribió el backend.
+
+    Evita instalar un artefacto cuyo contrato no coincide con `contratos.py`.
+    """
+
+    try:
+        with ZipFile(bar_path) as archive:
+            design = archive.read("process-design.xml")
+    except KeyError as error:
+        raise DeploymentError("El BAR no contiene process-design.xml.") from error
+    except BadZipFile as error:
+        raise DeploymentError(f"El archivo {bar_path} no es un BAR válido.") from error
+
+    try:
+        root = ElementTree.fromstring(design)
+    except ElementTree.ParseError as error:
+        raise DeploymentError("El process-design.xml del BAR no es válido.") from error
+
+    found = f"{root.get('name')}:{root.get('version')}"
+    expected = f"{config.process_name}:{config.process_version}"
+    if found != expected:
+        raise DeploymentError(
+            f"El BAR {bar_path.name} contiene {found}, pero el backend espera "
+            f"{expected}. Actualizá docs/ y app/integrations/bonita/contratos.py "
+            "en el mismo cambio."
+        )
 
 
 def _actor_usernames_from_bar(bar_path: Path) -> tuple[str, ...]:
@@ -397,8 +445,8 @@ def install_process(client: httpx.Client, config: Config) -> ProcessDefinition:
     )
     if process.name != config.process_name or process.version != config.process_version:
         raise DeploymentError(
-            "El BAR instalado no coincide con BONITA_PROCESS_NAME y "
-            "BONITA_PROCESS_VERSION."
+            f"Bonita instaló {process.name}:{process.version} en lugar de "
+            f"{config.process_name}:{config.process_version}."
         )
 
     LOGGER.info(
@@ -467,6 +515,123 @@ def _resolution_problems(
     )
 
 
+def _count(
+    client: httpx.Client,
+    config: Config,
+    resource: str,
+    process: ProcessDefinition,
+) -> int:
+    """Cuenta casos de una definición usando la cabecera Content-Range."""
+
+    response = client.get(
+        f"{config.base_url}/API/bpm/{resource}",
+        params=[("p", "0"), ("c", "1"), ("f", f"processDefinitionId={process.id}")],
+    )
+    _ensure_success(response, f"La consulta de {resource}", {200})
+    content_range = response.headers.get("Content-Range", "")
+    total = content_range.rpartition("/")[2]
+    if not total.isdigit():
+        raise DeploymentError(f"Bonita no informó la cantidad de {resource}.")
+    return int(total)
+
+
+def remove_unusable_process(
+    client: httpx.Client,
+    config: Config,
+    process: ProcessDefinition,
+) -> bool:
+    """Elimina una definición que nunca pudo habilitarse para reinstalarla.
+
+    Bonita Community no permite corregir parámetros de un proceso instalado.
+    Solo se elimina si está deshabilitada, sin resolver y sin casos, por lo que
+    no se pierde información.
+    """
+
+    if process.activation_state != "DISABLED" or process.configuration_state == (
+        "RESOLVED"
+    ):
+        return False
+    if _count(client, config, "case", process) or _count(
+        client, config, "archivedCase", process
+    ):
+        return False
+
+    details = _resolution_problems(client, config, process)
+    response = client.delete(f"{config.base_url}/API/bpm/process/{process.id}")
+    _ensure_success(response, "La eliminación del proceso sin resolver", {200, 204})
+    LOGGER.warning(
+        "Se eliminó %s:%s sin resolver y sin casos para reinstalarlo. Motivos: %s",
+        process.name,
+        process.version,
+        "; ".join(details) or "no informados",
+    )
+    return True
+
+
+def installed_parameter_mismatches(
+    client: httpx.Client,
+    config: Config,
+    process: ProcessDefinition,
+) -> tuple[str, ...]:
+    """Devuelve los nombres de parámetros instalados que difieren del entorno."""
+
+    response = client.get(
+        f"{config.base_url}/API/bpm/processParameter",
+        params=[("p", "0"), ("c", "100"), ("f", f"process_id={process.id}")],
+    )
+    _ensure_success(response, "La consulta de parámetros del proceso", {200})
+    payload = _decode_json(response, "la consulta de parámetros del proceso")
+    if not isinstance(payload, list):
+        raise DeploymentError(
+            "Bonita devolvió una respuesta inválida para los parámetros del proceso."
+        )
+
+    installed = {
+        name: value
+        for item in payload
+        if isinstance(item, dict)
+        and isinstance((name := item.get("name")), str)
+        and isinstance((value := item.get("value")), str)
+    }
+    return tuple(
+        name
+        for name, expected in config.process_parameters
+        if installed.get(name) != expected
+    )
+
+
+def ensure_installed_parameters(
+    client: httpx.Client,
+    config: Config,
+    process: ProcessDefinition,
+) -> None:
+    """Detecta un `.env` que ya no coincide con el proceso instalado.
+
+    Un token distinto haría que FastAPI rechace todos los callbacks, por lo que
+    detiene el despliegue. El resto de las diferencias solo se informa.
+    """
+
+    mismatches = installed_parameter_mismatches(client, config, process)
+    secrets_changed = sorted(SECRET_PARAMETERS.intersection(mismatches))
+    others = sorted(set(mismatches) - SECRET_PARAMETERS)
+    if others:
+        LOGGER.warning(
+            "El proceso %s:%s instalado usa otros valores para %s. Los parámetros "
+            "solo se aplican al instalar; para usar los del .env hay que "
+            "recrear los volúmenes de Bonita.",
+            process.name,
+            process.version,
+            ", ".join(others),
+        )
+    if secrets_changed:
+        raise DeploymentError(
+            f"El proceso {process.name}:{process.version} instalado usa otro "
+            f"{', '.join(secrets_changed)} que el definido en BONITA_CALLBACK_TOKEN, "
+            "y FastAPI rechazaría sus callbacks. Restaurá el valor anterior en .env "
+            "o recreá los volúmenes de Bonita (ver README)."
+        )
+
+
 def enable_process(
     client: httpx.Client,
     config: Config,
@@ -506,6 +671,7 @@ def deploy(config: Config) -> None:
     """Instala y habilita el proceso cuando todavía no está desplegado."""
 
     bar_path = _resolve_bar_path(config.bar_path)
+    ensure_bar_matches_contract(bar_path, config)
     with httpx.Client(
         timeout=config.request_timeout_seconds,
         follow_redirects=False,
@@ -514,6 +680,8 @@ def deploy(config: Config) -> None:
         login_when_ready(client, config)
         ensure_actor_users(client, config, bar_path)
         process = find_process(client, config)
+        if process is not None and remove_unusable_process(client, config, process):
+            process = None
         if process is None:
             LOGGER.info(
                 "El proceso %s:%s no existe; instalando el BAR...",
@@ -528,6 +696,7 @@ def deploy(config: Config) -> None:
                 process.version,
                 process.id,
             )
+            ensure_installed_parameters(client, config, process)
         enable_process(client, config, process)
 
 

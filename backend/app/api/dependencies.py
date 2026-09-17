@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from secrets import compare_digest
 from typing import Annotated
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, status
@@ -96,3 +97,28 @@ def obtener_cliente_bonita(request: Request) -> ClienteBonita:
 
 
 ClienteBonitaDep = Annotated[ClienteBonita, Depends(obtener_cliente_bonita)]
+
+
+def validar_callback_bonita(
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    """Autentica las llamadas que el proceso de Bonita hace a FastAPI.
+
+    Compara en tiempo constante el token `Bearer` con `BONITA_CALLBACK_TOKEN`.
+    """
+
+    esperado = settings.bonita_callback_token
+    if esperado is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Los callbacks de Bonita no están configurados.",
+        )
+    esquema, _, token = (authorization or "").partition(" ")
+    if esquema.casefold() != "bearer" or not compare_digest(
+        token.encode(), esperado.get_secret_value().encode()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="El token de Bonita no es válido.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )

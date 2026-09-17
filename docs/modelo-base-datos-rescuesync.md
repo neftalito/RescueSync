@@ -12,9 +12,9 @@
 
 Este documento describe el modelo relacional vigente de RescueSync a partir de los
 requisitos de [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>),
-[`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso definido en
-[`rescuesync.bos`](./rescuesync.bos), complementado por la descripción textual
-del flujo y el artefacto desplegable [`RescueSync-1.2.bar`](./RescueSync-1.2.bar).
+[`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso desplegable
+[`RescueSync-1.2.bar`](./RescueSync-1.2.bar). El proyecto fuente `.bos` no está
+disponible en el repositorio.
 
 El modelo busca cubrir:
 

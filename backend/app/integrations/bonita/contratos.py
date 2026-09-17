@@ -1,8 +1,9 @@
 """Contratos tipados entre FastAPI y el proceso RescueSync desplegado en Bonita.
 
-Los nombres de entradas, actores y tareas reflejan el artefacto
-`docs/RescueSync-1.2.bar`. Un cambio en el proceso obliga a actualizar este
-módulo, sus pruebas RESPX y la prueba E2E contra el Runtime.
+Los nombres de entradas, actores, tareas y parámetros reflejan el artefacto
+`docs/RescueSync-1.2.bar`. Un cambio en el proceso obliga a publicar un `.bar`
+con otra versión y actualizar, en el mismo cambio, este módulo, sus pruebas
+RESPX y la prueba E2E contra el Runtime.
 """
 
 from typing import Annotated, Final, Literal
@@ -16,6 +17,12 @@ from pydantic import (
 )
 
 from app.db.models.enums import GravedadEmergencia
+
+PARAMETRO_CALLBACK_TOKEN: Final = "callbackToken"
+"""Parámetro del proceso que Bonita envía como `Authorization: Bearer`."""
+
+CABECERA_CASO_RAIZ: Final = "X-Bonita-Root-Process-Instance-Id"
+"""Cabecera de contexto que los conectores REST agregan a cada callback."""
 
 TAREA_GENERAR_LOTES: Final = "Generar lotes de necesidades"
 """Primera tarea humana del Coordinador, completada al publicar la convocatoria."""

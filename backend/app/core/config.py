@@ -6,6 +6,9 @@ from pydantic import Field, PrivateAttr, SecretStr, field_validator, model_valid
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
+BONITA_CALLBACK_TOKEN_DESARROLLO = "dev-only-rescuesync-bonita-callback-token"
+"""Token compartido por Compose en desarrollo; nunca es válido en producción."""
+
 
 class Settings(BaseSettings):
     _session_secret_desarrollo: str = PrivateAttr(
@@ -39,6 +42,7 @@ class Settings(BaseSettings):
     bonita_password: SecretStr = SecretStr("install")
     bonita_process_name: str = "RescueSync"
     bonita_process_version: str = "1.2"
+    bonita_callback_token: SecretStr | None = None
     bonita_client_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     bonita_client_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
 
@@ -51,12 +55,21 @@ class Settings(BaseSettings):
     session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     session_cookie_secure: bool | None = None
 
-    @field_validator("session_secret", mode="before")
+    @field_validator("session_secret", "bonita_callback_token", mode="before")
     @classmethod
-    def normalizar_session_secret(cls, valor: object) -> object:
+    def normalizar_secreto_vacio(cls, valor: object) -> object:
         """Interpreta una variable vacía como configuración no provista."""
 
         return None if valor == "" else valor
+
+    @field_validator("bonita_callback_token")
+    @classmethod
+    def validar_bonita_callback_token(cls, valor: SecretStr | None) -> SecretStr | None:
+        """Exige que el token de los callbacks de Bonita sea difícil de adivinar."""
+
+        if valor is not None and len(valor.get_secret_value()) < 32:
+            raise ValueError("BONITA_CALLBACK_TOKEN debe tener al menos 32 caracteres")
+        return valor
 
     @field_validator("session_secret")
     @classmethod
@@ -78,6 +91,14 @@ class Settings(BaseSettings):
             and self.session_cookie_secure is False
         ):
             raise ValueError("las cookies de sesión deben ser Secure en producción")
+        if self.app_env.casefold() == "production" and (
+            self.bonita_callback_token is None
+            or self.bonita_callback_token.get_secret_value()
+            == BONITA_CALLBACK_TOKEN_DESARROLLO
+        ):
+            raise ValueError(
+                "BONITA_CALLBACK_TOKEN propio es obligatorio en producción"
+            )
         if self.session_cookie_samesite == "none" and not self.cookies_seguras:
             raise ValueError("SameSite=None requiere cookies Secure")
         return self

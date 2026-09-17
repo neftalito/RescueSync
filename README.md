@@ -58,8 +58,7 @@ RescueSync/
 │   └── bonita-db-init/       # Inicialización de la base de negocio de Bonita
 ├── docs/                     # Documentación funcional y proceso de Bonita
 │   ├── *.pdf                 # Requisitos, grooming y descripción del flujo
-│   ├── rescuesync.bos        # Proyecto fuente para Bonita Studio 10.4
-│   └── RescueSync-1.2.bar    # Artefacto desplegable del proceso 1.2
+│   └── RescueSync-1.2.bar    # Proceso desplegable (Bonita Studio 2025.2 / 10.4)
 ├── .env.example              # Plantilla de variables de entorno
 ├── AGENTS.md                # Convenciones de arquitectura, código y pruebas
 ├── compose.yaml              # Entorno local: frontend, backend y PostgreSQL
@@ -73,7 +72,8 @@ generan durante el desarrollo y no forman parte del código fuente. El archivo
 ## Requisitos
 
 - Docker Engine con Docker Compose v2, o Docker Desktop.
-- Bonita Studio 10.4 para modificar `rescuesync.bos` y generar un nuevo `.bar`.
+- Bonita Studio 2025.2 solo si se dispone externamente del proyecto fuente y se
+  necesita generar una versión nueva del `.bar`.
 
 Si se utiliza WSL 2, Docker Desktop debe tener habilitada la integración con la
 distribución Linux donde está clonado este repositorio.
@@ -125,9 +125,9 @@ que no cumplen esta convención.
 
        cp .env.example .env
 
-2. Comprobar que `docs/` contenga un único `.bar` y que su versión coincida con
-   `BONITA_PROCESS_VERSION` en `.env`. El repositorio ya incluye
-   `RescueSync-1.2.bar`; solo hace falta regenerarlo si cambia el proceso.
+2. Comprobar que `docs/` contenga un único `.bar` y que su nombre y versión
+   coincidan con `BONITA_PROCESS_NAME` y `BONITA_PROCESS_VERSION`. No hace falta
+   generar nada en Studio: `RescueSync-1.2.bar` ya está versionado.
 
 3. Construir y levantar el entorno:
 
@@ -310,11 +310,9 @@ revisión correctiva.
 
 ## Integración con Bonita
 
-`docs/rescuesync.bos` conserva el proyecto fuente para Bonita Studio 10.4.0 y
-`docs/RescueSync-1.2.bar` es el artefacto que despliega Compose. El contrato de
-instanciación se mantiene alineado en ambos archivos y en
-`backend/app/integrations/bonita/contratos.py`. Todo cambio del BPM debe generar
-una nueva versión del `.bar` y actualizar esas tres referencias en conjunto.
+`docs/RescueSync-1.2.bar`, construido con Bonita Studio 2025.2 (Runtime 10.4), es
+la única referencia versionada del proceso. El proyecto de Studio no está en el
+repositorio; el `.bar` es el artefacto que se revisa y despliega.
 
 El entorno contiene los siguientes servicios adicionales:
 
@@ -322,34 +320,104 @@ El entorno contiene los siguientes servicios adicionales:
 - `bonita`: Runtime 10.4.0 expuesto en el puerto configurado;
 - `bonita-deploy`: inicializador de ejecución única que despliega el proceso.
 
-FastAPI y el inicializador acceden al Runtime mediante la red interna de
-Compose:
+FastAPI y el inicializador se comunican con Bonita, y Bonita con FastAPI, por la
+red interna de Compose (`http://bonita:8080/bonita` y `http://backend:8000`).
 
-    http://bonita:8080/bonita
+### Versión del proceso
+
+El nombre y la versión compatibles se configuran con `BONITA_PROCESS_NAME` y
+`BONITA_PROCESS_VERSION`. El backend resuelve la definición por esos valores y
+nunca configura el ID numérico asignado por el Runtime. `bonita-deploy` se niega
+a instalar un `.bar` cuyo nombre o versión no coincidan, y
+`test_bar_versionado.py` verifica también sus parámetros en CI.
+
+Para cambiar el BPM, en un único pull request:
+
+1. Crear una versión nueva del pool en Studio (por ejemplo `1.3`) y generar el `.bar`.
+2. Reemplazar el `.bar` de `docs/` (debe quedar uno solo).
+3. Actualizar `BONITA_PROCESS_VERSION`, los contratos, los callbacks y sus pruebas.
 
 ### Despliegue automático
 
 `bonita-deploy` espera al Runtime, crea los usuarios que `actorMapping.xml`
-asigna a los actores, instala el único `.bar` de `docs/` y habilita el proceso.
-Los actores se mapean a usuarios, por lo que no se importa ninguna organización.
-La contraseña inicial de esos usuarios proviene de `BONITA_ACTOR_PASSWORD`; si
-queda vacía, el inicializador genera una aleatoria y no la registra.
+asigna a los actores, instala el `.bar` y habilita el proceso. La contraseña
+inicial de esos usuarios proviene de `BONITA_ACTOR_PASSWORD`; si queda vacía, se
+genera una aleatoria que no se registra.
 
-Antes de instalar, inyecta los parámetros del proceso desde
-`BONITA_BACKEND_BASE_URL`, `BONITA_NATIONAL_API_BASE_URL`,
-`BONITA_CALLBACK_TOKEN`, `BONITA_OFFER_WINDOW_MS`,
-`BONITA_CONNECT_TIMEOUT_MS` y `BONITA_READ_TIMEOUT_MS`.
-Esos valores se aplican solo al instalar: cambiarlos en `.env` no modifica una
-definición ya desplegada. El despliegue es idempotente por nombre y versión y
-nunca elimina ni reemplaza una definición existente, porque podría tener casos
-activos. Si el `.bar` tiene configuraciones sin resolver, `bonita-deploy`
-termina con error y muestra los motivos que informa Bonita.
+Al instalar inyecta los parámetros del proceso:
 
-`BONITA_CALLBACK_TOKEN` se envía como token Bearer en los callbacks del proceso.
-El valor incluido en `.env.example` es exclusivamente local; cada ambiente real
-debe generar y custodiar su propio secreto.
+| Parámetro de Bonita | Variable | Uso |
+| --- | --- | --- |
+| `backendBaseUrl` | `BONITA_BACKEND_BASE_URL` | URL de FastAPI para los callbacks |
+| `callbackToken` | `BONITA_CALLBACK_TOKEN` | Token `Bearer` de los callbacks (mínimo 32 caracteres) |
+| `ventanaOfertasMs` | `BONITA_OFFER_WINDOW_MS` | Duración de la ventana de ofertas |
+| `connectTimeoutMs` / `readTimeoutMs` | `BONITA_CONNECT_TIMEOUT_MS` / `BONITA_READ_TIMEOUT_MS` | Timeouts de los conectores |
+| `nationalApiBaseUrl` | `BONITA_NATIONAL_API_BASE_URL` | Reservado para la Entrega 3 |
 
-    docker compose logs -f bonita bonita-deploy
+Bonita Community no permite modificar los parámetros de un proceso instalado, así
+que `bonita-deploy` protege al equipo de estas situaciones:
+
+| Situación | Comportamiento |
+| --- | --- |
+| Proceso ya instalado con los mismos valores | No hace nada (idempotente) |
+| Otro valor de un parámetro no secreto en `.env` | Advierte el nombre del parámetro y continúa |
+| Otro `BONITA_CALLBACK_TOKEN` en `.env` | Termina con error, sin mostrar el token: FastAPI rechazaría los callbacks |
+| Definición que quedó sin resolver y sin casos | La elimina y la reinstala |
+| Definición con casos | Nunca la elimina ni la reemplaza |
+
+`docker compose ps -a` muestra `bonita-deploy` como `Exited (0)` si todo salió
+bien. Para ver el motivo de un fallo:
+
+    docker compose logs bonita-deploy
+
+**Actualizar desde una versión anterior.** Con los volúmenes existentes,
+`docker compose up --build` instala la versión nueva al lado de la anterior; el
+backend usa la versión indicada por `BONITA_PROCESS_VERSION`. Los casos viejos
+siguen en su versión.
+
+**Aplicar otro token o una ventana distinta.** Como los parámetros se fijan al
+instalar, hay que recrear únicamente los volúmenes de Bonita (se pierden sus casos,
+no los datos de RescueSync):
+
+```bash
+docker compose rm -sf bonita bonita-db
+docker volume rm rescuesync_bonita_db_data rescuesync_bonita_temp rescuesync_bonita_work
+docker compose up -d --build
+```
+
+### Callbacks de Bonita hacia FastAPI
+
+Los conectores REST del proceso llaman a estos endpoints, que no usa el frontend:
+
+| Tarea de Bonita | Endpoint | Efecto en PostgreSQL |
+| --- | --- | --- |
+| `Enviar notificacion a ONGs de convocatoria` | `POST /api/v1/emergencias/{id}/notificar-apertura` | Alinea `convocatoria.cierra_en` con la fecha del timer |
+| `Cerrar convocatoria local` (al vencer el timer) | `POST /api/v1/emergencias/{id}/cerrar-convocatoria` | Pasa la convocatoria a `CERRADA` (idempotente) |
+| `Solicitar ofertas consolidadas` | `GET /api/v1/emergencias/{id}/ofertas-consolidadas` | Solo lectura; devuelve `lotesCubiertos` |
+
+Reglas comunes:
+
+- **Autenticación:** exigen `Authorization: Bearer <BONITA_CALLBACK_TOKEN>`, con
+  comparación en tiempo constante (401 si falla, 503 si el token no está
+  configurado).
+- **Correlación:** exigen `X-Bonita-Root-Process-Instance-Id` y que coincida con
+  `emergencia.bonita_process_instance_id` (409 si no corresponde).
+- **Convocatoria:** `intentoConvocatoria` del proceso es `convocatoria.numero`. La
+  convocatoria debe existir antes de que FastAPI complete `Generar lotes de
+  necesidades`.
+- **Consolidación:** solo sobre la última convocatoria **cerrada**, con la versión
+  vigente de las ofertas presentadas (sin borradores ni retiradas). Un aporte
+  cuenta para la cobertura si usa la unidad publicada del lote.
+- **Errores:** cualquier 4xx deja la tarea fallida en Bonita. El GET se reintenta
+  ante 5xx con espera creciente, hasta 10 intentos.
+
+`POST /api/v1/emergencias/{id}/resolver` pertenece al cierre del proyecto
+(Entrega 3) y todavía no está implementado.
+
+En desarrollo, Compose usa un token compartido
+(`dev-only-rescuesync-bonita-callback-token`), así que funciona sin editar `.env`.
+Con `APP_ENV=production` el backend no arranca sin un token propio, generado por
+ejemplo con `openssl rand -hex 32`.
 
 ### Uso desde FastAPI
 
@@ -377,10 +445,10 @@ código HTTP definido por su contrato.
 | Tarea pendiente | `buscar_tarea_lista(case_id, nombre)` | Localizar `Generar lotes de necesidades` |
 | Completar tarea | `ejecutar_tarea(tarea_id, usuario_actor)` | Publicar la convocatoria (T12) |
 
-`ContratoInicioProceso` (`contratos.py`) replica el contrato de instanciación
-1.2: `idEmergencia` (LONG), `gravedad`, `zona`, `descripcion` y `municipioId`
-(LONG). Bonita guarda cada entrada en una variable del mismo nombre e indexa el
-caso por `idEmergencia`.
+`ContratoInicioProceso` replica el contrato de instanciación 1.2: `idEmergencia`
+(LONG), `gravedad` (`BAJA`, `MEDIA`, `ALTA` o `CRITICA`), `zona` (hasta 255
+caracteres), `descripcion` y `municipioId` (LONG). Bonita guarda cada entrada en
+una variable del mismo nombre e indexa el caso por `idEmergencia`.
 
 `iniciar_instancia` distingue los fallos que exige el alta:
 
@@ -389,6 +457,21 @@ caso por `idEmergencia`.
 | `BonitaNoDisponibleError` | No se confirmó una operación segura de repetir | `ERROR`, reintento posible |
 | `BonitaOperacionRechazadaError` | Contrato rechazado | `ERROR` con mensaje seguro |
 | `BonitaResultadoDesconocidoError` | Una operación no idempotente tuvo un fallo de transporte, `408` o `5xx` | `RESULTADO_DESCONOCIDO`; reconciliar antes de reintentar |
+
+### Recorrido del proceso 1.2
+
+```text
+Inicio → Generar lotes de necesidades (Coordinador; FastAPI la completa al publicar)
+  → Publicar convocatoria: intentoConvocatoria + 1 y fechaCierreOfertas = ahora + ventana
+  → notificar-apertura → timer EsperarOfertas (fecha fechaCierreOfertas)
+  → cerrar-convocatoria → ofertas-consolidadas → ¿lotesCubiertos?
+       ├── sí → Seleccionar ofertas validadas
+       └── no → Evalua situacion: REABRIR (nueva convocatoria),
+                REFORMULAR (Generar lotes) o CONTINUAR_PARCIAL (Seleccionar)
+```
+
+`Validar Oferta` no tiene conector: la validación con la API Nacional es de la
+Entrega 3.
 
 ### Verificación
 
@@ -402,35 +485,33 @@ Verificación desde la terminal, sin crear casos:
 docker compose exec backend python -m app.scripts.check_bonita_api
 ```
 
-Prueba E2E del cliente contra el Runtime levantado:
+Prueba E2E con Bonita, FastAPI y PostgreSQL reales, con el entorno levantado:
 
 ```bash
-docker compose run --rm -e RUN_BONITA_E2E=1 backend \
-  pytest tests/e2e/test_bonita_runtime.py -m bonita_e2e
+docker compose exec -e RUN_BONITA_E2E=1 backend \
+  pytest tests/e2e/test_bonita_runtime.py -m bonita_e2e -rs
 ```
 
-Crea un caso temporal con gravedad `CRITICA` y verifica, con `ClienteBonita`,
-la instanciación, las cinco variables y la reconciliación por `idEmergencia`.
-Después cancela el caso temporal. La suite normal omite esta prueba porque
-requiere un Runtime real.
+La prueba crea en PostgreSQL una emergencia con una convocatoria abierta y una
+oferta, inicia y vincula el caso y verifica el rechazo del contrato, las
+variables, la reconciliación y la publicación. Luego comprueba que
+`notificar-apertura` alineó `cierra_en` con el timer. Al terminar cancela el caso
+y borra sus datos. La suite normal la omite.
 
-### Correcciones incorporadas en el proceso 1.2
+Con la ventana por defecto (2 h) la prueba se detiene después de la notificación
+y lo informa como `SKIPPED`. Para cubrir también el cierre, la consolidación y la
+compuerta, hay que instalar el proceso con una ventana de 60 s o menos, por
+ejemplo en un entorno aislado con puertos propios:
 
-El `.bar` 1.2 alinea el proceso con el dominio y corrige los bloqueos detectados
-durante la integración inicial:
-
-1. Los conectores REST fallan explícitamente ante respuestas 4xx y 5xx, sin una
-   operación previa que evalúe un estado todavía inexistente.
-2. El contrato acepta las cuatro gravedades del dominio: `BAJA`, `MEDIA`,
-   `ALTA` y `CRITICA`.
-3. Los callbacks envían `Authorization: Bearer <callbackToken>`.
-4. `ofertasConsolidadasJson` ya no se inicializa con una expresión literal
-   inválida.
-
-Además, el backend todavía no expone
-`POST /api/v1/emergencias/{id}/notificar-apertura`, que Bonita llama al publicar
-la convocatoria. Hasta implementar ese caso de uso, la prueba E2E completa se
-detiene en esa actividad aunque el contrato de inicio funcione correctamente.
+```bash
+export BONITA_PORT=18080 BACKEND_PORT=18000 POSTGRES_PORT=15432 FRONTEND_PORT=15173
+BONITA_OFFER_WINDOW_MS=15000 docker compose -p rescuesync-e2e up -d --build \
+  db migrate backend bonita-db bonita bonita-deploy
+docker compose -p rescuesync-e2e exec -e RUN_BONITA_E2E=1 \
+  -e BONITA_E2E_TIMEOUT_SECONDS=60 backend \
+  pytest tests/e2e/test_bonita_runtime.py -m bonita_e2e -rs
+docker compose -p rescuesync-e2e down -v
+```
 
 ## Calidad y pruebas
 
