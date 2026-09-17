@@ -342,6 +342,10 @@ disponible en las rutas mediante la dependencia `ClienteBonitaDep`. El cliente:
   `BONITA_PROCESS_VERSION`, sin configurarlo manualmente;
 - valida con Pydantic las respuestas y traduce los fallos a excepciones seguras.
 
+La instanciación admite `200` y `201`: el Runtime 10.4.0 devuelve `200`, aunque
+su especificación OpenAPI 1.0.6 documenta `201`. Las demás operaciones exigen el
+código HTTP definido por su contrato.
+
 | Operación | Método del cliente | Uso en la Entrega 2 |
 | --- | --- | --- |
 | Proceso habilitado | `obtener_proceso_habilitado()` | Obtener el ID antes de instanciar |
@@ -359,9 +363,9 @@ caso por `idEmergencia`.
 
 | Excepción | Significado | Acción esperada |
 | --- | --- | --- |
-| `BonitaNoDisponibleError` | La petición no llegó a Bonita | `ERROR`, reintento posible |
+| `BonitaNoDisponibleError` | No se confirmó una operación segura de repetir | `ERROR`, reintento posible |
 | `BonitaOperacionRechazadaError` | Contrato rechazado | `ERROR` con mensaje seguro |
-| `BonitaResultadoDesconocidoError` | Se perdió la respuesta de un POST | `RESULTADO_DESCONOCIDO`; reconciliar antes de reintentar |
+| `BonitaResultadoDesconocidoError` | Una operación no idempotente tuvo un fallo de transporte, `408` o `5xx` | `RESULTADO_DESCONOCIDO`; reconciliar antes de reintentar |
 
 ### Verificación
 

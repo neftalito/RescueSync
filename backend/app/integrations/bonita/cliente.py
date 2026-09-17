@@ -10,7 +10,7 @@ from types import TracebackType
 from typing import Self
 
 import httpx
-from pydantic import BaseModel, SecretStr, TypeAdapter, ValidationError
+from pydantic import BaseModel, Field, SecretStr, TypeAdapter, ValidationError
 
 from app.core.config import Settings
 from app.integrations.bonita.contratos import (
@@ -33,7 +33,7 @@ class ErrorBonita(RuntimeError):
 
 
 class BonitaNoDisponibleError(ErrorBonita):
-    """Bonita no respondió; la operación no llegó a producir efectos."""
+    """Bonita no confirmó una operación que puede repetirse de forma segura."""
 
 
 class BonitaCredencialesError(ErrorBonita):
@@ -66,7 +66,7 @@ class BonitaResultadoDesconocidoError(ErrorBonita):
 
 class _RespuestaErrorBonita(BaseModel):
     message: str | None = None
-    explanations: list[str | None] = []
+    explanations: list[str | None] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -151,11 +151,20 @@ class ClienteBonita:
                 ("f", f"name={self.configuracion.nombre_proceso}"),
                 ("f", f"version={self.configuracion.version_proceso}"),
             ],
+            estados_esperados=(httpx.codes.OK,),
         )
         definiciones = _validar_lista(respuesta, DefinicionProceso, "procesos")
         etiqueta = (
             f"{self.configuracion.nombre_proceso}:{self.configuracion.version_proceso}"
         )
+        if any(
+            definicion.name != self.configuracion.nombre_proceso
+            or definicion.version != self.configuracion.version_proceso
+            for definicion in definiciones
+        ):
+            raise BonitaRespuestaInvalidaError(
+                f"Bonita devolvió una definición ajena al proceso {etiqueta}."
+            )
         if len(definiciones) != 1:
             raise BonitaProcesoNoDisponibleError(
                 f"Se esperaba una definición {etiqueta}; Bonita devolvió "
@@ -186,7 +195,9 @@ class ClienteBonita:
             "POST",
             f"/API/bpm/process/{proceso_id}/instantiation",
             json=contrato.a_payload(),
-            con_efectos=True,
+            # Bonita 10.4.0 devuelve 200 aunque su OpenAPI 1.0.6 declara 201.
+            estados_esperados=(httpx.codes.OK, httpx.codes.CREATED),
+            resultado_puede_ser_ambiguo=True,
         )
         return _validar_objeto(respuesta, InstanciaIniciada, "instanciación")
 
@@ -209,8 +220,19 @@ class ClienteBonita:
                 ("f", f"processDefinitionId={proceso_id}"),
                 ("f", f"searchIndex1Value={id_emergencia}"),
             ],
+            estados_esperados=(httpx.codes.OK,),
         )
-        return _validar_lista(respuesta, CasoBonita, "casos")
+        casos = _validar_lista(respuesta, CasoBonita, "casos")
+        if any(
+            caso.process_definition_id != proceso_id
+            or caso.etiqueta_id_emergencia != "idEmergencia"
+            or caso.id_emergencia_indexado != str(id_emergencia)
+            for caso in casos
+        ):
+            raise BonitaRespuestaInvalidaError(
+                "Bonita devolvió un caso que no coincide con la emergencia buscada."
+            )
+        return casos
 
     def buscar_tarea_lista(self, case_id: int, nombre: str) -> TareaHumana | None:
         """Obtiene la tarea humana pendiente con el nombre indicado."""
@@ -225,8 +247,16 @@ class ClienteBonita:
                 ("f", "state=ready"),
                 ("f", f"name={nombre}"),
             ],
+            estados_esperados=(httpx.codes.OK,),
         )
         tareas = _validar_lista(respuesta, TareaHumana, "tareas")
+        if any(
+            tarea.case_id != case_id or tarea.name != nombre or tarea.state != "ready"
+            for tarea in tareas
+        ):
+            raise BonitaRespuestaInvalidaError(
+                f"Bonita devolvió una tarea que no coincide con el caso {case_id}."
+            )
         if len(tareas) > 1:
             raise BonitaRespuestaInvalidaError(
                 f"El caso {case_id} tiene más de una tarea lista llamada {nombre!r}."
@@ -245,12 +275,14 @@ class ClienteBonita:
             "PUT",
             f"/API/bpm/humanTask/{tarea_id}",
             json={"assigned_id": str(usuario.id)},
+            estados_esperados=(httpx.codes.OK,),
         )
         self._enviar(
             "POST",
             f"/API/bpm/userTask/{tarea_id}/execution",
             json={},
-            con_efectos=True,
+            estados_esperados=(httpx.codes.NO_CONTENT,),
+            resultado_puede_ser_ambiguo=True,
         )
 
     def _obtener_usuario(self, nombre_usuario: str) -> UsuarioBonita:
@@ -258,6 +290,7 @@ class ClienteBonita:
             "GET",
             "/API/identity/user",
             params=[("p", 0), ("c", 2), ("f", f"userName={nombre_usuario}")],
+            estados_esperados=(httpx.codes.OK,),
         )
         usuarios = [
             usuario
@@ -277,40 +310,62 @@ class ClienteBonita:
         *,
         params: Parametros | None = None,
         json: dict[str, str | int] | None = None,
-        con_efectos: bool = False,
+        estados_esperados: tuple[int, ...],
+        resultado_puede_ser_ambiguo: bool = False,
     ) -> httpx.Response:
         """Envía una petición autenticada y traduce los fallos de transporte.
 
         Un 401 garantiza que Bonita no procesó la operación, por lo que se
-        renueva la sesión y se repite una sola vez incluso si tiene efectos.
+        renueva la sesión y se repite una sola vez. Las operaciones no
+        idempotentes distinguen los fallos que dejan un resultado incierto.
         """
 
         token = self._token_vigente()
-        respuesta = self._transportar(metodo, ruta, params, json, token, con_efectos)
+        respuesta = self._transportar(
+            metodo,
+            ruta,
+            params,
+            json,
+            token,
+            resultado_puede_ser_ambiguo,
+        )
         if respuesta.status_code == httpx.codes.UNAUTHORIZED:
             token = self._token_vigente(rechazado=token)
             respuesta = self._transportar(
-                metodo, ruta, params, json, token, con_efectos
+                metodo,
+                ruta,
+                params,
+                json,
+                token,
+                resultado_puede_ser_ambiguo,
             )
 
-        if respuesta.is_success:
+        if respuesta.status_code in estados_esperados:
             return respuesta
         operacion = f"{metodo} {ruta}"
+        if respuesta.is_success:
+            estados = " o ".join(str(estado) for estado in estados_esperados)
+            raise BonitaRespuestaInvalidaError(
+                f"{operacion}: Bonita respondió HTTP {respuesta.status_code}; "
+                f"se esperaba HTTP {estados}."
+            )
         if respuesta.status_code == httpx.codes.UNAUTHORIZED:
             raise BonitaCredencialesError(
                 f"{operacion}: Bonita rechazó la sesión renovada."
             )
-        if respuesta.status_code in {502, 503, 504}:
+        if (
+            respuesta.status_code == httpx.codes.REQUEST_TIMEOUT
+            or respuesta.status_code >= httpx.codes.INTERNAL_SERVER_ERROR
+        ):
             error = (
                 BonitaResultadoDesconocidoError
-                if con_efectos
+                if resultado_puede_ser_ambiguo
                 else BonitaNoDisponibleError
             )
             raise error(f"{operacion}: Bonita respondió HTTP {respuesta.status_code}.")
         detalle = _leer_error(respuesta)
         raise BonitaOperacionRechazadaError(
-            f"{operacion}: Bonita respondió HTTP {respuesta.status_code}."
-            + (f" {detalle.message}" if detalle.message else ""),
+            f"{operacion}: Bonita respondió HTTP {respuesta.status_code}.",
             tuple(texto for texto in detalle.explanations if texto),
         )
 
@@ -321,7 +376,7 @@ class ClienteBonita:
         params: Parametros | None,
         json: dict[str, str | int] | None,
         token: str,
-        con_efectos: bool,
+        resultado_puede_ser_ambiguo: bool,
     ) -> httpx.Response:
         try:
             return self._http.request(
@@ -339,7 +394,7 @@ class ClienteBonita:
         except httpx.TransportError as error:
             tipo = (
                 BonitaResultadoDesconocidoError
-                if con_efectos
+                if resultado_puede_ser_ambiguo
                 else BonitaNoDisponibleError
             )
             raise tipo(

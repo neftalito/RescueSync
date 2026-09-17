@@ -92,7 +92,7 @@ def test_resuelve_el_proceso_habilitado_con_token_csrf(cliente: ClienteBonita) -
 
 @pytest.mark.parametrize(
     ("activation_state", "configuration_state"),
-    [("DISABLED", "RESOLVED"), ("DISABLED", "UNRESOLVED")],
+    [("DISABLED", "RESOLVED"), ("ENABLED", "UNRESOLVED")],
 )
 def test_rechaza_un_proceso_que_no_puede_iniciar_casos(
     cliente: ClienteBonita,
@@ -182,12 +182,39 @@ def test_rechaza_respuestas_con_formato_inesperado(cliente: ClienteBonita) -> No
             cliente.obtener_proceso_habilitado()
 
 
+def test_rechaza_una_definicion_que_no_coincide_con_el_filtro(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/process").mock(
+            return_value=httpx.Response(
+                200,
+                json=[_proceso() | {"version": "2.0"}],
+            )
+        )
+
+        with pytest.raises(BonitaRespuestaInvalidaError, match="definición ajena"):
+            cliente.obtener_proceso_habilitado()
+
+
+def test_rechaza_un_identificador_externo_no_positivo(cliente: ClienteBonita) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/process").mock(
+            return_value=httpx.Response(200, json=[_proceso() | {"id": "0"}])
+        )
+
+        with pytest.raises(BonitaRespuestaInvalidaError):
+            cliente.obtener_proceso_habilitado()
+
+
 def test_inicia_una_instancia_con_el_contrato_exacto(cliente: ClienteBonita) -> None:
     with respx.mock(assert_all_called=True) as router:
         _login(router)
         instanciacion = router.post(
             f"{BASE_URL}/API/bpm/process/55/instantiation"
-        ).mock(return_value=httpx.Response(200, json={"caseId": 4}))
+        ).mock(return_value=httpx.Response(201, json={"caseId": 4}))
 
         instancia = cliente.iniciar_instancia(55, _contrato())
 
@@ -201,6 +228,37 @@ def test_inicia_una_instancia_con_el_contrato_exacto(cliente: ClienteBonita) -> 
     }
 
 
+@pytest.mark.parametrize("estado", [200, 201])
+def test_admite_los_codigos_de_instanciacion_de_bonita_10_4(
+    cliente: ClienteBonita,
+    estado: int,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.post(f"{BASE_URL}/API/bpm/process/55/instantiation").mock(
+            return_value=httpx.Response(estado, json={"caseId": 4})
+        )
+
+        instancia = cliente.iniciar_instancia(55, _contrato())
+
+    assert instancia.case_id == 4
+
+
+def test_rechaza_otro_codigo_de_exito_distinto_del_contrato_http(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.post(f"{BASE_URL}/API/bpm/process/55/instantiation").mock(
+            return_value=httpx.Response(202, json={"caseId": 4})
+        )
+
+        with pytest.raises(
+            BonitaRespuestaInvalidaError, match="se esperaba HTTP 200 o 201"
+        ):
+            cliente.iniciar_instancia(55, _contrato())
+
+
 def test_traduce_un_contrato_rechazado_por_bonita(cliente: ClienteBonita) -> None:
     with respx.mock(assert_all_called=True) as router:
         _login(router)
@@ -209,7 +267,7 @@ def test_traduce_un_contrato_rechazado_por_bonita(cliente: ClienteBonita) -> Non
                 400,
                 json={
                     "exception": "ContractViolationException",
-                    "message": "Error while validating expected inputs",
+                    "message": f"Error interno con {PASSWORD}",
                     "explanations": ["Expected input [zona] is missing", None],
                 },
             )
@@ -219,6 +277,7 @@ def test_traduce_un_contrato_rechazado_por_bonita(cliente: ClienteBonita) -> Non
             cliente.iniciar_instancia(55, _contrato())
 
     assert error.value.explicaciones == ("Expected input [zona] is missing",)
+    assert PASSWORD not in str(error.value)
 
 
 @pytest.mark.parametrize(
@@ -239,6 +298,32 @@ def test_no_reintenta_una_instanciacion_con_resultado_incierto(
             cliente.iniciar_instancia(55, _contrato())
 
     assert instanciacion.call_count == 1
+
+
+def test_un_error_500_al_instanciar_deja_un_resultado_desconocido(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        instanciacion = router.post(
+            f"{BASE_URL}/API/bpm/process/55/instantiation"
+        ).mock(return_value=httpx.Response(500))
+
+        with pytest.raises(BonitaResultadoDesconocidoError, match="HTTP 500"):
+            cliente.iniciar_instancia(55, _contrato())
+
+    assert instanciacion.call_count == 1
+
+
+def test_un_error_500_en_una_consulta_permite_reintentar(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/process").mock(return_value=httpx.Response(500))
+
+        with pytest.raises(BonitaNoDisponibleError, match="HTTP 500"):
+            cliente.obtener_proceso_habilitado()
 
 
 def test_busca_casos_activos_por_id_de_emergencia(cliente: ClienteBonita) -> None:
@@ -266,6 +351,35 @@ def test_busca_casos_activos_por_id_de_emergencia(cliente: ClienteBonita) -> Non
         "processDefinitionId=55",
         "searchIndex1Value=123",
     ]
+
+
+@pytest.mark.parametrize(
+    "cambio",
+    [
+        {"processDefinitionId": "56"},
+        {"searchIndex1Label": "otroIndice"},
+        {"searchIndex1Value": "124"},
+    ],
+)
+def test_rechaza_un_caso_que_no_coincide_con_la_correlacion(
+    cliente: ClienteBonita,
+    cambio: dict[str, str],
+) -> None:
+    caso = {
+        "id": "4",
+        "processDefinitionId": "55",
+        "state": "started",
+        "searchIndex1Label": "idEmergencia",
+        "searchIndex1Value": "123",
+    }
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/case").mock(
+            return_value=httpx.Response(200, json=[caso | cambio])
+        )
+
+        with pytest.raises(BonitaRespuestaInvalidaError, match="no coincide"):
+            cliente.buscar_casos_por_emergencia(55, 123)
 
 
 def test_asigna_al_actor_antes_de_ejecutar_la_tarea(cliente: ClienteBonita) -> None:
@@ -311,6 +425,29 @@ def test_devuelve_la_tarea_lista_buscada(cliente: ClienteBonita) -> None:
 
     assert tarea is not None
     assert tarea.id == 17
+
+
+def test_rechaza_una_tarea_que_no_coincide_con_el_filtro(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/humanTask").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "17",
+                        "name": "Otra tarea",
+                        "state": "ready",
+                        "caseId": "4",
+                    }
+                ],
+            )
+        )
+
+        with pytest.raises(BonitaRespuestaInvalidaError, match="no coincide"):
+            cliente.buscar_tarea_lista(4, "Generar lotes de necesidades")
 
 
 def test_el_contrato_rechaza_gravedades_que_el_proceso_no_admite() -> None:

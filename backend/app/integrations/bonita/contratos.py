@@ -5,9 +5,16 @@ Los nombres de entradas, actores y tareas reflejan el artefacto
 módulo, sus pruebas RESPX y la prueba E2E contra el Runtime.
 """
 
-from typing import Annotated, Final
+from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    StringConstraints,
+    field_validator,
+)
 
 from app.db.models.enums import GravedadEmergencia
 
@@ -68,11 +75,13 @@ class ContratoInicioProceso(_ModeloBonita):
 class DefinicionProceso(_ModeloBonita):
     """Definición de proceso devuelta por `/API/bpm/process`."""
 
-    id: int
-    name: str
-    version: str
-    activation_state: str = Field(alias="activationState")
-    configuration_state: str = Field(alias="configurationState")
+    id: PositiveInt
+    name: TextoNoVacio
+    version: TextoNoVacio
+    activation_state: Literal["ENABLED", "DISABLED"] = Field(alias="activationState")
+    configuration_state: Literal["RESOLVED", "UNRESOLVED"] = Field(
+        alias="configurationState"
+    )
 
     @property
     def lista_para_iniciar(self) -> bool:
@@ -87,29 +96,30 @@ class DefinicionProceso(_ModeloBonita):
 class InstanciaIniciada(_ModeloBonita):
     """Respuesta de una instanciación exitosa."""
 
-    case_id: int = Field(alias="caseId", gt=0)
+    case_id: PositiveInt = Field(alias="caseId")
 
 
 class CasoBonita(_ModeloBonita):
     """Caso activo con el índice de búsqueda que lo correlaciona."""
 
-    id: int
-    process_definition_id: int = Field(alias="processDefinitionId")
-    state: str
+    id: PositiveInt
+    process_definition_id: PositiveInt = Field(alias="processDefinitionId")
+    state: TextoNoVacio
+    etiqueta_id_emergencia: str = Field(alias="searchIndex1Label")
     id_emergencia_indexado: str = Field(alias="searchIndex1Value")
 
 
 class TareaHumana(_ModeloBonita):
     """Tarea humana pendiente dentro de un caso."""
 
-    id: int
-    name: str
-    state: str
-    case_id: int = Field(alias="caseId")
+    id: PositiveInt
+    name: TextoNoVacio
+    state: TextoNoVacio
+    case_id: PositiveInt = Field(alias="caseId")
 
 
 class UsuarioBonita(_ModeloBonita):
     """Usuario de la organización de Bonita."""
 
-    id: int
-    user_name: str = Field(alias="userName")
+    id: PositiveInt
+    user_name: TextoNoVacio = Field(alias="userName")
