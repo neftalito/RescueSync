@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -9,6 +9,7 @@ from app.core.permissions import OperacionProtegida, roles_habilitados_para
 from app.core.security import leer_usuario_id_sesion, verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
+from app.integrations.bonita.cliente import ClienteBonita
 from app.services.auth import obtener_usuario_vigente
 
 settings = get_settings()
@@ -83,3 +84,15 @@ def validar_csrf(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="El token CSRF no es válido.",
         )
+
+
+def obtener_cliente_bonita(request: Request) -> ClienteBonita:
+    """Entrega el cliente de Bonita creado durante el arranque de la aplicación."""
+
+    cliente = getattr(request.app.state, "cliente_bonita", None)
+    if isinstance(cliente, ClienteBonita):
+        return cliente
+    raise RuntimeError("El cliente de Bonita no fue inicializado en el lifespan.")
+
+
+ClienteBonitaDep = Annotated[ClienteBonita, Depends(obtener_cliente_bonita)]

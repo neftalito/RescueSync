@@ -16,6 +16,9 @@ dist/
 # Documentación generada
 docs/generated/
 
+# Artefactos de Bonita generados desde Studio.
+deploy/
+
 # Editors and operating systems
 .idea/
 .vscode/

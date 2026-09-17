@@ -34,10 +34,13 @@ class Settings(BaseSettings):
     postgres_user: str = "rescuesync"
     postgres_password: str = "rescuesync_dev"
 
-    bonita_base_url: str = "http://host.docker.internal:8080/bonita"
+    bonita_base_url: str = "http://bonita:8080/bonita"
     bonita_username: str = "install"
-    bonita_password: str = "install"
-    bonita_process_definition_id: str = ""
+    bonita_password: SecretStr = SecretStr("install")
+    bonita_process_name: str = "RescueSync"
+    bonita_process_version: str = "1.1"
+    bonita_client_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
+    bonita_client_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
 
     session_secret: SecretStr | None = Field(
         default=None,
