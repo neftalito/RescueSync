@@ -1,19 +1,23 @@
-# Integración de RescueSync con Bonita
+# Diagnóstico histórico del modelado de Bonita
 
-## Diagnóstico del modelo actual y guía de implementación
+## Diagnóstico del modelo original y registro de decisiones
 
 **Versión analizada:** Bonita Studio 10.4.0  
 **Proceso:** `RescueSync`  
-**Prioridad:** Entrega 2 — integración inicial con Bonita
+**Prioridad analizada:** Entrega 2 — integración inicial con Bonita
 
 > **Estado actual (17/09/2026).** Este documento conserva el diagnóstico hecho
 > sobre el `.bos` original, que ya se eliminó por estar desactualizado. La
-> referencia vigente es `docs/RescueSync-1.2.bar`. Esa versión incorpora el
+> referencia vigente es [`docs/RescueSync-1.2.bar`](../RescueSync-1.2.bar). Esa versión incorpora el
 > contrato validado (incluida la gravedad `CRITICA`), las variables, el índice
 > `idEmergencia`, los actores funcionales, las compuertas evaluadas por script,
 > el timer por fecha y los conectores autenticados hacia FastAPI. Se verificó
-> contra el Runtime real. El uso vigente, los callbacks y la operación en equipo
-> se documentan en la sección *Integración con Bonita* del README.
+> contra el Runtime real. Este archivo conserva las decisiones y brechas del
+> modelo anterior; no es la guía operativa vigente. Para trabajar con la versión
+> actual, consultar [Proceso BPM](./proceso-bpm.md),
+> [Cliente HTTPX](./cliente-httpx.md),
+> [Despliegue y operación](./despliegue-y-operacion.md) y
+> [Callbacks](./callbacks.md).
 
 ## 1. Objetivo y alcance
 
@@ -23,10 +27,10 @@ disponible en el repositorio actual.
 
 El análisis se basa en:
 
-- [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>).
-- [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>).
-- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.2.bar`](./RescueSync-1.2.bar).
-- [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>), como descripción complementaria del modelo existente.
+- [`Trabajo integrador 2026.pdf`](<../Trabajo integrador 2026.pdf>).
+- [`Grooming Etapa 2.pdf`](<../Grooming Etapa 2.pdf>).
+- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.2.bar`](../RescueSync-1.2.bar).
+- [`Descripción textual del flujo BPM.pdf`](<../Descripción textual del flujo BPM.pdf>), como descripción complementaria del modelo existente.
 
 La prioridad inmediata es la Entrega 2: registrar una emergencia en la base
 local, iniciar una instancia de Bonita y enviar como mínimo
