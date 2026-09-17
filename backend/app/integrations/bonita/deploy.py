@@ -628,7 +628,8 @@ def ensure_installed_parameters(
             f"El proceso {process.name}:{process.version} instalado usa otro "
             f"{', '.join(secrets_changed)} que el definido en BONITA_CALLBACK_TOKEN, "
             "y FastAPI rechazaría sus callbacks. Restaurá el valor anterior en .env "
-            "o recreá los volúmenes de Bonita (ver README)."
+            "o recreá los volúmenes de Bonita "
+            "(ver docs/bonita/despliegue-y-operacion.md)."
         )
 
 
