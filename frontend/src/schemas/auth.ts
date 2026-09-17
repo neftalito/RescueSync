@@ -7,7 +7,9 @@ export const roles = [
   "AUDITOR_DIRECTIVO",
 ] as const;
 
-export const roleLabels: Record<(typeof roles)[number], string> = {
+export type Role = (typeof roles)[number];
+
+export const roleLabels: Record<Role, string> = {
   OPERADOR_MUNICIPAL: "Operador municipal",
   COORDINADOR_REGIONAL: "Centro coordinador regional",
   REPRESENTANTE_ONG: "Representante de ONG",

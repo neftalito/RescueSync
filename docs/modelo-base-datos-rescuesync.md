@@ -1,6 +1,6 @@
 # Modelo de base de datos de RescueSync
 
-## Propuesta relacional para la Entrega 2
+## Modelo relacional vigente para la Entrega 2
 
 **Motor:** PostgreSQL 16
 
@@ -10,10 +10,11 @@
 
 ## 1. Objetivo
 
-Este documento propone el modelo relacional de RescueSync a partir de los
+Este documento describe el modelo relacional vigente de RescueSync a partir de los
 requisitos de [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>),
-[`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso definido en
-[`rescuesync.bos`](./rescuesync.bos).
+[`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso desplegable
+[`RescueSync-1.2.bar`](./RescueSync-1.2.bar). El proyecto fuente `.bos` no está
+disponible en el repositorio.
 
 El modelo busca cubrir:
 
@@ -403,8 +404,9 @@ ALTA
 CRITICA
 ```
 
-El enunciado no fija una escala exacta. Este enum debe confirmarse antes de
-crear la primera migración para evitar renombrar valores ya almacenados.
+El enunciado no fija una escala exacta. La migración inicial adopta estos cuatro
+valores; cualquier cambio posterior debe realizarse mediante una migración
+correctiva que preserve los datos existentes.
 
 ### `estado_emergencia`
 
@@ -531,7 +533,7 @@ Los campos de integración cumplen funciones distintas:
 
 - `bonita_process_definition_id`: definición desplegada que se utilizó.
 - `bonita_process_instance_id`: caso creado; debe ser único cuando no sea nulo.
-- `bonita_process_version`: versión funcional del proceso, por ejemplo `1.1`.
+- `bonita_process_version`: versión funcional del proceso, por ejemplo `1.2`.
 - `bonita_sync`: resultado actual de la vinculación.
 - `bonita_ultimo_error`: mensaje seguro y sin credenciales.
 - `bonita_ultimo_intento_en`: momento UTC del último intento.
@@ -677,7 +679,8 @@ ON convocatoria (emergencia_id)
 WHERE estado = 'ABIERTA';
 ```
 
-El nombre exacto del enum y su casteo deben ajustarse a la migración generada.
+La migración inicial materializa este índice con el enum
+`estado_convocatoria`.
 
 ## 7. Transacciones críticas
 
@@ -799,18 +802,42 @@ tabla no obliga a exponer internamente todas sus columnas.
 - Una convocatoria cerrada rechaza nuevas ofertas y ediciones.
 - El consolidado excluye versiones no presentadas.
 
-## 11. Decisiones que deben confirmarse antes de migrar
+## 11. Decisiones adoptadas en la migración inicial
 
-- Tipo de clave primaria: `bigint` o UUID.
-- Valores definitivos del enum de gravedad.
-- Si un usuario puede tener más de un rol. El diagrama asume un rol por usuario;
-  si se permiten varios, debe reemplazarse `usuario.rol` por una relación
-  `usuario_rol`.
-- Si una ONG puede presentar varias ofertas distintas en una convocatoria o una
-  sola oferta versionada.
-- Catálogo de unidades y compatibilidad entre unidades.
-- Si el Auditor/Directivo pertenece obligatoriamente a una organización.
-- Duración inicial de la convocatoria y mecanismo de reapertura.
+La revisión `20260915_0001` materializa las siguientes decisiones para la
+Entrega 2:
 
-Estas decisiones cambian restricciones y contratos públicos, por lo que deben
-resolverse antes de generar la primera migración compartida.
+- Las claves primarias son `bigint` autoincrementales.
+- La gravedad admite `BAJA`, `MEDIA`, `ALTA` y `CRITICA`.
+- Cada usuario posee un único rol local. Los roles operativos requieren una
+  organización del tipo correspondiente; Auditor/Directivo puede no pertenecer
+  a una organización.
+- Una ONG puede registrar más de una oferta en una convocatoria. Cada oferta
+  conserva su propia secuencia inmutable de versiones.
+- Las unidades se almacenan como texto no vacío. La compatibilidad entre
+  unidades corresponde al caso de uso hasta que exista un catálogo acordado.
+- La duración no tiene un valor implícito en la base: al publicar, el caso de
+  uso debe informar `publicada_en` y `cierra_en` con zona horaria.
+- Una reapertura crea una convocatoria con un nuevo `numero`; el índice parcial
+  garantiza que solo exista una convocatoria `ABIERTA` por emergencia.
+
+Cualquier cambio sobre estas decisiones requiere una migración correctiva; no
+se modifica una revisión que ya pueda haberse aplicado en otro ambiente.
+
+## 12. Validación del esquema y la migración
+
+Alembic importa el paquete completo de modelos antes de asignar
+`target_metadata`. La migración inicial debe validarse sobre PostgreSQL 16 con
+el siguiente ciclo en una base descartable:
+
+```bash
+alembic upgrade head
+alembic check
+alembic downgrade base
+alembic upgrade head
+pytest tests/test_database_models.py
+```
+
+Las pruebas verifican la metadata registrada, las relaciones del flujo básico,
+los timestamps con zona horaria y las restricciones relacionales que requieren
+triggers de PostgreSQL.

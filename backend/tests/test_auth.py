@@ -1,3 +1,4 @@
+import time
 from collections.abc import Iterator
 
 import pytest
@@ -6,13 +7,46 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_roles
-from app.core.security import generar_password_hash
+from app.api.dependencies import requerir_operacion
+from app.core.config import get_settings
+from app.core.permissions import OperacionProtegida
+from app.core.security import (
+    crear_token_csrf,
+    crear_valor_sesion,
+    generar_password_hash,
+)
 from app.db.models import Organizacion, RolUsuario, TipoOrganizacion, Usuario
 from app.db.session import get_db
 from app.main import app
 
 PASSWORD = "Una-clave-segura-2026"
+
+ROLES_CON_ORGANIZACION: dict[RolUsuario, tuple[TipoOrganizacion, str, str]] = {
+    RolUsuario.OPERADOR_MUNICIPAL: (
+        TipoOrganizacion.MUNICIPIO,
+        "Municipio RBAC",
+        "municipio-rbac@rescuesync.org",
+    ),
+    RolUsuario.COORDINADOR_REGIONAL: (
+        TipoOrganizacion.CENTRO_COORDINADOR,
+        "Centro RBAC",
+        "coordinador-rbac@rescuesync.org",
+    ),
+    RolUsuario.REPRESENTANTE_ONG: (
+        TipoOrganizacion.ONG,
+        "ONG RBAC",
+        "ong-rbac@rescuesync.org",
+    ),
+}
+
+ROLES_FUNCIONALES_POR_OPERACION: dict[
+    OperacionProtegida,
+    frozenset[RolUsuario],
+] = {
+    OperacionProtegida.REGISTRAR_EMERGENCIA: frozenset({RolUsuario.OPERADOR_MUNICIPAL}),
+    OperacionProtegida.GESTIONAR_LOTES: frozenset({RolUsuario.COORDINADOR_REGIONAL}),
+    OperacionProtegida.PRESENTAR_OFERTA: frozenset({RolUsuario.REPRESENTANTE_ONG}),
+}
 
 
 @pytest.fixture
@@ -32,6 +66,39 @@ def usuario_municipal(db_session: Session) -> Usuario:
     db_session.add(usuario)
     db_session.flush()
     return usuario
+
+
+@pytest.fixture
+def usuarios_por_rol(db_session: Session) -> dict[RolUsuario, Usuario]:
+    """Crea un contexto vigente representativo para cada rol local."""
+
+    password_hash = generar_password_hash(PASSWORD)
+    usuarios: dict[RolUsuario, Usuario] = {}
+
+    for rol, (tipo, nombre, email) in ROLES_CON_ORGANIZACION.items():
+        organizacion = Organizacion(tipo=tipo, nombre=nombre)
+        db_session.add(organizacion)
+        db_session.flush()
+        usuario = Usuario(
+            organizacion_id=organizacion.id,
+            email=email,
+            password_hash=password_hash,
+            rol=rol,
+        )
+        db_session.add(usuario)
+        db_session.flush()
+        usuarios[rol] = usuario
+
+    auditor = Usuario(
+        organizacion_id=None,
+        email="auditor-rbac@rescuesync.org",
+        password_hash=password_hash,
+        rol=RolUsuario.AUDITOR_DIRECTIVO,
+    )
+    db_session.add(auditor)
+    db_session.flush()
+    usuarios[RolUsuario.AUDITOR_DIRECTIVO] = auditor
+    return usuarios
 
 
 @pytest.fixture
@@ -174,6 +241,25 @@ def test_sesion_rechaza_cookie_ausente_o_manipulada(
     assert manipulada.status_code == 401
 
 
+def test_sesion_expirada_es_rechazada(
+    client: TestClient,
+    usuario_municipal: Usuario,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _iniciar_sesion(client)
+    instante_expirado = time.time() + get_settings().session_max_age_seconds + 1
+
+    def obtener_instante_expirado() -> float:
+        return instante_expirado
+
+    monkeypatch.setattr(time, "time", obtener_instante_expirado)
+
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "La sesión no es válida o expiró."}
+
+
 def test_logout_exige_csrf_y_elimina_la_sesion(
     client: TestClient,
     usuario_municipal: Usuario,
@@ -193,15 +279,64 @@ def test_logout_exige_csrf_y_elimina_la_sesion(
     assert client.get("/api/v1/auth/me").status_code == 401
 
 
-def test_dependencia_rbac_permite_y_deniega_roles(
-    usuario_municipal: Usuario,
+@pytest.mark.parametrize("rol", list(RolUsuario))
+def test_endpoint_de_sesion_reautentica_todos_los_roles(
+    client: TestClient,
+    usuarios_por_rol: dict[RolUsuario, Usuario],
+    rol: RolUsuario,
 ) -> None:
-    solo_municipio = requerir_roles(RolUsuario.OPERADOR_MUNICIPAL)
-    solo_ong = requerir_roles(RolUsuario.REPRESENTANTE_ONG)
+    usuario = usuarios_por_rol[rol]
+    client.cookies.set(
+        "rescuesync_session",
+        crear_valor_sesion(usuario.id),
+        path="/api/v1",
+    )
 
-    assert solo_municipio(usuario_municipal) is usuario_municipal
-    with pytest.raises(HTTPException) as error:
-        solo_ong(usuario_municipal)
+    response = client.get("/api/v1/auth/me")
 
-    assert error.value.status_code == 403
-    assert error.value.detail == "No tenés permisos para realizar esta operación."
+    assert response.status_code == 200
+    assert response.json()["usuario"]["rol"] == rol
+
+
+@pytest.mark.parametrize("rol", list(RolUsuario))
+def test_endpoint_logout_reautentica_y_autoriza_todos_los_roles(
+    client: TestClient,
+    usuarios_por_rol: dict[RolUsuario, Usuario],
+    rol: RolUsuario,
+) -> None:
+    usuario = usuarios_por_rol[rol]
+    client.cookies.set(
+        "rescuesync_session",
+        crear_valor_sesion(usuario.id),
+        path="/api/v1",
+    )
+
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={"X-CSRF-Token": crear_token_csrf(usuario.id)},
+    )
+
+    assert response.status_code == 204
+
+
+@pytest.mark.parametrize(
+    ("operacion", "roles_permitidos"),
+    list(ROLES_FUNCIONALES_POR_OPERACION.items()),
+)
+def test_matriz_rbac_permite_y_deniega_operaciones_para_cada_rol(
+    usuarios_por_rol: dict[RolUsuario, Usuario],
+    operacion: OperacionProtegida,
+    roles_permitidos: frozenset[RolUsuario],
+) -> None:
+    autorizar = requerir_operacion(operacion)
+
+    for rol, usuario in usuarios_por_rol.items():
+        if rol in roles_permitidos:
+            assert autorizar(usuario) is usuario
+            continue
+
+        with pytest.raises(HTTPException) as error:
+            autorizar(usuario)
+
+        assert error.value.status_code == 403
+        assert error.value.detail == "No tenés permisos para realizar esta operación."

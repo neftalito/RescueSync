@@ -4,7 +4,8 @@
 
 Estas reglas se aplican a todo el repositorio. Antes de implementar una historia,
 consultar `docs/Trabajo integrador 2026.pdf`, `docs/Grooming Etapa 2.pdf` y el
-modelo de `docs/rescuesync.bos` cuando la tarea involucre el proceso BPM.
+artefacto versionado `docs/RescueSync-1.2.bar` cuando la tarea involucre el
+proceso BPM. El proyecto fuente `.bos` no está disponible en el repositorio.
 
 La prioridad actual es la Entrega 2: alta de emergencias, creación y publicación
 de lotes, ofertas básicas de ONGs, autenticación/RBAC local e integración inicial
@@ -162,8 +163,17 @@ que sean necesarios para mantener un contrato claro.
 - No reintentar ciegamente el POST que inicia una instancia: un timeout puede
   ocurrir después de que Bonita haya creado el caso. Diseñar idempotencia o una
   verificación antes del reintento.
-- Mantener el mapeo de variables alineado con el `.bos`; como mínimo:
-  `idEmergencia`, `gravedad` y `zona`.
+- Mantener `app/integrations/bonita/contratos.py` alineado con el `.bar`
+  desplegado; como mínimo: `idEmergencia`, `gravedad` y `zona`. Un cambio del
+  proceso exige una versión nueva del pool, un único `.bar` en `docs/` y
+  actualizar `BONITA_PROCESS_VERSION` y los contratos en el mismo pull request.
+- Los endpoints que invoca Bonita deben depender de `validar_callback_bonita` y
+  verificar que el caso de `X-Bonita-Root-Process-Instance-Id` sea el vinculado a
+  la emergencia. Deben ser idempotentes, porque los conectores pueden reintentar.
+- No versionar tokens reales: `BONITA_CALLBACK_TOKEN` de `.env.example` es solo
+  para desarrollo.
+- Usar el `ClienteBonita` compartido mediante `ClienteBonitaDep`; no crear
+  clientes HTTPX por petición ni configurar a mano el ID de la definición.
 - Las pruebas automatizadas no dependen de un Runtime Bonita real: usar RESPX.
   Reservar el Runtime real para pruebas de integración manuales o E2E controladas.
 
