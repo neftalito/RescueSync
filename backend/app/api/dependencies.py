@@ -5,6 +5,7 @@ from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.permissions import OperacionProtegida, roles_habilitados_para
 from app.core.security import leer_usuario_id_sesion, verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
@@ -53,8 +54,26 @@ def requerir_roles(*roles_permitidos: RolUsuario) -> Callable[[UsuarioActual], U
     return autorizar
 
 
+def requerir_operacion(
+    operacion: OperacionProtegida,
+) -> Callable[[UsuarioActual], Usuario]:
+    """Autoriza una operación de acuerdo con la matriz RBAC local."""
+
+    return requerir_roles(*roles_habilitados_para(operacion))
+
+
+UsuarioConsultaSesion = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CONSULTAR_SESION)),
+]
+UsuarioCierreSesion = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CERRAR_SESION)),
+]
+
+
 def validar_csrf(
-    usuario: UsuarioActual,
+    usuario: UsuarioCierreSesion,
     token_csrf: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> None:
     """Exige un token CSRF vigente en operaciones autenticadas que cambian estado."""

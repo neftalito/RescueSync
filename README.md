@@ -194,6 +194,23 @@ Los endpoints locales son:
 | `GET` | `/api/v1/auth/me` | Devuelve el contexto vigente y un token CSRF |
 | `POST` | `/api/v1/auth/logout` | Valida `X-CSRF-Token` y elimina la sesión |
 
+`/api/v1/auth/login` y los endpoints de health son públicos. `/auth/me` y
+`/auth/logout` vuelven a cargar el usuario desde PostgreSQL y aplican la matriz
+RBAC antes de responder. Las operaciones funcionales de la Entrega 2 quedan
+definidas de esta forma:
+
+| Operación | Rol habilitado |
+| --- | --- |
+| Registrar una emergencia | Operador Municipal |
+| Gestionar y publicar lotes | Centro Coordinador Regional |
+| Presentar una oferta | Representante de ONG |
+
+Los cuatro roles pueden consultar y cerrar su propia sesión. Auditor/Directivo
+queda autenticado y modelado, pero no recibe operaciones funcionales en la
+Entrega 2. El frontend filtra la navegación según esta matriz; cada ruta futura
+debe volver a autorizar mediante `requerir_operacion`, porque ocultar controles
+no constituye un control de acceso.
+
 En desarrollo, un `SESSION_SECRET` vacío genera una clave efímera al iniciar el
 backend, por lo que sus reinicios invalidan las sesiones abiertas. En producción
 `APP_ENV=production` exige una clave estable de al menos 32 caracteres, generada

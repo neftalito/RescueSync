@@ -9,21 +9,44 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
 
 import App from "./App";
+import type { Role, Session } from "./schemas/auth";
 
 const API_URL = "http://localhost:8000/api/v1";
-const session = {
-  usuario: {
-    id: 7,
-    email: "operador@municipio.org",
-    rol: "OPERADOR_MUNICIPAL" as const,
-    organizacion: {
-      id: 3,
-      nombre: "Municipio del Delta",
-      tipo: "MUNICIPIO" as const,
-    },
+const organizationsByRole: Record<
+  Role,
+  Session["usuario"]["organizacion"]
+> = {
+  OPERADOR_MUNICIPAL: {
+    id: 3,
+    nombre: "Municipio del Delta",
+    tipo: "MUNICIPIO",
   },
-  csrf_token: "csrf-firmado",
+  COORDINADOR_REGIONAL: {
+    id: 4,
+    nombre: "Centro Litoral",
+    tipo: "CENTRO_COORDINADOR",
+  },
+  REPRESENTANTE_ONG: {
+    id: 5,
+    nombre: "Rescate Unido",
+    tipo: "ONG",
+  },
+  AUDITOR_DIRECTIVO: null,
 };
+
+function sessionForRole(role: Role): Session {
+  return {
+    usuario: {
+      id: 7,
+      email: `${role.toLowerCase()}@rescuesync.org`,
+      rol: role,
+      organizacion: organizationsByRole[role],
+    },
+    csrf_token: "csrf-firmado",
+  };
+}
+
+const session = sessionForRole("OPERADOR_MUNICIPAL");
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -161,5 +184,65 @@ describe("autenticación", () => {
     });
     expect(csrfHeader).toBe("csrf-firmado");
     expect(requestCredentials).toBe("include");
+  });
+});
+
+describe("navegación por rol", () => {
+  it.each<{
+    role: Role;
+    visible: string | null;
+    hidden: string[];
+  }>([
+    {
+      role: "OPERADOR_MUNICIPAL",
+      visible: "Registrar emergencia",
+      hidden: ["Generar y publicar lotes", "Presentar oferta"],
+    },
+    {
+      role: "COORDINADOR_REGIONAL",
+      visible: "Generar y publicar lotes",
+      hidden: ["Registrar emergencia", "Presentar oferta"],
+    },
+    {
+      role: "REPRESENTANTE_ONG",
+      visible: "Presentar oferta",
+      hidden: ["Registrar emergencia", "Generar y publicar lotes"],
+    },
+    {
+      role: "AUDITOR_DIRECTIVO",
+      visible: null,
+      hidden: [
+        "Registrar emergencia",
+        "Generar y publicar lotes",
+        "Presentar oferta",
+      ],
+    },
+  ])("muestra únicamente las acciones habilitadas para $role", async (testCase) => {
+    server.use(
+      http.get(`${API_URL}/auth/me`, () =>
+        HttpResponse.json(sessionForRole(testCase.role)),
+      ),
+    );
+    renderApp("/");
+
+    expect(
+      await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+    ).toBeInTheDocument();
+
+    if (testCase.visible === null) {
+      expect(
+        screen.getByRole("heading", { name: "Perfil preparado para auditoría" }),
+      ).toBeInTheDocument();
+    } else {
+      expect(
+        screen.getByRole("heading", { name: testCase.visible }),
+      ).toBeInTheDocument();
+    }
+
+    for (const hiddenAction of testCase.hidden) {
+      expect(
+        screen.queryByRole("heading", { name: hiddenAction }),
+      ).not.toBeInTheDocument();
+    }
   });
 });
