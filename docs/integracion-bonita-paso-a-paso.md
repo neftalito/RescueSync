@@ -6,17 +6,26 @@
 **Proceso:** `RescueSync`  
 **Prioridad:** Entrega 2 — integración inicial con Bonita
 
+> **Estado actual (17/09/2026).** Este documento conserva el diagnóstico hecho
+> sobre el `.bos` original, que ya se eliminó por estar desactualizado. La
+> referencia vigente es `docs/RescueSync-1.2.bar`. Esa versión incorpora el
+> contrato validado (incluida la gravedad `CRITICA`), las variables, el índice
+> `idEmergencia`, los actores funcionales, las compuertas evaluadas por script,
+> el timer por fecha y los conectores autenticados hacia FastAPI. Se verificó
+> contra el Runtime real. El uso vigente, los callbacks y la operación en equipo
+> se documentan en la sección *Integración con Bonita* del README.
+
 ## 1. Objetivo y alcance
 
-Este documento describe qué falta incorporar al proyecto
-[`rescuesync.bos`](./rescuesync.bos) para que el proceso pueda integrarse de
-forma segura y trazable con la aplicación RescueSync.
+Este documento registra el diagnóstico inicial y la guía usada para integrar el
+proceso de forma segura y trazable. El proyecto fuente `.bos` analizado no está
+disponible en el repositorio actual.
 
 El análisis se basa en:
 
 - [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>).
 - [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>).
-- [`rescuesync.bos`](./rescuesync.bos).
+- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.2.bar`](./RescueSync-1.2.bar).
 - [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>), como descripción complementaria del modelo existente.
 
 La prioridad inmediata es la Entrega 2: registrar una emergencia en la base
@@ -25,9 +34,9 @@ local, iniciar una instancia de Bonita y enviar como mínimo
 su JWT y el bloqueo o liberación de recursos corresponde a la Entrega 3 y se
 identifica expresamente como trabajo posterior.
 
-## 2. Conclusión del diagnóstico
+## 2. Conclusión del diagnóstico original
 
-El `.bos` actual representa correctamente el recorrido general del negocio,
+El `.bos` analizado inicialmente representaba correctamente el recorrido general del negocio,
 pero todavía es principalmente un modelo visual. No está preparado para una
 integración ejecutable porque carece de contratos, variables, condiciones,
 conectores y configuración de actores.
@@ -122,7 +131,7 @@ Inicio
 Abrir el proyecto con Bonita Studio 10.4.0 y crear una nueva versión del pool:
 
 - Nombre: `RescueSync`.
-- Versión sugerida: `1.1`.
+- Versión vigente: `1.2`.
 - Descripción: indicar que incorpora el contrato de integración inicial.
 
 No se debe reemplazar una versión que pueda tener instancias activas. Durante
@@ -159,8 +168,8 @@ Agregar restricciones para comprobar:
 - Que `municipioId` sea válido cuando forme parte del contrato.
 
 Los nombres y tipos del contrato deben quedar acordados antes de implementar el
-cliente HTTPX. Un cambio posterior obliga a modificar el `.bos`, FastAPI, los
-mocks RESPX y las pruebas E2E.
+cliente HTTPX. Un cambio posterior obliga a generar externamente un `.bar`
+nuevo y modificar FastAPI, los mocks RESPX y las pruebas E2E.
 
 ### Paso 3. Crear las variables del pool
 
@@ -411,8 +420,9 @@ la URL desde Bonita hacia FastAPI depende de dónde se ejecute el Runtime:
 - Bonita Studio en el host: normalmente `http://localhost:8000`.
 - Bonita en Compose: `http://backend:8000`.
 
-Las credenciales, claves internas y JWT no deben guardarse en el `.bos` ni en
-Git. Deben configurarse como secretos del ambiente o directamente en el Runtime.
+Las credenciales, claves internas y JWT no deben guardarse en el proyecto de
+Studio ni en Git. Deben configurarse como secretos del ambiente o directamente
+en el Runtime.
 
 ### Paso 13. Incorporar manejo de errores
 
@@ -439,12 +449,11 @@ Una vez configurado el proceso:
 5. Instalarlo en el Runtime.
 6. Configurar mapeos de actores y parámetros.
 7. Habilitar la definición del proceso.
-8. Obtener su `processDefinitionId`.
-9. Configurar ese valor en `BONITA_PROCESS_DEFINITION_ID` para el ambiente
-   correspondiente.
+8. Verificar que el nombre y la versión coincidan con
+   `BONITA_PROCESS_NAME` y `BONITA_PROCESS_VERSION` del ambiente.
 
-El Runtime no importa directamente el `.bos`; el `.bos` es el proyecto fuente
-y debe compilarse como un artefacto desplegable.
+El Runtime no importa directamente proyectos `.bos`: requiere el `.bar`
+desplegable. El proyecto fuente utilizado para 1.2 no está versionado aquí.
 
 ## 6. Integración desde FastAPI
 
@@ -539,7 +548,7 @@ Antes de implementar el cliente Bonita en FastAPI debe quedar terminado:
 - [ ] Condiciones de compuertas definidas.
 - [ ] Timer con una salida ejecutable y verificable.
 - [ ] Diagrama validado y `.bar` desplegable.
-- [ ] Definición habilitada y `processDefinitionId` registrado por ambiente.
+- [ ] Definición habilitada y localizable por nombre y versión.
 - [ ] Prueba manual de instanciación con el payload acordado.
 
 No son bloqueantes para comenzar la Entrega 2:
@@ -557,4 +566,3 @@ No son bloqueantes para comenzar la Entrega 2:
 - [Conectores REST](https://documentation.bonitasoft.com/bonita/2024.1/process/rest-connector).
 - [Endpoints comunes de procesos](https://documentation.bonitasoft.com/bonita/next/applications/ui-builder/common-apis-to-use).
 - [Protección CSRF de la API REST](https://documentation.bonitasoft.com/bonita/2024.2/security/csrf-security).
-

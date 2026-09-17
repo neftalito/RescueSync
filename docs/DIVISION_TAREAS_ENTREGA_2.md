@@ -2,9 +2,11 @@
 
 > Propuesta elaborada el 14 de septiembre de 2026 a partir de
 > `docs/Grooming Etapa 2.pdf`, `docs/Trabajo integrador 2026.pdf`,
-> `rescuesync.bos` y los 21 issues del milestone **Entrega 2** incluidos en
-> GitHub Project #6. Al momento del relevamiento, todos los issues estaban en
-> estado `Backlog` y la fecha objetivo del milestone era el 2 de octubre de 2026.
+> el `.bos` histórico hoy no disponible y los 21 issues del milestone
+> **Entrega 2** incluidos en GitHub Project #6. Al momento del relevamiento,
+> todos los issues estaban en estado `Backlog` y la fecha objetivo del milestone
+> era el 2 de octubre de 2026. La referencia BPM vigente es
+> `docs/RescueSync-1.2.bar`.
 
 ## Criterio de reparto
 
@@ -91,17 +93,15 @@ cerrar primero el payload antes de conectarlo al alta.
 
 ### Riesgo detectado en el modelo BPM
 
-El `.bos` versionado contiene el proceso `RescueSync`, las lanes de Operador
-Municipal, Centro Coordinador, ONG y Red Nacional, y el timer de ofertas de dos
-horas. Sin embargo, en el archivo `.proc` no aparecen datos de proceso ni
-contratos declarados para `idEmergencia`, `gravedad` o `zona`; los contratos
-visibles están vacíos.
+El `.bos` analizado originalmente contenía el proceso `RescueSync`, las lanes de
+Operador Municipal, Centro Coordinador, ONG y Red Nacional, y el timer de ofertas
+de dos horas. Ese proyecto fuente ya no está disponible en el repositorio; la
+referencia ejecutable vigente es `RescueSync-1.2.bar`.
 
-Por eso, T17 debe comenzar verificando el contrato de inicio en el Runtime. Si la
-versión desplegada coincide con el `.bos`, el mismo issue debe dejar alineadas
-esas tres variables antes de cerrar T16. Si ese ajuste excede el criterio de T17,
-se debe registrar un issue correctivo explícito y reestimar, no ocultar trabajo
-adicional dentro de otra tarea.
+Por eso, T17 debe verificar el contrato de inicio en el Runtime y mantener
+alineados el `.bar`, FastAPI y sus pruebas. Si un ajuste excede el criterio de
+T17, se debe registrar un issue correctivo explícito y reestimar, no ocultar
+trabajo adicional dentro de otra tarea.
 
 ## Integrante 4 — Flujo de lotes e interfaces operativas
 
@@ -200,4 +200,3 @@ formularios, servicios o pruebas contra los contratos acordados.
 - Los desvíos mayores a **0,5 h** o cualquier hallazgo que agregue alcance se
   registran en GitHub y se reequilibran explícitamente. No se transfieren tareas
   de manera informal ni se adelanta funcionalidad de Entrega 3.
-

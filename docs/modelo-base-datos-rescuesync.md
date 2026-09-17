@@ -12,8 +12,9 @@
 
 Este documento describe el modelo relacional vigente de RescueSync a partir de los
 requisitos de [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>),
-[`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso definido en
-[`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>).
+[`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>) y el proceso desplegable
+[`RescueSync-1.2.bar`](./RescueSync-1.2.bar). El proyecto fuente `.bos` no está
+disponible en el repositorio.
 
 El modelo busca cubrir:
 
@@ -532,7 +533,7 @@ Los campos de integración cumplen funciones distintas:
 
 - `bonita_process_definition_id`: definición desplegada que se utilizó.
 - `bonita_process_instance_id`: caso creado; debe ser único cuando no sea nulo.
-- `bonita_process_version`: versión funcional del proceso, por ejemplo `1.1`.
+- `bonita_process_version`: versión funcional del proceso, por ejemplo `1.2`.
 - `bonita_sync`: resultado actual de la vinculación.
 - `bonita_ultimo_error`: mensaje seguro y sin credenciales.
 - `bonita_ultimo_intento_en`: momento UTC del último intento.
