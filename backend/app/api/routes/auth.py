@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import UsuarioActual, validar_csrf
+from app.api.dependencies import UsuarioConsultaSesion, validar_csrf
 from app.core.config import get_settings
 from app.core.security import crear_token_csrf, crear_valor_sesion
 from app.db.models import Usuario
@@ -79,7 +79,10 @@ def iniciar_sesion(
         "para no confiar en permisos almacenados en el navegador."
     ),
 )
-def consultar_sesion(usuario: UsuarioActual, response: Response) -> SesionResponse:
+def consultar_sesion(
+    usuario: UsuarioConsultaSesion,
+    response: Response,
+) -> SesionResponse:
     _evitar_cache(response)
     return _crear_respuesta_sesion(usuario)
 
