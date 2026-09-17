@@ -20,7 +20,7 @@ def http() -> Iterator[TestClient]:
         usuario="install",
         password=SecretStr("install"),
         nombre_proceso="RescueSync",
-        version_proceso="1.1",
+        version_proceso="1.2",
         timeout_conexion_segundos=1,
         timeout_lectura_segundos=1,
     )
@@ -46,7 +46,7 @@ def test_bonita_lista_con_el_proceso_habilitado(http: TestClient) -> None:
                     {
                         "id": "1",
                         "name": "RescueSync",
-                        "version": "1.1",
+                        "version": "1.2",
                         "activationState": "ENABLED",
                         "configurationState": "RESOLVED",
                     }

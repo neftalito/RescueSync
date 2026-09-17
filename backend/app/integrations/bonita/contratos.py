@@ -1,7 +1,7 @@
 """Contratos tipados entre FastAPI y el proceso RescueSync desplegado en Bonita.
 
 Los nombres de entradas, actores y tareas reflejan el artefacto
-`docs/RescueSync-1.1.bar`. Un cambio en el proceso obliga a actualizar este
+`docs/RescueSync-1.2.bar`. Un cambio en el proceso obliga a actualizar este
 módulo, sus pruebas RESPX y la prueba E2E contra el Runtime.
 """
 
@@ -13,7 +13,6 @@ from pydantic import (
     Field,
     PositiveInt,
     StringConstraints,
-    field_validator,
 )
 
 from app.db.models.enums import GravedadEmergencia
@@ -23,11 +22,6 @@ TAREA_GENERAR_LOTES: Final = "Generar lotes de necesidades"
 
 USUARIO_ACTOR_COORDINADOR: Final = "coordinador.regional"
 """Usuario asignado al actor Coordinador Regional en `actorMapping.xml`."""
-
-GRAVEDADES_ADMITIDAS_POR_PROCESO: Final = frozenset(
-    {GravedadEmergencia.BAJA, GravedadEmergencia.MEDIA, GravedadEmergencia.ALTA}
-)
-"""Valores aceptados por la restricción `gravedadNotNull` del contrato 1.1."""
 
 TextoNoVacio = Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
 
@@ -46,19 +40,6 @@ class ContratoInicioProceso(_ModeloBonita):
     zona: Annotated[TextoNoVacio, StringConstraints(max_length=255)]
     descripcion: TextoNoVacio
     municipio_id: int = Field(alias="municipioId", gt=0)
-
-    @field_validator("gravedad")
-    @classmethod
-    def validar_gravedad_admitida(
-        cls, gravedad: GravedadEmergencia
-    ) -> GravedadEmergencia:
-        """Detecta antes del POST los valores que el proceso rechazaría."""
-
-        if gravedad not in GRAVEDADES_ADMITIDAS_POR_PROCESO:
-            raise ValueError(
-                f"el proceso desplegado en Bonita no admite la gravedad {gravedad}"
-            )
-        return gravedad
 
     def a_payload(self) -> dict[str, int | str]:
         """Serializa las entradas con los nombres exactos del contrato."""

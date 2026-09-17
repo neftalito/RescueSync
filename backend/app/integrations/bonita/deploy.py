@@ -51,6 +51,10 @@ class Config:
             process_version=_required_environment("BONITA_PROCESS_VERSION"),
             process_parameters=(
                 (
+                    "callbackToken",
+                    _required_environment("BONITA_CALLBACK_TOKEN"),
+                ),
+                (
                     "backendBaseUrl",
                     os.getenv("BONITA_BACKEND_BASE_URL", "http://backend:8000").rstrip(
                         "/"

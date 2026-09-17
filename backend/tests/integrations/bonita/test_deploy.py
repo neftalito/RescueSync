@@ -39,6 +39,7 @@ def _config(
         process_name="RescueSync",
         process_version="1.0",
         process_parameters=(
+            ("callbackToken", "token-de-prueba"),
             ("backendBaseUrl", "http://backend:8000"),
             ("ventanaOfertasMs", "7200000"),
         ),
@@ -154,7 +155,9 @@ def test_inyecta_los_parametros_en_una_copia_del_bar(tmp_path: Path) -> None:
     with ZipFile(BytesIO(content.read())) as archive:
         properties = archive.read("parameters.properties").decode("iso-8859-1")
     assert properties == (
-        "backendBaseUrl=http://backend:8000\nventanaOfertasMs=7200000\n"
+        "callbackToken=token-de-prueba\n"
+        "backendBaseUrl=http://backend:8000\n"
+        "ventanaOfertasMs=7200000\n"
     )
     with ZipFile(config.bar_path) as original:
         assert original.read("parameters.properties") == b"# sin configurar\n"

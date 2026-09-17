@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     bonita_username: str = "install"
     bonita_password: SecretStr = SecretStr("install")
     bonita_process_name: str = "RescueSync"
-    bonita_process_version: str = "1.1"
+    bonita_process_version: str = "1.2"
     bonita_client_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     bonita_client_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
 

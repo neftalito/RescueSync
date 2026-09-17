@@ -30,7 +30,7 @@ def cliente() -> Iterator[ClienteBonita]:
         usuario="install",
         password=SecretStr(PASSWORD),
         nombre_proceso="RescueSync",
-        version_proceso="1.1",
+        version_proceso="1.2",
         timeout_conexion_segundos=1,
         timeout_lectura_segundos=1,
     )
@@ -55,7 +55,7 @@ def _proceso(
     return {
         "id": "7204236220545867063",
         "name": "RescueSync",
-        "version": "1.1",
+        "version": "1.2",
         "activationState": activation_state,
         "configurationState": configuration_state,
     }
@@ -87,7 +87,7 @@ def test_resuelve_el_proceso_habilitado_con_token_csrf(cliente: ClienteBonita) -
     assert login.call_count == 1
     peticion = busqueda.calls.last.request
     assert peticion.headers["X-Bonita-API-Token"] == "csrf-1"
-    assert peticion.url.params.get_list("f") == ["name=RescueSync", "version=1.1"]
+    assert peticion.url.params.get_list("f") == ["name=RescueSync", "version=1.2"]
 
 
 @pytest.mark.parametrize(
@@ -450,9 +450,11 @@ def test_rechaza_una_tarea_que_no_coincide_con_el_filtro(
             cliente.buscar_tarea_lista(4, "Generar lotes de necesidades")
 
 
-def test_el_contrato_rechaza_gravedades_que_el_proceso_no_admite() -> None:
-    with pytest.raises(ValidationError, match="no admite la gravedad CRITICA"):
-        _contrato(gravedad=GravedadEmergencia.CRITICA)
+@pytest.mark.parametrize("gravedad", list(GravedadEmergencia))
+def test_el_contrato_admite_las_gravedades_del_dominio(
+    gravedad: GravedadEmergencia,
+) -> None:
+    assert _contrato(gravedad=gravedad).a_payload()["gravedad"] == gravedad.value
 
 
 @pytest.mark.parametrize("zona", ["", "   ", "z" * 256])
