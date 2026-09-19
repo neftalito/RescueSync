@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -6,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import obtener_cliente_bonita
 from app.core.security import (
     crear_token_csrf,
     crear_valor_sesion,
@@ -21,6 +23,12 @@ from app.db.models import (
     Usuario,
 )
 from app.db.session import get_db
+from app.integrations.bonita.contratos import (
+    CasoBonita,
+    ContratoInicioProceso,
+    DefinicionProceso,
+    InstanciaIniciada,
+)
 from app.main import app
 from app.schemas.emergencia import EmergenciaCreate
 from app.services import emergencias as servicio_emergencias
@@ -31,6 +39,37 @@ PAYLOAD_VALIDO = {
     "zona": "Ribera norte",
     "descripcion": "Inundación con familias evacuadas",
 }
+CASO_BONITA_PRUEBA = 4242
+
+
+class ClienteBonitaParaPruebas:
+    """Doble sin red que vincula al instante con un caso fijo."""
+
+    def __init__(self) -> None:
+        self.inicios = 0
+        self.configuracion = SimpleNamespace(version_proceso="1.2")
+
+    def obtener_proceso_habilitado(self) -> DefinicionProceso:
+        return DefinicionProceso.model_validate(
+            {
+                "id": "55",
+                "name": "RescueSync",
+                "version": "1.2",
+                "activationState": "ENABLED",
+                "configurationState": "RESOLVED",
+            }
+        )
+
+    def iniciar_instancia(
+        self, proceso_id: int, contrato: ContratoInicioProceso
+    ) -> InstanciaIniciada:
+        self.inicios += 1
+        return InstanciaIniciada.model_validate({"caseId": CASO_BONITA_PRUEBA})
+
+    def buscar_casos_por_emergencia(
+        self, proceso_id: int, id_emergencia: int
+    ) -> list[CasoBonita]:
+        return []
 
 
 @pytest.fixture
@@ -102,11 +141,19 @@ def usuarios_no_municipales(db_session: Session) -> dict[RolUsuario, Usuario]:
 
 
 @pytest.fixture
-def client(db_session: Session) -> Iterator[TestClient]:
+def doble_bonita() -> ClienteBonitaParaPruebas:
+    return ClienteBonitaParaPruebas()
+
+
+@pytest.fixture
+def client(
+    db_session: Session, doble_bonita: ClienteBonitaParaPruebas
+) -> Iterator[TestClient]:
     def usar_sesion_de_prueba() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
+    app.dependency_overrides[obtener_cliente_bonita] = lambda: doble_bonita
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -130,6 +177,7 @@ def test_registra_emergencia_valida_con_municipio_y_estado_inicial(
     db_session: Session,
     usuario_municipal: Usuario,
     municipio: Organizacion,
+    doble_bonita: ClienteBonitaParaPruebas,
 ) -> None:
     csrf = _autenticar(client, usuario_municipal)
     iniciales = _contar_emergencias(db_session)
@@ -146,18 +194,20 @@ def test_registra_emergencia_valida_con_municipio_y_estado_inicial(
     assert payload["zona"] == "Ribera norte"
     assert payload["descripcion"] == "Inundación con familias evacuadas"
     assert payload["estado"] == EstadoEmergencia.REGISTRADA.value
-    assert payload["bonita_sync"] == EstadoSincronizacionBonita.PENDIENTE.value
+    assert payload["bonita_sync"] == EstadoSincronizacionBonita.VINCULADA.value
     assert payload["municipio_id"] == municipio.id
     assert payload["creada_por_usuario_id"] == usuario_municipal.id
     assert payload["centro_coordinador_id"] is None
-    assert payload["bonita_process_instance_id"] is None
+    assert payload["bonita_process_instance_id"] == CASO_BONITA_PRUEBA
+    assert doble_bonita.inicios == 1
     assert _contar_emergencias(db_session) == iniciales + 1
 
     db_session.expire_all()
     emergencia = db_session.get(Emergencia, payload["id"])
     assert emergencia is not None
     assert emergencia.estado is EstadoEmergencia.REGISTRADA
-    assert emergencia.bonita_sync is EstadoSincronizacionBonita.PENDIENTE
+    assert emergencia.bonita_sync is EstadoSincronizacionBonita.VINCULADA
+    assert emergencia.bonita_process_instance_id == CASO_BONITA_PRUEBA
     assert emergencia.municipio_id == municipio.id
     assert emergencia.creada_por_usuario_id == usuario_municipal.id
 
