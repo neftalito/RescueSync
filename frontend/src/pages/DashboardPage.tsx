@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
+import { EmergenciaForm } from "../components/EmergenciaForm";
 import { sessionQueryKey } from "../hooks/useSession";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
@@ -19,12 +20,6 @@ interface Stage {
 }
 
 const stages: Stage[] = [
-  {
-    role: "OPERADOR_MUNICIPAL",
-    actor: "Municipio",
-    title: "Registrar emergencia",
-    description: "Gravedad, zona afectada y descripción inicial.",
-  },
   {
     role: "COORDINADOR_REGIONAL",
     actor: "Centro coordinador",
@@ -58,6 +53,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const visibleStages = stages.filter(
     (stage) => stage.role === session.usuario.rol,
   );
+  const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -145,7 +141,11 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
             Acciones disponibles para tu rol
           </h2>
 
-          {visibleStages.length === 0 ? (
+          {esMunicipio ? (
+            <div className="mt-5">
+              <EmergenciaForm csrfToken={session.csrf_token} />
+            </div>
+          ) : visibleStages.length === 0 ? (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-xl font-semibold text-slate-950">
                 Perfil preparado para auditoría
