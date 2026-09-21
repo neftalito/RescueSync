@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_operacion
+from app.api.dependencies import ClienteBonitaDep, requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Usuario
@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas.emergencia import EmergenciaCreate, EmergenciaResponse
 from app.services import emergencias as servicio
+from app.services.vinculacion_bonita import vincular_emergencia_con_bonita
 
 router = APIRouter()
 
@@ -51,16 +52,19 @@ UsuarioRegistraEmergencia = Annotated[Usuario, Depends(exigir_municipio_con_csrf
     summary="Registrar una emergencia municipal",
     description=(
         "Persiste una emergencia con gravedad, zona y descripción en estado "
-        "REGISTRADA para el municipio autenticado y la deja PENDIENTE de "
-        "vinculación con Bonita. Solo OPERADOR_MUNICIPAL con token CSRF vigente."
+        "REGISTRADA para el municipio autenticado y luego inicia su instancia "
+        "en Bonita. Si Bonita falla, la emergencia se conserva con el estado "
+        "de sincronización y un error seguro para reintentar. Solo "
+        "OPERADOR_MUNICIPAL con token CSRF vigente."
     ),
 )
 def crear_emergencia(
     datos: EmergenciaCreate,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioRegistraEmergencia,
+    cliente: ClienteBonitaDep,
 ) -> EmergenciaResponse:
-    """Valida con Pydantic, persiste con rollback y devuelve la emergencia creada."""
+    """Confirma el alta local y vincula su instancia de Bonita de forma trazable."""
 
     try:
         emergencia = servicio.registrar_emergencia(session, usuario, datos)
@@ -74,4 +78,5 @@ def crear_emergencia(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
         ) from error
+    emergencia = vincular_emergencia_con_bonita(session, emergencia, cliente)
     return EmergenciaResponse.model_validate(emergencia)
