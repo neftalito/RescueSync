@@ -12,6 +12,7 @@ from app.db.models import (
     Usuario,
 )
 from app.schemas.lote import LoteItem
+from app.services.auth import organizacion_vigente_de_tipo
 
 
 class LoteError(Exception):
@@ -104,12 +105,9 @@ def guardar_lotes(
 def _verificar_centro(usuario: Usuario) -> None:
     """Exige un centro coordinador activo para gestionar lotes."""
 
-    organizacion = usuario.organizacion
     if (
-        usuario.organizacion_id is None
-        or organizacion is None
-        or organizacion.tipo is not TipoOrganizacion.CENTRO_COORDINADOR
-        or not organizacion.activa
+        organizacion_vigente_de_tipo(usuario, TipoOrganizacion.CENTRO_COORDINADOR)
+        is None
     ):
         raise CentroNoAutorizadoError(
             "Solo un centro coordinador activo gestiona lotes."
