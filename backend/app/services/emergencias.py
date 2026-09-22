@@ -11,6 +11,7 @@ from app.db.models import (
     Usuario,
 )
 from app.schemas.emergencia import EmergenciaCreate
+from app.services.auth import organizacion_vigente_de_tipo
 
 
 class EmergenciaError(Exception):
@@ -45,19 +46,14 @@ def registrar_emergencia(
         DatosEmergenciaInvalidosError: Si la base rechaza la inserción.
     """
 
-    organizacion = usuario.organizacion
-    if (
-        usuario.organizacion_id is None
-        or organizacion is None
-        or organizacion.tipo is not TipoOrganizacion.MUNICIPIO
-        or not organizacion.activa
-    ):
+    municipio = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.MUNICIPIO)
+    if municipio is None:
         raise MunicipioInvalidoError(
             "Solo un municipio activo puede registrar emergencias."
         )
 
     emergencia = Emergencia(
-        municipio_id=usuario.organizacion_id,
+        municipio_id=municipio.id,
         creada_por_usuario_id=usuario.id,
         gravedad=datos.gravedad,
         zona=datos.zona,
