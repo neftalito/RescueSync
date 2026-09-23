@@ -180,7 +180,7 @@ def _payload(
     observaciones: str | None = "Donación inicial",
 ) -> dict[str, object]:
     return {
-        "convocatoriaId": convocatoria_id,
+        "convocatoria_id": convocatoria_id,
         "observaciones": observaciones,
         "items": items,
     }
@@ -194,10 +194,10 @@ def _item(
     descripcion: str = "Bidones de agua potable",
 ) -> dict[str, object]:
     return {
-        "loteId": lote_id,
+        "lote_id": lote_id,
         "tipo": tipo.value,
         "descripcion": descripcion,
-        "cantidadOfrecida": cantidad,
+        "cantidad_ofrecida": cantidad,
         "unidad": unidad,
     }
  
@@ -227,13 +227,13 @@ def test_crea_oferta_con_un_item_valido(
     assert response.status_code == 201
     payload = response.json()
     assert payload["estado"] == "PRESENTADA"
-    assert payload["versionActual"] == 1
-    assert payload["ongCreadoraId"] == escenario.ong.id
-    assert payload["creadaPorUsuarioId"] == escenario.representante.id
+    assert payload["version_actual"] == 1
+    assert payload["ong_creadora_id"] == escenario.ong.id
+    assert payload["creada_por_usuario_id"] == escenario.representante.id
     assert len(payload["items"]) == 1
-    assert payload["items"][0]["loteId"] == escenario.lote_agua.id
+    assert payload["items"][0]["lote_id"] == escenario.lote_agua.id
     assert payload["items"][0]["unidad"] == "litros"
-    assert Decimal(str(payload["items"][0]["cantidadOfrecida"])) == Decimal(500)
+    assert Decimal(str(payload["items"][0]["cantidad_ofrecida"])) == Decimal(500)
  
  
 def test_crea_oferta_con_multiples_items_en_distintos_lotes(
@@ -291,6 +291,7 @@ def test_rechaza_convocatoria_cerrada(
     client: TestClient, escenario: Escenario, db_session: Session
 ) -> None:
     escenario.convocatoria.estado = EstadoConvocatoria.CERRADA
+    escenario.convocatoria.cerrada_en = datetime.now(UTC)
     db_session.flush()
     _autenticar_sin_csrf(client, escenario.representante)
  
