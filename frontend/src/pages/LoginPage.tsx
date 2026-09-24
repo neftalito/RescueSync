@@ -28,6 +28,13 @@ export function LoginPage(): ReactElement {
   const mutation = useMutation({
     mutationFn: login,
     onSuccess: (session: Session) => {
+      // Limpia todo el caché previo antes de fijar la nueva sesión: la
+      // sesión anterior puede haber terminado por expiración (401 en
+      // /auth/me) en vez de un logout explícito, y en ese caso nadie más
+      // limpió el caché. Sin esto, esta pestaña podría mostrarle a esta
+      // persona datos (por ejemplo la bandeja de emergencias) que
+      // pertenecían a quien haya usado la sesión anterior.
+      queryClient.clear();
       queryClient.setQueryData(sessionQueryKey, session);
       navigate("/", { replace: true });
     },

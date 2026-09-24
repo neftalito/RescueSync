@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
 
 import App from "./App";
+import { sessionQueryKey } from "./hooks/useSession";
 import type { Role, Session } from "./schemas/auth";
 
 const API_URL = "http://localhost:8000/api/v1";
@@ -58,7 +59,7 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderApp(path: string): void {
+function renderApp(path: string): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -69,6 +70,7 @@ function renderApp(path: string): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 describe("autenticación", () => {
@@ -226,6 +228,69 @@ describe("autenticación", () => {
     await user.click(
       await screen.findByRole("button", { name: "Cerrar sesión" }),
     );
+    await screen.findByRole("heading", { name: "Iniciá sesión" });
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Correo electrónico" }),
+      "coordinador_regional@rescuesync.org",
+    );
+    await user.type(screen.getByLabelText("Contraseña"), "Una-clave-segura");
+    await user.click(
+      screen.getByRole("button", { name: "Ingresar a RescueSync" }),
+    );
+
+    expect(
+      await screen.findByText("No hay emergencias registradas pendientes."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
+  });
+
+  it("no reutiliza el caché de emergencias tras expirar la sesión (sin logout explícito) e iniciar sesión con otro usuario", async () => {
+    const emergenciaDelMunicipio = {
+      id: 31,
+      municipio_id: 3,
+      centro_coordinador_id: null,
+      creada_por_usuario_id: 7,
+      gravedad: "ALTA",
+      zona: "Ribera norte",
+      descripcion: "Inundación con familias evacuadas",
+      estado: "REGISTRADA",
+      bonita_sync: "PENDIENTE",
+      bonita_process_instance_id: null,
+      creada_en: "2026-09-19T18:20:39.102766Z",
+      actualizada_en: "2026-09-19T18:20:39.102766Z",
+    };
+    const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
+    let sesionVigente: "municipio" | "vencida" | "coordinador" = "municipio";
+    server.use(
+      http.get(`${API_URL}/auth/me`, () =>
+        sesionVigente === "municipio"
+          ? HttpResponse.json(session)
+          : HttpResponse.json(
+              { detail: "La sesión no es válida o expiró." },
+              { status: 401 },
+            ),
+      ),
+      http.post(`${API_URL}/auth/login`, () => {
+        sesionVigente = "coordinador";
+        return HttpResponse.json(coordinadorSession);
+      }),
+      http.get(`${API_URL}/emergencias`, () =>
+        sesionVigente === "municipio"
+          ? HttpResponse.json([emergenciaDelMunicipio], { status: 200 })
+          : HttpResponse.json([], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    const queryClient = renderApp("/");
+
+    await screen.findByText("Alta · Ribera norte");
+
+    // Simula que la sesión venció del lado del servidor (sin que nadie use
+    // el botón "Cerrar sesión") forzando un refetch de /auth/me, que ahora
+    // responde 401.
+    sesionVigente = "vencida";
+    await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
     await screen.findByRole("heading", { name: "Iniciá sesión" });
 
     await user.type(
