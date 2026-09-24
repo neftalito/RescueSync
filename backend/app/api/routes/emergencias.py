@@ -80,3 +80,46 @@ def crear_emergencia(
         ) from error
     emergencia = vincular_emergencia_con_bonita(session, emergencia, cliente)
     return EmergenciaResponse.model_validate(emergencia)
+
+
+UsuarioConsultaEmergencias = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CONSULTAR_EMERGENCIAS)),
+]
+
+
+@router.get(
+    "",
+    response_model=list[EmergenciaResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    },
+    summary="Consultar la bandeja de emergencias del rol autenticado",
+    description=(
+        "Un municipio ve únicamente sus propias emergencias con su estado "
+        "actual. Un centro coordinador ve las emergencias en REGISTRADA sin "
+        "centro asignado o ya asignadas al suyo. El filtro se aplica en el "
+        "backend según el rol autenticado, no en la interfaz."
+    ),
+)
+def listar_bandeja_emergencias(
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioConsultaEmergencias,
+) -> list[EmergenciaResponse]:
+    """Devuelve la bandeja de emergencias filtrada por rol y organización vigente."""
+
+    try:
+        emergencias = servicio.listar_emergencias(session, usuario)
+    except servicio.MunicipioInvalidoError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+    except servicio.CentroInvalidoError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
+    return [EmergenciaResponse.model_validate(emergencia) for emergencia in emergencias]
