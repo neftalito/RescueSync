@@ -26,7 +26,7 @@ def exigir_ong_con_csrf(
     usuario: UsuarioOng,
     token_csrf: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> Usuario:
-    if not verificar_token_csrf(token_csrf, usuario.id):
+    if not verificar_token_csrf(token_csrf, usuario.id, usuario.version_sesion):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="El token CSRF no es válido.",
