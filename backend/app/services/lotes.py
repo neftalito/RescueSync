@@ -8,6 +8,7 @@ from app.db.models import (
     Emergencia,
     EstadoLote,
     Lote,
+    Organizacion,
     TipoOrganizacion,
     Usuario,
 )
@@ -69,16 +70,15 @@ def guardar_lotes(
         DatosLoteInvalidosError: Si la base rechaza la operación.
     """
 
-    _verificar_centro(usuario)
+    centro = _obtener_centro(usuario)
     emergencia = session.scalar(
         select(Emergencia).where(Emergencia.id == emergencia_id).with_for_update()
     )
     if emergencia is None:
         raise EmergenciaNoEncontradaError("La emergencia no existe.")
-    if (
-        emergencia.centro_coordinador_id is not None
-        and emergencia.centro_coordinador_id != usuario.organizacion_id
-    ):
+    if emergencia.centro_coordinador_id is None:
+        emergencia.centro_coordinador_id = centro.id
+    elif emergencia.centro_coordinador_id != centro.id:
         raise CentroNoAutorizadoError(
             "Solo el centro coordinador asignado gestiona estos lotes."
         )
@@ -102,16 +102,18 @@ def guardar_lotes(
     return resultado
 
 
-def _verificar_centro(usuario: Usuario) -> None:
-    """Exige un centro coordinador activo para gestionar lotes."""
+def _obtener_centro(usuario: Usuario) -> Organizacion:
+    """Devuelve el centro activo del coordinador o rechaza la operación."""
 
-    if (
-        organizacion_vigente_de_tipo(usuario, TipoOrganizacion.CENTRO_COORDINADOR)
-        is None
-    ):
+    centro = organizacion_vigente_de_tipo(
+        usuario,
+        TipoOrganizacion.CENTRO_COORDINADOR,
+    )
+    if centro is None:
         raise CentroNoAutorizadoError(
             "Solo un centro coordinador activo gestiona lotes."
         )
+    return centro
 
 
 def _lotes_bloqueados(session: Session, ids: list[int]) -> dict[int, Lote]:

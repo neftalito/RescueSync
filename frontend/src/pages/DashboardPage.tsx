@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactElement } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
@@ -75,6 +75,20 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 {roleLabels[session.usuario.rol]}
               </p>
             </div>
+            {session.usuario.rol === "ADMINISTRADOR" && (
+              <Link
+                to="/usuarios"
+                className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800"
+              >
+                Usuarios
+              </Link>
+            )}
+            <Link
+              to="/cambiar-password"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cambiar contraseña
+            </Link>
             <button
               type="button"
               disabled={mutation.isPending}
@@ -140,14 +154,30 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
             Acciones disponibles para tu rol
           </h2>
 
-          {esMunicipio ? (
+          {session.usuario.rol === "ADMINISTRADOR" ? (
+            <article className="mt-5 rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-slate-950">
+                Gestionar usuarios
+              </h3>
+              <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                Creá cuentas, actualizá roles y organizaciones, restablecé
+                contraseñas y administrá accesos.
+              </p>
+              <Link
+                to="/usuarios"
+                className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+              >
+                Abrir administración
+              </Link>
+            </article>
+          ) : esMunicipio ? (
             <div className="mt-5 space-y-8">
               <EmergenciaForm csrfToken={session.csrf_token} />
-              <BandejaEmergencias rol={session.usuario.rol} />
+              <BandejaEmergencias rol="OPERADOR_MUNICIPAL" />
             </div>
           ) : esCoordinador ? (
             <div className="mt-5">
-              <BandejaEmergencias rol={session.usuario.rol} />
+              <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
             </div>
           ) : visibleStages.length === 0 ? (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

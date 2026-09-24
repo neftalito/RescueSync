@@ -232,10 +232,10 @@ def test_crea_uno_o_mas_lotes_en_borrador_sin_publicar(
     assert _contar_lotes(db_session) == iniciales + 2
 
     db_session.expire_all()
-    assert db_session.get(Emergencia, emergencia.id) is not None
-    assert db_session.get(Emergencia, emergencia.id).estado is (
-        EstadoEmergencia.REGISTRADA
-    )
+    emergencia_guardada = db_session.get(Emergencia, emergencia.id)
+    assert emergencia_guardada is not None
+    assert emergencia_guardada.estado is EstadoEmergencia.REGISTRADA
+    assert emergencia_guardada.centro_coordinador_id == coordinador.organizacion_id
     assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
@@ -613,6 +613,72 @@ def test_deniega_centro_distinto_del_asignado(
 
     assert response.status_code == 403
     assert _contar_lotes(db_session) == iniciales
+
+
+def test_primer_centro_reclama_emergencia_y_otro_no_edita_sus_lotes(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    otro_centro = Organizacion(
+        tipo=TipoOrganizacion.CENTRO_COORDINADOR,
+        nombre="Centro competidor",
+    )
+    db_session.add(otro_centro)
+    db_session.flush()
+    otro_coordinador = Usuario(
+        organizacion_id=otro_centro.id,
+        email="otro-coordinador@centro.org",
+        password_hash=generar_password_hash(PASSWORD),
+        rol=RolUsuario.COORDINADOR_REGIONAL,
+    )
+    db_session.add(otro_coordinador)
+    db_session.flush()
+
+    csrf = _autenticar(client, coordinador)
+    alta = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/lotes",
+        json={
+            "lotes": [
+                {
+                    "tipo_necesidad": "Agua",
+                    "cantidad_requerida": 10,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert alta.status_code == 201
+    lote_id = alta.json()[0]["id"]
+    db_session.expire_all()
+    emergencia_asignada = db_session.get(Emergencia, emergencia.id)
+    assert emergencia_asignada is not None
+    assert emergencia_asignada.centro_coordinador_id == coordinador.organizacion_id
+
+    csrf_otro = _autenticar(client, otro_coordinador)
+    edicion = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/lotes",
+        json={
+            "lotes": [
+                {
+                    "id": lote_id,
+                    "tipo_necesidad": "Agua",
+                    "cantidad_requerida": 999,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf_otro},
+    )
+
+    assert edicion.status_code == 403
+    db_session.expire_all()
+    lote = db_session.get(Lote, lote_id)
+    assert lote is not None
+    assert lote.cantidad_requerida == Decimal(10)
 
 
 def test_permite_centro_asignado(

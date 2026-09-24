@@ -24,6 +24,7 @@ const sesionMunicipio: Session = {
       nombre: "Municipalidad de Puerto Esperanza",
       tipo: "MUNICIPIO",
     },
+    requiere_cambio_password: false,
   },
   csrf_token: CSRF_TOKEN,
 };

@@ -36,7 +36,10 @@ export function LoginPage(): ReactElement {
       // pertenecían a quien haya usado la sesión anterior.
       queryClient.clear();
       queryClient.setQueryData(sessionQueryKey, session);
-      navigate("/", { replace: true });
+      navigate(
+        session.usuario.requiere_cambio_password ? "/cambiar-password" : "/",
+        { replace: true },
+      );
     },
   });
 

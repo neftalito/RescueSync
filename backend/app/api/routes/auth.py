@@ -3,13 +3,28 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import UsuarioConsultaSesion, validar_csrf
+from app.api.dependencies import (
+    UsuarioCambioPassword,
+    UsuarioConsultaSesion,
+    validar_csrf,
+)
 from app.core.config import get_settings
 from app.core.security import crear_token_csrf, crear_valor_sesion
 from app.db.models import Usuario
 from app.db.session import get_db
-from app.schemas import ErrorResponse, LoginRequest, SesionResponse, UsuarioSesion
-from app.services.auth import autenticar_usuario
+from app.schemas import (
+    CambioPasswordRequest,
+    ErrorResponse,
+    LoginRequest,
+    SesionResponse,
+    UsuarioSesion,
+)
+from app.services.auth import (
+    PasswordActualIncorrectaError,
+    PasswordSinCambiosError,
+    autenticar_usuario,
+    cambiar_password_propia,
+)
 
 router = APIRouter()
 settings = get_settings()
@@ -22,7 +37,19 @@ RESPUESTA_NO_AUTORIZADA = {
 def _crear_respuesta_sesion(usuario: Usuario) -> SesionResponse:
     return SesionResponse(
         usuario=UsuarioSesion.model_validate(usuario),
-        csrf_token=crear_token_csrf(usuario.id),
+        csrf_token=crear_token_csrf(usuario.id, usuario.version_sesion),
+    )
+
+
+def _establecer_cookie_sesion(response: Response, usuario: Usuario) -> None:
+    response.set_cookie(
+        key=settings.session_cookie_name,
+        value=crear_valor_sesion(usuario.id, usuario.version_sesion),
+        max_age=settings.session_max_age_seconds,
+        httponly=True,
+        secure=settings.cookies_seguras,
+        samesite=settings.session_cookie_samesite,
+        path=settings.api_v1_prefix,
     )
 
 
@@ -56,15 +83,7 @@ def iniciar_sesion(
             detail="El correo o la contraseña son incorrectos.",
         )
 
-    response.set_cookie(
-        key=settings.session_cookie_name,
-        value=crear_valor_sesion(usuario.id),
-        max_age=settings.session_max_age_seconds,
-        httponly=True,
-        secure=settings.cookies_seguras,
-        samesite=settings.session_cookie_samesite,
-        path=settings.api_v1_prefix,
-    )
+    _establecer_cookie_sesion(response, usuario)
     _evitar_cache(response)
     return _crear_respuesta_sesion(usuario)
 
@@ -83,6 +102,53 @@ def consultar_sesion(
     usuario: UsuarioConsultaSesion,
     response: Response,
 ) -> SesionResponse:
+    _evitar_cache(response)
+    return _crear_respuesta_sesion(usuario)
+
+
+@router.post(
+    "/password",
+    response_model=SesionResponse,
+    responses={
+        **RESPUESTA_NO_AUTORIZADA,
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    },
+    summary="Cambiar la contraseña propia",
+    description=(
+        "Valida la contraseña vigente, reemplaza el hash Argon2 e invalida "
+        "cualquier otra sesión del usuario."
+    ),
+)
+def cambiar_password(
+    datos: CambioPasswordRequest,
+    response: Response,
+    usuario: UsuarioCambioPassword,
+    session: Annotated[Session, Depends(get_db)],
+    _: Annotated[None, Depends(validar_csrf)],
+) -> SesionResponse:
+    try:
+        usuario = cambiar_password_propia(
+            session,
+            usuario,
+            datos.password_actual.get_secret_value(),
+            datos.password_nueva.get_secret_value(),
+        )
+        session.commit()
+    except PasswordActualIncorrectaError as error:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña actual es incorrecta.",
+        ) from error
+    except PasswordSinCambiosError as error:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La contraseña nueva debe ser diferente de la actual.",
+        ) from error
+
+    _establecer_cookie_sesion(response, usuario)
     _evitar_cache(response)
     return _crear_respuesta_sesion(usuario)
 

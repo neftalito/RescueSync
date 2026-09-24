@@ -9,11 +9,16 @@ import {
 } from "../schemas/emergencia";
 import type { Role } from "../schemas/auth";
 
+type RolConBandeja = Extract<
+  Role,
+  "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL"
+>;
+
 interface BandejaEmergenciasProps {
-  rol: Role;
+  rol: RolConBandeja;
 }
 
-const copyPorRol: Record<Role, { titulo: string; vacio: string }> = {
+const copyPorRol: Record<RolConBandeja, { titulo: string; vacio: string }> = {
   OPERADOR_MUNICIPAL: {
     titulo: "Mis emergencias",
     vacio: "Todavía no registraste emergencias.",
@@ -21,14 +26,6 @@ const copyPorRol: Record<Role, { titulo: string; vacio: string }> = {
   COORDINADOR_REGIONAL: {
     titulo: "Emergencias pendientes",
     vacio: "No hay emergencias registradas pendientes.",
-  },
-  REPRESENTANTE_ONG: {
-    titulo: "Emergencias",
-    vacio: "No hay emergencias para mostrar.",
-  },
-  AUDITOR_DIRECTIVO: {
-    titulo: "Emergencias",
-    vacio: "No hay emergencias para mostrar.",
   },
 };
 

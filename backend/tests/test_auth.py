@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from httpx import Response
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import requerir_operacion
@@ -16,8 +17,9 @@ from app.core.security import (
     generar_password_hash,
 )
 from app.db.models import Organizacion, RolUsuario, TipoOrganizacion, Usuario
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.main import app
+from app.services.auth import PasswordActualIncorrectaError, cambiar_password_propia
 
 PASSWORD = "Una-clave-segura-2026"
 
@@ -98,6 +100,15 @@ def usuarios_por_rol(db_session: Session) -> dict[RolUsuario, Usuario]:
     db_session.add(auditor)
     db_session.flush()
     usuarios[RolUsuario.AUDITOR_DIRECTIVO] = auditor
+    administrador = Usuario(
+        organizacion_id=None,
+        email="admin-rbac@rescuesync.org",
+        password_hash=password_hash,
+        rol=RolUsuario.ADMINISTRADOR,
+    )
+    db_session.add(administrador)
+    db_session.flush()
+    usuarios[RolUsuario.ADMINISTRADOR] = administrador
     return usuarios
 
 
@@ -135,6 +146,7 @@ def test_login_crea_cookie_segura_y_devuelve_contexto_vigente(
         "id": usuario_municipal.id,
         "email": "operador@municipio.org",
         "rol": "OPERADOR_MUNICIPAL",
+        "requiere_cambio_password": False,
         "organizacion": {
             "id": usuario_municipal.organizacion_id,
             "nombre": "Municipio de Prueba",
@@ -223,6 +235,99 @@ def test_sesion_relee_rol_y_organizacion_desde_la_base(
     assert response.status_code == 200
     assert response.json()["usuario"]["rol"] == "AUDITOR_DIRECTIVO"
     assert response.json()["usuario"]["organizacion"] is None
+
+
+def test_cambio_password_renueva_sesion_e_invalida_la_anterior(
+    client: TestClient,
+    db_session: Session,
+    usuario_municipal: Usuario,
+) -> None:
+    login = _iniciar_sesion(client)
+    csrf = login.json()["csrf_token"]
+    cookie_anterior = client.cookies.get("rescuesync_session")
+
+    response = client.post(
+        "/api/v1/auth/password",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "password_actual": PASSWORD,
+            "password_nueva": "Otra-clave-segura-2026",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["usuario"]["requiere_cambio_password"] is False
+    assert usuario_municipal.version_sesion == 2
+    assert client.get("/api/v1/auth/me").status_code == 200
+
+    client.cookies.set(
+        "rescuesync_session",
+        cookie_anterior,
+        path="/api/v1",
+    )
+    assert client.get("/api/v1/auth/me").status_code == 401
+    db_session.expire_all()
+
+
+def test_cambio_password_rechaza_la_clave_actual_incorrecta(
+    client: TestClient,
+    usuario_municipal: Usuario,
+) -> None:
+    login = _iniciar_sesion(client)
+
+    response = client.post(
+        "/api/v1/auth/password",
+        headers={"X-CSRF-Token": login.json()["csrf_token"]},
+        json={
+            "password_actual": "clave-incorrecta",
+            "password_nueva": "Otra-clave-segura-2026",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "La contraseña actual es incorrecta."}
+
+
+def test_cambio_password_relee_un_restablecimiento_administrativo_con_bloqueo() -> None:
+    email = "carrera-password@rescuesync.org"
+    password_restablecida = "Clave-restablecida-2026"
+    with SessionLocal.begin() as preparacion:
+        preparacion.execute(delete(Usuario).where(Usuario.email == email))
+        usuario = Usuario(
+            email=email,
+            password_hash=generar_password_hash(PASSWORD),
+            rol=RolUsuario.AUDITOR_DIRECTIVO,
+        )
+        preparacion.add(usuario)
+        preparacion.flush()
+        usuario_id = usuario.id
+
+    sesion_usuario = SessionLocal()
+    try:
+        usuario_desactualizado = sesion_usuario.get(Usuario, usuario_id)
+        assert usuario_desactualizado is not None
+
+        with SessionLocal.begin() as sesion_administrador:
+            usuario_restablecido = sesion_administrador.get(Usuario, usuario_id)
+            assert usuario_restablecido is not None
+            usuario_restablecido.password_hash = generar_password_hash(
+                password_restablecida
+            )
+            usuario_restablecido.version_sesion += 1
+
+        with pytest.raises(PasswordActualIncorrectaError):
+            cambiar_password_propia(
+                sesion_usuario,
+                usuario_desactualizado,
+                PASSWORD,
+                "Otra-clave-segura-2026",
+            )
+        assert usuario_desactualizado.version_sesion == 2
+    finally:
+        sesion_usuario.rollback()
+        sesion_usuario.close()
+        with SessionLocal.begin() as limpieza:
+            limpieza.execute(delete(Usuario).where(Usuario.email == email))
 
 
 def test_sesion_rechaza_cookie_ausente_o_manipulada(

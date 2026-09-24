@@ -33,15 +33,17 @@ const organizationsByRole: Record<
     tipo: "ONG",
   },
   AUDITOR_DIRECTIVO: null,
+  ADMINISTRADOR: null,
 };
 
-function sessionForRole(role: Role): Session {
+function sessionForRole(role: Role, requiresPasswordChange = false): Session {
   return {
     usuario: {
       id: 7,
       email: `${role.toLowerCase()}@rescuesync.org`,
       rol: role,
       organizacion: organizationsByRole[role],
+      requiere_cambio_password: requiresPasswordChange,
     },
     csrf_token: "csrf-firmado",
   };
@@ -190,6 +192,165 @@ describe("autenticación", () => {
     expect(requestCredentials).toBe("include");
   });
 
+  it("obliga a reemplazar una contraseña temporal y renueva la sesión", async () => {
+    const temporarySession = sessionForRole("ADMINISTRADOR", true);
+    const updatedSession = sessionForRole("ADMINISTRADOR");
+    let csrfHeader: string | null = null;
+    server.use(
+      http.post(`${API_URL}/auth/login`, () =>
+        HttpResponse.json(temporarySession),
+      ),
+      http.post(`${API_URL}/auth/password`, async ({ request }) => {
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        expect(await request.json()).toEqual({
+          password_actual: "administrador123",
+          password_nueva: "Una-clave-nueva-2026",
+        });
+        return HttpResponse.json(updatedSession);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/login");
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Correo electrónico" }),
+      "admin@rescuesync.org",
+    );
+    await user.type(screen.getByLabelText("Contraseña"), "administrador123");
+    await user.click(
+      screen.getByRole("button", { name: "Ingresar a RescueSync" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Creá una contraseña nueva",
+      }),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Contraseña actual"),
+      "administrador123",
+    );
+    await user.type(
+      screen.getByLabelText("Contraseña nueva"),
+      "Una-clave-nueva-2026",
+    );
+    await user.type(
+      screen.getByLabelText("Repetir contraseña nueva"),
+      "Una-clave-nueva-2026",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Guardar contraseña" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+    ).toBeInTheDocument();
+    expect(csrfHeader).toBe("csrf-firmado");
+  });
+
+  it("permite al administrador crear una cuenta temporal", async () => {
+    const adminSession = sessionForRole("ADMINISTRADOR");
+    let createdPayload: unknown;
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(adminSession)),
+      http.get(`${API_URL}/usuarios`, () => HttpResponse.json([])),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json([
+          { id: 3, nombre: "Municipio del Delta", tipo: "MUNICIPIO" },
+        ]),
+      ),
+      http.post(`${API_URL}/usuarios`, async ({ request }) => {
+        createdPayload = await request.json();
+        return HttpResponse.json(
+          {
+            id: 20,
+            email: "nuevo@rescuesync.org",
+            rol: "OPERADOR_MUNICIPAL",
+            organizacion: {
+              id: 3,
+              nombre: "Municipio del Delta",
+              tipo: "MUNICIPIO",
+            },
+            activo: true,
+            requiere_cambio_password: true,
+            creado_en: "2026-09-17T20:00:00Z",
+            actualizado_en: "2026-09-17T20:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/usuarios");
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Administración de usuarios",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Crear usuario" }),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Correo electrónico"),
+      "nuevo@rescuesync.org",
+    );
+    await user.type(
+      screen.getByLabelText("Contraseña temporal"),
+      "Temporal-2026",
+    );
+    await user.selectOptions(screen.getByLabelText("Rol"), "OPERADOR_MUNICIPAL");
+    await user.selectOptions(screen.getByLabelText("Organización"), "3");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    expect(await screen.findByText(
+      "Usuario creado con contraseña temporal.",
+    )).toBeInTheDocument();
+    expect(createdPayload).toEqual({
+      email: "nuevo@rescuesync.org",
+      password: "Temporal-2026",
+      rol: "OPERADOR_MUNICIPAL",
+      organizacion_id: 3,
+    });
+  });
+
+  it("reactiva un usuario sin sobrescribir sus datos con valores de la caché", async () => {
+    const adminSession = sessionForRole("ADMINISTRADOR");
+    const inactiveUser = {
+      id: 20,
+      email: "operador@rescuesync.org",
+      rol: "OPERADOR_MUNICIPAL",
+      organizacion: {
+        id: 3,
+        nombre: "Municipio del Delta",
+        tipo: "MUNICIPIO",
+      },
+      activo: false,
+      requiere_cambio_password: false,
+      creado_en: "2026-09-17T20:00:00Z",
+      actualizado_en: "2026-09-17T20:00:00Z",
+    };
+    let updatePayload: unknown;
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(adminSession)),
+      http.get(`${API_URL}/usuarios`, () => HttpResponse.json([inactiveUser])),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json([inactiveUser.organizacion]),
+      ),
+      http.patch(`${API_URL}/usuarios/20`, async ({ request }) => {
+        updatePayload = await request.json();
+        return HttpResponse.json({ ...inactiveUser, activo: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/usuarios");
+
+    await user.click(await screen.findByRole("button", { name: "Reactivar" }));
+
+    expect(await screen.findByText("Usuario reactivado.")).toBeInTheDocument();
+    expect(updatePayload).toEqual({ activo: true });
+  });
+
   it("no reutiliza el caché de emergencias del usuario anterior tras cerrar e iniciar sesión con otro", async () => {
     const emergenciaDelMunicipio = {
       id: 31,
@@ -209,7 +370,10 @@ describe("autenticación", () => {
     let usuarioActivo: "municipio" | "coordinador" = "municipio";
     server.use(
       http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)),
-      http.post(`${API_URL}/auth/logout`, () => new HttpResponse(null, { status: 204 })),
+      http.post(
+        `${API_URL}/auth/logout`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
       http.post(`${API_URL}/auth/login`, () => {
         usuarioActivo = "coordinador";
         return HttpResponse.json(coordinadorSession);
@@ -333,6 +497,11 @@ describe("navegación por rol", () => {
     {
       role: "AUDITOR_DIRECTIVO",
       visible: null,
+      hidden: ["Registrar emergencia", "Emergencias pendientes", "Presentar oferta"],
+    },
+    {
+      role: "ADMINISTRADOR",
+      visible: "Gestionar usuarios",
       hidden: ["Registrar emergencia", "Emergencias pendientes", "Presentar oferta"],
     },
   ])("muestra únicamente las acciones habilitadas para $role", async (testCase) => {

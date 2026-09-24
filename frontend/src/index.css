@@ -17,11 +17,18 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
 button,
 a {
   -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  .form-input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100 disabled:bg-slate-100;
+  }
 }

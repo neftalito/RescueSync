@@ -318,6 +318,42 @@ def test_rol_de_usuario_debe_corresponder_a_su_organizacion(
     _assert_restriccion(error, "ck_usuario_rol_organizacion")
 
 
+def test_administrador_no_admite_organizacion(db_session: Session) -> None:
+    municipio = _crear_organizacion(
+        db_session,
+        TipoOrganizacion.MUNICIPIO,
+        "Municipio administrador inválido",
+    )
+    usuario = Usuario(
+        organizacion_id=municipio.id,
+        email="admin-organizacion@rescuesync.org",
+        password_hash=ARGON2_HASH,
+        rol=RolUsuario.ADMINISTRADOR,
+    )
+    db_session.add(usuario)
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_usuario_rol_organizacion")
+
+
+def test_version_de_sesion_debe_ser_positiva(db_session: Session) -> None:
+    usuario = Usuario(
+        organizacion_id=None,
+        email="version-invalida@rescuesync.org",
+        password_hash=ARGON2_HASH,
+        rol=RolUsuario.AUDITOR_DIRECTIVO,
+        version_sesion=0,
+    )
+    db_session.add(usuario)
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_usuario_version_sesion_positiva")
+
+
 def test_emergencia_requiere_una_organizacion_municipal(
     db_session: Session,
 ) -> None:
