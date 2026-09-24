@@ -2,6 +2,12 @@ import time
 from collections.abc import Iterator
 
 import pytest
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
+from httpx import Response
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
+
 from app.api.dependencies import requerir_operacion
 from app.core.config import get_settings
 from app.core.permissions import OperacionProtegida
@@ -14,11 +20,6 @@ from app.db.models import Organizacion, RolUsuario, TipoOrganizacion, Usuario
 from app.db.session import SessionLocal, get_db
 from app.main import app
 from app.services.auth import PasswordActualIncorrectaError, cambiar_password_propia
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
-from httpx import Response
-from sqlalchemy import delete
-from sqlalchemy.orm import Session
 
 PASSWORD = "Una-clave-segura-2026"
 

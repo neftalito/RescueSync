@@ -2,6 +2,11 @@ from collections.abc import Iterator
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.api.dependencies import obtener_cliente_bonita
 from app.core.security import (
     crear_token_csrf,
@@ -28,10 +33,6 @@ from app.integrations.bonita.contratos import (
 from app.main import app
 from app.schemas.emergencia import EmergenciaCreate
 from app.services import emergencias as servicio_emergencias
-from fastapi.testclient import TestClient
-from sqlalchemy import func, or_, select, update
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 PASSWORD = "Una-clave-segura-2026"
 PAYLOAD_VALIDO = {

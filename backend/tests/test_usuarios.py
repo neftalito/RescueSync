@@ -1,6 +1,9 @@
 from collections.abc import Iterator
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
 from app.core.security import (
     crear_token_csrf,
     crear_valor_sesion,
@@ -10,8 +13,6 @@ from app.core.security import (
 from app.db.models import Organizacion, RolUsuario, TipoOrganizacion, Usuario
 from app.db.session import get_db
 from app.main import app
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 PASSWORD = "Clave-segura-2026"
 

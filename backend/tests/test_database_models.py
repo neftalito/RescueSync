@@ -2,6 +2,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from psycopg import Error as PsycopgError
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.db.base import Base
 from app.db.models import (
     Convocatoria,
@@ -25,9 +29,6 @@ from app.db.models import (
     TipoParticipacion,
     Usuario,
 )
-from psycopg import Error as PsycopgError
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 ARGON2_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA"
 

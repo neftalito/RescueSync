@@ -4,6 +4,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from sqlalchemy.orm import Session
+
 from app.core.config import get_settings
 from app.db.models import (
     Convocatoria,
@@ -26,9 +30,6 @@ from app.db.models import (
 from app.db.session import get_db
 from app.integrations.bonita.contratos import CABECERA_CASO_RAIZ
 from app.main import app
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
-from sqlalchemy.orm import Session
 
 TOKEN = "token-de-callbacks-de-prueba-con-32-caracteres"
 CASE_ID = 4242

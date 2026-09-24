@@ -5,6 +5,9 @@ from decimal import Decimal
 from typing import get_args
 
 import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
+
 from app.api.routes import ofertas as ofertas_route
 from app.db.models import (
     Convocatoria,
@@ -22,8 +25,6 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import app
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
 
 ARGON2_HASH = "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA"
 

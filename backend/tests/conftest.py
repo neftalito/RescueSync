@@ -1,8 +1,9 @@
 from collections.abc import Iterator
 
 import pytest
-from app.db.session import engine
 from sqlalchemy.orm import Session
+
+from app.db.session import engine
 
 
 @pytest.fixture
