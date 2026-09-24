@@ -60,6 +60,12 @@ Compose espera a PostgreSQL, aplica las migraciones y luego inicia FastAPI y
 Vite. En paralelo, `bonita-deploy` instala y habilita el proceso versionado. El
 estado `Exited (0)` de ese contenedor al finalizar es esperado.
 
+FastAPI garantiza además que exista un administrador activo. En una instalación
+nueva se puede ingresar con `admin@rescuesync.org` / `administrador123` y el
+sistema obliga a cambiar esa contraseña antes de habilitar cualquier gestión.
+Para producción, definir `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` antes del
+primer arranque; consultar la [guía de autenticación](docs/autenticacion-local.md).
+
 Para detener el entorno sin borrar datos:
 
 ```bash
@@ -70,8 +76,8 @@ docker compose down
 además de las dependencias de Node almacenadas en volúmenes.
 
 La guía de [autenticación local](docs/autenticacion-local.md) contiene las
-cuentas del seed, creación interactiva de usuarios, endpoints de sesión y matriz
-RBAC.
+cuentas del seed, bootstrap del administrador, gestión de usuarios, cambio de
+contraseñas, endpoints de sesión y matriz RBAC.
 
 ## Cliente reutilizable de Bonita
 

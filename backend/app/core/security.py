@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from hashlib import sha256
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -22,6 +23,14 @@ _csrf_serializer = URLSafeTimedSerializer(
 )
 
 
+@dataclass(frozen=True)
+class CredencialSesion:
+    """Identifica una sesión y la versión de credenciales que la emitió."""
+
+    usuario_id: int
+    version_sesion: int
+
+
 def generar_password_hash(password: str) -> str:
     """Genera un hash Argon2 apto para persistir una contraseña local."""
 
@@ -38,14 +47,16 @@ def verificar_password(password: str, password_hash: str | None) -> bool:
         return False
 
 
-def crear_valor_sesion(usuario_id: int) -> str:
-    """Firma el único identificador almacenado en la cookie de sesión."""
+def crear_valor_sesion(usuario_id: int, version_sesion: int = 1) -> str:
+    """Firma el identificador y la versión vigentes de una sesión."""
 
-    return _session_serializer.dumps(str(usuario_id))
+    return _session_serializer.dumps(
+        {"usuario_id": usuario_id, "version": version_sesion}
+    )
 
 
-def leer_usuario_id_sesion(valor_sesion: str | None) -> int | None:
-    """Valida una cookie firmada y devuelve el usuario mientras siga vigente."""
+def leer_credencial_sesion(valor_sesion: str | None) -> CredencialSesion | None:
+    """Valida una cookie firmada y devuelve su identidad y versión."""
 
     if valor_sesion is None:
         return None
@@ -58,21 +69,35 @@ def leer_usuario_id_sesion(valor_sesion: str | None) -> int | None:
     except (BadSignature, SignatureExpired):
         return None
 
-    if not isinstance(valor, str) or not valor.isdecimal():
+    if not isinstance(valor, dict):
         return None
 
-    usuario_id = int(valor)
-    return usuario_id if usuario_id > 0 else None
+    usuario_id = valor.get("usuario_id")
+    version_sesion = valor.get("version")
+    if (
+        not isinstance(usuario_id, int)
+        or isinstance(usuario_id, bool)
+        or usuario_id <= 0
+        or not isinstance(version_sesion, int)
+        or isinstance(version_sesion, bool)
+        or version_sesion <= 0
+    ):
+        return None
+    return CredencialSesion(usuario_id=usuario_id, version_sesion=version_sesion)
 
 
-def crear_token_csrf(usuario_id: int) -> str:
-    """Emite un token CSRF firmado y ligado al usuario autenticado."""
+def crear_token_csrf(usuario_id: int, version_sesion: int = 1) -> str:
+    """Emite un token CSRF ligado al usuario y a su versión de sesión."""
 
-    return _csrf_serializer.dumps(str(usuario_id))
+    return _csrf_serializer.dumps({"usuario_id": usuario_id, "version": version_sesion})
 
 
-def verificar_token_csrf(token: str | None, usuario_id: int) -> bool:
-    """Comprueba la firma, vigencia y pertenencia de un token CSRF."""
+def verificar_token_csrf(
+    token: str | None,
+    usuario_id: int,
+    version_sesion: int,
+) -> bool:
+    """Comprueba firma, vigencia, pertenencia y versión de un token CSRF."""
 
     if token is None:
         return False
@@ -85,4 +110,4 @@ def verificar_token_csrf(token: str | None, usuario_id: int) -> bool:
     except (BadSignature, SignatureExpired):
         return False
 
-    return isinstance(valor, str) and valor == str(usuario_id)
+    return valor == {"usuario_id": usuario_id, "version": version_sesion}

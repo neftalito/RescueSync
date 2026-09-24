@@ -6,8 +6,8 @@ referencia.
 
 ## Desarrollo
 
-- [Autenticación local](./autenticacion-local.md): usuarios, seed, sesiones,
-  CSRF y matriz RBAC de la Entrega 2.
+- [Autenticación local](./autenticacion-local.md): administrador inicial,
+  gestión de usuarios, contraseñas, seed, sesiones, CSRF y matriz RBAC.
 - [Migraciones](./desarrollo/migraciones.md): modelos SQLAlchemy y flujo de
   trabajo con Alembic.
 - [Calidad y pruebas](./desarrollo/calidad-y-pruebas.md): comandos, hooks,
@@ -36,8 +36,8 @@ fuente de verdad.
 
 ## Modelo y planificación
 
-- [Modelo de base de datos](./modelo-base-datos-rescuesync.md), con su
-  [diagrama](./modelo-base-datos-rescuesync.png).
+- [Modelo de base de datos](./modelo-base-datos-rescuesync.md), con el diagrama
+  Mermaid vigente dentro del documento.
 - [División de tareas de la Entrega 2](./DIVISION_TAREAS_ENTREGA_2.md).
 - [Gantt de la Entrega 2](./generated/gantt-entrega-2.pdf).
 

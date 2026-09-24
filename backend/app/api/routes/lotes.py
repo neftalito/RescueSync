@@ -29,7 +29,7 @@ def exigir_coordinador_con_csrf(
 ) -> Usuario:
     """Reautentica al coordinador y exige su token CSRF antes de cambiar estado."""
 
-    if not verificar_token_csrf(token_csrf, usuario.id):
+    if not verificar_token_csrf(token_csrf, usuario.id, usuario.version_sesion):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="El token CSRF no es válido.",

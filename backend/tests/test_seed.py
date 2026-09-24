@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import (
     Convocatoria,
     Emergencia,
@@ -17,6 +18,7 @@ EMAILS = (
     "coordinador@rescuesync.org",
     "ong@rescuesync.org",
     "auditor@rescuesync.org",
+    "admin@rescuesync.org",
 )
 ORGANIZACIONES = (
     "Municipalidad de Puerto Esperanza",
@@ -43,7 +45,7 @@ def test_seed_es_idempotente_y_crea_un_usuario_vigente_por_rol(
     segundo_resultado = seed_development_data(db_session)
 
     assert primer_resultado == segundo_resultado
-    assert _contar(db_session, Usuario, Usuario.email.in_(EMAILS)) == 4
+    assert _contar(db_session, Usuario, Usuario.email.in_(EMAILS)) == 5
     assert (
         _contar(db_session, Organizacion, Organizacion.nombre.in_(ORGANIZACIONES)) == 4
     )
@@ -51,10 +53,15 @@ def test_seed_es_idempotente_y_crea_un_usuario_vigente_por_rol(
 
     roles = set()
     for cuenta in primer_resultado.cuentas:
+        password = (
+            get_settings().admin_initial_password.get_secret_value()
+            if cuenta.rol.value == "ADMINISTRADOR"
+            else f"{cuenta.email.partition('@')[0]}123"
+        )
         usuario = autenticar_usuario(
             db_session,
             cuenta.email,
-            f"{cuenta.email.partition('@')[0]}123",
+            password,
         )
         assert usuario is not None
         roles.add(usuario.rol)

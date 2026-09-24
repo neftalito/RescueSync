@@ -6,7 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.db.session import SessionLocal
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
+from app.services.bootstrap import asegurar_admin_inicial
 
 settings = get_settings()
 
@@ -14,6 +16,10 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Comparte un único cliente de Bonita y cierra su pool al apagar la API."""
+
+    if settings.app_env.casefold() in {"development", "production"}:
+        with SessionLocal.begin() as session:
+            asegurar_admin_inicial(session, settings)
 
     with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
         app.state.cliente_bonita = cliente

@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactElement } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
+import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { EmergenciaForm } from "../components/EmergenciaForm";
-import { sessionQueryKey } from "../hooks/useSession";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
 interface DashboardPageProps {
@@ -21,12 +21,6 @@ interface Stage {
 
 const stages: Stage[] = [
   {
-    role: "COORDINADOR_REGIONAL",
-    actor: "Centro coordinador",
-    title: "Generar y publicar lotes",
-    description: "Necesidades cuantificadas antes de abrir la convocatoria.",
-  },
-  {
     role: "REPRESENTANTE_ONG",
     actor: "ONG",
     title: "Presentar oferta",
@@ -40,7 +34,11 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => logout(session.csrf_token),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: sessionQueryKey });
+      // Limpia todo el caché (no solo la sesión): sin esto, una bandeja
+      // consultada por este usuario podría seguir en caché y mostrarse
+      // brevemente a la siguiente persona que inicie sesión en la misma
+      // pestaña, antes de que ese query vuelva a pedirse.
+      queryClient.clear();
       navigate("/login", { replace: true });
     },
   });
@@ -54,6 +52,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
     (stage) => stage.role === session.usuario.rol,
   );
   const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
+  const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -76,6 +75,20 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 {roleLabels[session.usuario.rol]}
               </p>
             </div>
+            {session.usuario.rol === "ADMINISTRADOR" && (
+              <Link
+                to="/usuarios"
+                className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800"
+              >
+                Usuarios
+              </Link>
+            )}
+            <Link
+              to="/cambiar-password"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cambiar contraseña
+            </Link>
             <button
               type="button"
               disabled={mutation.isPending}
@@ -141,9 +154,30 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
             Acciones disponibles para tu rol
           </h2>
 
-          {esMunicipio ? (
-            <div className="mt-5">
+          {session.usuario.rol === "ADMINISTRADOR" ? (
+            <article className="mt-5 rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-slate-950">
+                Gestionar usuarios
+              </h3>
+              <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                Creá cuentas, actualizá roles y organizaciones, restablecé
+                contraseñas y administrá accesos.
+              </p>
+              <Link
+                to="/usuarios"
+                className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+              >
+                Abrir administración
+              </Link>
+            </article>
+          ) : esMunicipio ? (
+            <div className="mt-5 space-y-8">
               <EmergenciaForm csrfToken={session.csrf_token} />
+              <BandejaEmergencias rol="OPERADOR_MUNICIPAL" />
+            </div>
+          ) : esCoordinador ? (
+            <div className="mt-5">
+              <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
             </div>
           ) : visibleStages.length === 0 ? (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

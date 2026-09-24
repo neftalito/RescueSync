@@ -10,7 +10,10 @@ class OperacionProtegida(StrEnum):
 
     CONSULTAR_SESION = "CONSULTAR_SESION"
     CERRAR_SESION = "CERRAR_SESION"
+    CAMBIAR_PASSWORD = "CAMBIAR_PASSWORD"
+    GESTIONAR_USUARIOS = "GESTIONAR_USUARIOS"
     REGISTRAR_EMERGENCIA = "REGISTRAR_EMERGENCIA"
+    CONSULTAR_EMERGENCIAS = "CONSULTAR_EMERGENCIAS"
     GESTIONAR_LOTES = "GESTIONAR_LOTES"
     PRESENTAR_OFERTA = "PRESENTAR_OFERTA"
 
@@ -22,8 +25,15 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
         {
             OperacionProtegida.CONSULTAR_SESION: ROLES_AUTENTICADOS,
             OperacionProtegida.CERRAR_SESION: ROLES_AUTENTICADOS,
+            OperacionProtegida.CAMBIAR_PASSWORD: ROLES_AUTENTICADOS,
+            OperacionProtegida.GESTIONAR_USUARIOS: frozenset(
+                {RolUsuario.ADMINISTRADOR}
+            ),
             OperacionProtegida.REGISTRAR_EMERGENCIA: frozenset(
                 {RolUsuario.OPERADOR_MUNICIPAL}
+            ),
+            OperacionProtegida.CONSULTAR_EMERGENCIAS: frozenset(
+                {RolUsuario.OPERADOR_MUNICIPAL, RolUsuario.COORDINADOR_REGIONAL}
             ),
             OperacionProtegida.GESTIONAR_LOTES: frozenset(
                 {RolUsuario.COORDINADOR_REGIONAL}

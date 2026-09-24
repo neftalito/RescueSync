@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.permissions import OperacionProtegida, roles_habilitados_para
-from app.core.security import leer_usuario_id_sesion, verificar_token_csrf
+from app.core.security import leer_credencial_sesion, verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.integrations.bonita.cliente import ClienteBonita
@@ -25,9 +25,15 @@ def obtener_usuario_actual(
 ) -> Usuario:
     """Reautentica la sesión y carga permisos y organización desde PostgreSQL."""
 
-    usuario_id = leer_usuario_id_sesion(valor_sesion)
+    credencial = leer_credencial_sesion(valor_sesion)
     usuario = (
-        obtener_usuario_vigente(session, usuario_id) if usuario_id is not None else None
+        obtener_usuario_vigente(
+            session,
+            credencial.usuario_id,
+            credencial.version_sesion,
+        )
+        if credencial is not None
+        else None
     )
     if usuario is None:
         raise HTTPException(
@@ -40,12 +46,20 @@ def obtener_usuario_actual(
 UsuarioActual = Annotated[Usuario, Depends(obtener_usuario_actual)]
 
 
-def requerir_roles(*roles_permitidos: RolUsuario) -> Callable[[UsuarioActual], Usuario]:
+def requerir_roles(
+    *roles_permitidos: RolUsuario,
+    permitir_cambio_password_pendiente: bool = False,
+) -> Callable[[UsuarioActual], Usuario]:
     """Construye una dependencia que autoriza únicamente los roles indicados."""
 
     permitidos = frozenset(roles_permitidos)
 
     def autorizar(usuario: UsuarioActual) -> Usuario:
+        if usuario.requiere_cambio_password and not permitir_cambio_password_pendiente:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Debés cambiar tu contraseña antes de continuar.",
+            )
         if usuario.rol not in permitidos:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -61,7 +75,15 @@ def requerir_operacion(
 ) -> Callable[[UsuarioActual], Usuario]:
     """Autoriza una operación de acuerdo con la matriz RBAC local."""
 
-    return requerir_roles(*roles_habilitados_para(operacion))
+    return requerir_roles(
+        *roles_habilitados_para(operacion),
+        permitir_cambio_password_pendiente=operacion
+        in {
+            OperacionProtegida.CONSULTAR_SESION,
+            OperacionProtegida.CERRAR_SESION,
+            OperacionProtegida.CAMBIAR_PASSWORD,
+        },
+    )
 
 
 UsuarioConsultaSesion = Annotated[
@@ -72,15 +94,27 @@ UsuarioCierreSesion = Annotated[
     Usuario,
     Depends(requerir_operacion(OperacionProtegida.CERRAR_SESION)),
 ]
+UsuarioCambioPassword = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CAMBIAR_PASSWORD)),
+]
+UsuarioAdministrador = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.GESTIONAR_USUARIOS)),
+]
 
 
 def validar_csrf(
-    usuario: UsuarioCierreSesion,
+    usuario: UsuarioActual,
     token_csrf: Annotated[str | None, Header(alias="X-CSRF-Token")] = None,
 ) -> None:
     """Exige un token CSRF vigente en operaciones autenticadas que cambian estado."""
 
-    if not verificar_token_csrf(token_csrf, usuario.id):
+    if not verificar_token_csrf(
+        token_csrf,
+        usuario.id,
+        usuario.version_sesion,
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="El token CSRF no es válido.",

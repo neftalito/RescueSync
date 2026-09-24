@@ -1,5 +1,6 @@
 import {
   emergenciaSchema,
+  emergenciasSchema,
   type Emergencia,
   type EmergenciaFormData,
 } from "../schemas/emergencia";
@@ -14,4 +15,8 @@ export function registrarEmergencia(
     headers: { "X-CSRF-Token": csrfToken },
     body: JSON.stringify(datos),
   });
+}
+
+export function listarEmergencias(): Promise<Emergencia[]> {
+  return apiRequest("/emergencias", emergenciasSchema);
 }

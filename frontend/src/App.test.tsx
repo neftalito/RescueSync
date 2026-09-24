@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router";
 
 import App from "./App";
+import { sessionQueryKey } from "./hooks/useSession";
 import type { Role, Session } from "./schemas/auth";
 
 const API_URL = "http://localhost:8000/api/v1";
@@ -32,22 +33,26 @@ const organizationsByRole: Record<
     tipo: "ONG",
   },
   AUDITOR_DIRECTIVO: null,
+  ADMINISTRADOR: null,
 };
 
-function sessionForRole(role: Role): Session {
+function sessionForRole(role: Role, requiresPasswordChange = false): Session {
   return {
     usuario: {
       id: 7,
       email: `${role.toLowerCase()}@rescuesync.org`,
       rol: role,
       organizacion: organizationsByRole[role],
+      requiere_cambio_password: requiresPasswordChange,
     },
     csrf_token: "csrf-firmado",
   };
 }
 
 const session = sessionForRole("OPERADOR_MUNICIPAL");
-const server = setupServer();
+const server = setupServer(
+  http.get(`${API_URL}/emergencias`, () => HttpResponse.json([], { status: 200 })),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -56,7 +61,7 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderApp(path: string): void {
+function renderApp(path: string): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -67,6 +72,7 @@ function renderApp(path: string): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 describe("autenticación", () => {
@@ -185,6 +191,286 @@ describe("autenticación", () => {
     expect(csrfHeader).toBe("csrf-firmado");
     expect(requestCredentials).toBe("include");
   });
+
+  it("obliga a reemplazar una contraseña temporal y renueva la sesión", async () => {
+    const temporarySession = sessionForRole("ADMINISTRADOR", true);
+    const updatedSession = sessionForRole("ADMINISTRADOR");
+    let csrfHeader: string | null = null;
+    server.use(
+      http.post(`${API_URL}/auth/login`, () =>
+        HttpResponse.json(temporarySession),
+      ),
+      http.post(`${API_URL}/auth/password`, async ({ request }) => {
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        expect(await request.json()).toEqual({
+          password_actual: "administrador123",
+          password_nueva: "Una-clave-nueva-2026",
+        });
+        return HttpResponse.json(updatedSession);
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/login");
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Correo electrónico" }),
+      "admin@rescuesync.org",
+    );
+    await user.type(screen.getByLabelText("Contraseña"), "administrador123");
+    await user.click(
+      screen.getByRole("button", { name: "Ingresar a RescueSync" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Creá una contraseña nueva",
+      }),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Contraseña actual"),
+      "administrador123",
+    );
+    await user.type(
+      screen.getByLabelText("Contraseña nueva"),
+      "Una-clave-nueva-2026",
+    );
+    await user.type(
+      screen.getByLabelText("Repetir contraseña nueva"),
+      "Una-clave-nueva-2026",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Guardar contraseña" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+    ).toBeInTheDocument();
+    expect(csrfHeader).toBe("csrf-firmado");
+  });
+
+  it("permite al administrador crear una cuenta temporal", async () => {
+    const adminSession = sessionForRole("ADMINISTRADOR");
+    let createdPayload: unknown;
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(adminSession)),
+      http.get(`${API_URL}/usuarios`, () => HttpResponse.json([])),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json([
+          { id: 3, nombre: "Municipio del Delta", tipo: "MUNICIPIO" },
+        ]),
+      ),
+      http.post(`${API_URL}/usuarios`, async ({ request }) => {
+        createdPayload = await request.json();
+        return HttpResponse.json(
+          {
+            id: 20,
+            email: "nuevo@rescuesync.org",
+            rol: "OPERADOR_MUNICIPAL",
+            organizacion: {
+              id: 3,
+              nombre: "Municipio del Delta",
+              tipo: "MUNICIPIO",
+            },
+            activo: true,
+            requiere_cambio_password: true,
+            creado_en: "2026-09-17T20:00:00Z",
+            actualizado_en: "2026-09-17T20:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/usuarios");
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Administración de usuarios",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Crear usuario" }),
+    ).toBeInTheDocument();
+    await user.type(
+      screen.getByLabelText("Correo electrónico"),
+      "nuevo@rescuesync.org",
+    );
+    await user.type(
+      screen.getByLabelText("Contraseña temporal"),
+      "Temporal-2026",
+    );
+    await user.selectOptions(screen.getByLabelText("Rol"), "OPERADOR_MUNICIPAL");
+    await user.selectOptions(screen.getByLabelText("Organización"), "3");
+    await user.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    expect(await screen.findByText(
+      "Usuario creado con contraseña temporal.",
+    )).toBeInTheDocument();
+    expect(createdPayload).toEqual({
+      email: "nuevo@rescuesync.org",
+      password: "Temporal-2026",
+      rol: "OPERADOR_MUNICIPAL",
+      organizacion_id: 3,
+    });
+  });
+
+  it("reactiva un usuario sin sobrescribir sus datos con valores de la caché", async () => {
+    const adminSession = sessionForRole("ADMINISTRADOR");
+    const inactiveUser = {
+      id: 20,
+      email: "operador@rescuesync.org",
+      rol: "OPERADOR_MUNICIPAL",
+      organizacion: {
+        id: 3,
+        nombre: "Municipio del Delta",
+        tipo: "MUNICIPIO",
+      },
+      activo: false,
+      requiere_cambio_password: false,
+      creado_en: "2026-09-17T20:00:00Z",
+      actualizado_en: "2026-09-17T20:00:00Z",
+    };
+    let updatePayload: unknown;
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(adminSession)),
+      http.get(`${API_URL}/usuarios`, () => HttpResponse.json([inactiveUser])),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json([inactiveUser.organizacion]),
+      ),
+      http.patch(`${API_URL}/usuarios/20`, async ({ request }) => {
+        updatePayload = await request.json();
+        return HttpResponse.json({ ...inactiveUser, activo: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/usuarios");
+
+    await user.click(await screen.findByRole("button", { name: "Reactivar" }));
+
+    expect(await screen.findByText("Usuario reactivado.")).toBeInTheDocument();
+    expect(updatePayload).toEqual({ activo: true });
+  });
+
+  it("no reutiliza el caché de emergencias del usuario anterior tras cerrar e iniciar sesión con otro", async () => {
+    const emergenciaDelMunicipio = {
+      id: 31,
+      municipio_id: 3,
+      centro_coordinador_id: null,
+      creada_por_usuario_id: 7,
+      gravedad: "ALTA",
+      zona: "Ribera norte",
+      descripcion: "Inundación con familias evacuadas",
+      estado: "REGISTRADA",
+      bonita_sync: "PENDIENTE",
+      bonita_process_instance_id: null,
+      creada_en: "2026-09-19T18:20:39.102766Z",
+      actualizada_en: "2026-09-19T18:20:39.102766Z",
+    };
+    const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
+    let usuarioActivo: "municipio" | "coordinador" = "municipio";
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)),
+      http.post(
+        `${API_URL}/auth/logout`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+      http.post(`${API_URL}/auth/login`, () => {
+        usuarioActivo = "coordinador";
+        return HttpResponse.json(coordinadorSession);
+      }),
+      http.get(`${API_URL}/emergencias`, () =>
+        usuarioActivo === "municipio"
+          ? HttpResponse.json([emergenciaDelMunicipio], { status: 200 })
+          : HttpResponse.json([], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderApp("/");
+
+    await screen.findByText("Alta · Ribera norte");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Cerrar sesión" }),
+    );
+    await screen.findByRole("heading", { name: "Iniciá sesión" });
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Correo electrónico" }),
+      "coordinador_regional@rescuesync.org",
+    );
+    await user.type(screen.getByLabelText("Contraseña"), "Una-clave-segura");
+    await user.click(
+      screen.getByRole("button", { name: "Ingresar a RescueSync" }),
+    );
+
+    expect(
+      await screen.findByText("No hay emergencias registradas pendientes."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
+  });
+
+  it("no reutiliza el caché de emergencias tras expirar la sesión (sin logout explícito) e iniciar sesión con otro usuario", async () => {
+    const emergenciaDelMunicipio = {
+      id: 31,
+      municipio_id: 3,
+      centro_coordinador_id: null,
+      creada_por_usuario_id: 7,
+      gravedad: "ALTA",
+      zona: "Ribera norte",
+      descripcion: "Inundación con familias evacuadas",
+      estado: "REGISTRADA",
+      bonita_sync: "PENDIENTE",
+      bonita_process_instance_id: null,
+      creada_en: "2026-09-19T18:20:39.102766Z",
+      actualizada_en: "2026-09-19T18:20:39.102766Z",
+    };
+    const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
+    let sesionVigente: "municipio" | "vencida" | "coordinador" = "municipio";
+    server.use(
+      http.get(`${API_URL}/auth/me`, () =>
+        sesionVigente === "municipio"
+          ? HttpResponse.json(session)
+          : HttpResponse.json(
+              { detail: "La sesión no es válida o expiró." },
+              { status: 401 },
+            ),
+      ),
+      http.post(`${API_URL}/auth/login`, () => {
+        sesionVigente = "coordinador";
+        return HttpResponse.json(coordinadorSession);
+      }),
+      http.get(`${API_URL}/emergencias`, () =>
+        sesionVigente === "municipio"
+          ? HttpResponse.json([emergenciaDelMunicipio], { status: 200 })
+          : HttpResponse.json([], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    const queryClient = renderApp("/");
+
+    await screen.findByText("Alta · Ribera norte");
+
+    // Simula que la sesión venció del lado del servidor (sin que nadie use
+    // el botón "Cerrar sesión") forzando un refetch de /auth/me, que ahora
+    // responde 401.
+    sesionVigente = "vencida";
+    await queryClient.invalidateQueries({ queryKey: sessionQueryKey });
+    await screen.findByRole("heading", { name: "Iniciá sesión" });
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Correo electrónico" }),
+      "coordinador_regional@rescuesync.org",
+    );
+    await user.type(screen.getByLabelText("Contraseña"), "Una-clave-segura");
+    await user.click(
+      screen.getByRole("button", { name: "Ingresar a RescueSync" }),
+    );
+
+    expect(
+      await screen.findByText("No hay emergencias registradas pendientes."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
+  });
 });
 
 describe("navegación por rol", () => {
@@ -196,31 +482,35 @@ describe("navegación por rol", () => {
     {
       role: "OPERADOR_MUNICIPAL",
       visible: "Registrar emergencia",
-      hidden: ["Generar y publicar lotes", "Presentar oferta"],
+      hidden: ["Emergencias pendientes", "Presentar oferta"],
     },
     {
       role: "COORDINADOR_REGIONAL",
-      visible: "Generar y publicar lotes",
+      visible: "Emergencias pendientes",
       hidden: ["Registrar emergencia", "Presentar oferta"],
     },
     {
       role: "REPRESENTANTE_ONG",
       visible: "Presentar oferta",
-      hidden: ["Registrar emergencia", "Generar y publicar lotes"],
+      hidden: ["Registrar emergencia", "Mis emergencias", "Emergencias pendientes"],
     },
     {
       role: "AUDITOR_DIRECTIVO",
       visible: null,
-      hidden: [
-        "Registrar emergencia",
-        "Generar y publicar lotes",
-        "Presentar oferta",
-      ],
+      hidden: ["Registrar emergencia", "Emergencias pendientes", "Presentar oferta"],
+    },
+    {
+      role: "ADMINISTRADOR",
+      visible: "Gestionar usuarios",
+      hidden: ["Registrar emergencia", "Emergencias pendientes", "Presentar oferta"],
     },
   ])("muestra únicamente las acciones habilitadas para $role", async (testCase) => {
     server.use(
       http.get(`${API_URL}/auth/me`, () =>
         HttpResponse.json(sessionForRole(testCase.role)),
+      ),
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json([], { status: 200 }),
       ),
     );
     renderApp("/");
@@ -235,7 +525,7 @@ describe("navegación por rol", () => {
       ).toBeInTheDocument();
     } else {
       expect(
-        screen.getByRole("heading", { name: testCase.visible }),
+        await screen.findByRole("heading", { name: testCase.visible }),
       ).toBeInTheDocument();
     }
 
