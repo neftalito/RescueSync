@@ -38,6 +38,13 @@ ingreso. El bootstrap es idempotente: si ya existe un administrador activo no
 modifica cuentas ni restablece contraseñas. Si `ADMIN_EMAIL` pertenece a una
 cuenta incompatible, el backend no arranca para evitar tomar control de ella.
 
+El servicio `bonita-deploy` crea además una identidad Bonita con el mismo correo
+como `userName` y la misma contraseña inicial. Luego resuelve el perfil
+predeterminado `Administrator` y agrega una membresía directa mediante
+`/API/portal/profileMember`. En arranques posteriores conserva la cuenta y su
+contraseña. Si el nombre ya existe sin ese perfil, solo lo asigna cuando las
+credenciales configuradas coinciden, para no elevar una identidad ajena.
+
 Los valores por defecto son públicos y sirven para facilitar el primer acceso.
 En producción deben sobreescribirse antes del primer arranque y comunicarse por
 un canal seguro. El backend rechaza el arranque productivo si conserva la

@@ -38,6 +38,8 @@ class Config:
     base_url: str
     username: str
     password: str
+    admin_username: str
+    admin_initial_password: str
     actor_password: str
     process_name: str
     process_version: str
@@ -55,6 +57,10 @@ class Config:
             base_url=_required_environment("BONITA_BASE_URL").rstrip("/"),
             username=_required_environment("BONITA_USERNAME"),
             password=_required_environment("BONITA_PASSWORD"),
+            admin_username=_required_environment("ADMIN_EMAIL").lower(),
+            admin_initial_password=_required_secret_environment(
+                "ADMIN_INITIAL_PASSWORD"
+            ),
             actor_password=os.getenv("BONITA_ACTOR_PASSWORD", "").strip()
             or secrets.token_urlsafe(32),
             process_name=_required_environment("BONITA_PROCESS_NAME"),
@@ -145,6 +151,44 @@ class ProcessDefinition:
         )
 
 
+@dataclass(frozen=True)
+class IdentityUser:
+    """Representa una identidad de usuario devuelta por Bonita."""
+
+    id: str
+    username: str
+
+    @classmethod
+    def from_object(cls, value: object) -> IdentityUser:
+        """Valida los campos usados para reconciliar una cuenta."""
+
+        if not isinstance(value, dict):
+            raise DeploymentError("Bonita devolvió un usuario inválido.")
+        username = value.get("userName")
+        if not isinstance(username, str) or not username:
+            raise DeploymentError("Bonita no devolvió un userName válido.")
+        return cls(id=_external_id(value.get("id"), "usuario"), username=username)
+
+
+@dataclass(frozen=True)
+class Profile:
+    """Representa un perfil que concede acceso a una aplicación de Bonita."""
+
+    id: str
+    name: str
+
+    @classmethod
+    def from_object(cls, value: object) -> Profile:
+        """Valida los campos usados para asignar el perfil."""
+
+        if not isinstance(value, dict):
+            raise DeploymentError("Bonita devolvió un perfil inválido.")
+        name = value.get("name")
+        if not isinstance(name, str) or not name:
+            raise DeploymentError("Bonita no devolvió un nombre de perfil válido.")
+        return cls(id=_external_id(value.get("id"), "perfil"), name=name)
+
+
 def _required_environment(name: str) -> str:
     """Obtiene una variable obligatoria sin revelar su contenido."""
 
@@ -152,6 +196,25 @@ def _required_environment(name: str) -> str:
     if not value:
         raise DeploymentError(f"La variable de entorno {name} es obligatoria.")
     return value
+
+
+def _required_secret_environment(name: str) -> str:
+    """Obtiene un secreto obligatorio sin modificarlo ni revelar su contenido."""
+
+    value = os.getenv(name)
+    if value is None or not value:
+        raise DeploymentError(f"La variable de entorno {name} es obligatoria.")
+    return value
+
+
+def _external_id(value: object, resource: str) -> str:
+    """Normaliza un identificador positivo serializado como texto o entero."""
+
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return str(value)
+    if isinstance(value, str) and value.isdigit() and int(value) > 0:
+        return value
+    raise DeploymentError(f"Bonita devolvió un identificador de {resource} inválido.")
 
 
 def _callback_token_environment() -> str:
@@ -375,6 +438,179 @@ def ensure_actor_users(
         )
         _ensure_success(response, f"La creación del usuario {username}", {200, 201})
         LOGGER.info("Usuario de actor %s creado en Bonita.", username)
+
+
+def _find_admin_user(client: httpx.Client, config: Config) -> IdentityUser | None:
+    """Busca la cuenta administrativa inicial por su nombre exacto."""
+
+    response = client.get(
+        f"{config.base_url}/API/identity/user",
+        params=[
+            ("p", "0"),
+            ("c", "2"),
+            ("f", f"userName={config.admin_username}"),
+        ],
+    )
+    _ensure_success(response, "La consulta del administrador inicial", {200})
+    payload = _decode_json(response, "la consulta del administrador inicial")
+    if not isinstance(payload, list):
+        raise DeploymentError(
+            "Bonita devolvió una respuesta inválida para el administrador inicial."
+        )
+    matches = [
+        user
+        for item in payload
+        if (user := IdentityUser.from_object(item)).username == config.admin_username
+    ]
+    if len(matches) > 1:
+        raise DeploymentError("Bonita devolvió más de un usuario para ADMIN_EMAIL.")
+    return matches[0] if matches else None
+
+
+def _find_administrator_profile(client: httpx.Client, config: Config) -> Profile:
+    """Resuelve el perfil predeterminado que habilita la aplicación administrativa."""
+
+    profile_name = "Administrator"
+    response = client.get(
+        f"{config.base_url}/API/portal/profile",
+        params=[("p", "0"), ("c", "2"), ("f", f"name={profile_name}")],
+    )
+    _ensure_success(response, "La consulta del perfil Administrator", {200})
+    payload = _decode_json(response, "la consulta del perfil Administrator")
+    if not isinstance(payload, list):
+        raise DeploymentError(
+            "Bonita devolvió una respuesta inválida para el perfil Administrator."
+        )
+    matches = [
+        profile
+        for item in payload
+        if (profile := Profile.from_object(item)).name == profile_name
+    ]
+    if len(matches) != 1:
+        raise DeploymentError("Bonita no devolvió un único perfil Administrator.")
+    return matches[0]
+
+
+def _admin_has_profile(
+    client: httpx.Client,
+    config: Config,
+    user: IdentityUser,
+    profile: Profile,
+) -> bool:
+    """Comprueba la membresía directa sin confiar solo en una lectura previa."""
+
+    response = client.get(
+        f"{config.base_url}/API/portal/profileMember",
+        params=[
+            ("p", "0"),
+            ("c", "2"),
+            ("f", "member_type=user"),
+            ("f", f"profile_id={profile.id}"),
+            ("f", f"user_id={user.id}"),
+        ],
+    )
+    _ensure_success(response, "La consulta del perfil del administrador", {200})
+    payload = _decode_json(response, "la consulta del perfil del administrador")
+    if not isinstance(payload, list):
+        raise DeploymentError(
+            "Bonita devolvió una respuesta inválida para la membresía administrativa."
+        )
+    if len(payload) > 1:
+        raise DeploymentError(
+            "Bonita devolvió más de una membresía administrativa para ADMIN_EMAIL."
+        )
+    if not payload:
+        return False
+    membership = payload[0]
+    if not isinstance(membership, dict):
+        raise DeploymentError("Bonita devolvió una membresía administrativa inválida.")
+    return (
+        _external_id(membership.get("profile_id"), "perfil de la membresía")
+        == profile.id
+        and _external_id(membership.get("user_id"), "usuario de la membresía")
+        == user.id
+    )
+
+
+def _admin_credentials_match(config: Config) -> bool:
+    """Verifica una cuenta preexistente antes de elevarla a Administrator."""
+
+    try:
+        with httpx.Client(
+            timeout=config.request_timeout_seconds,
+            follow_redirects=False,
+        ) as verifier:
+            response = verifier.post(
+                f"{config.base_url}/loginservice",
+                data={
+                    "username": config.admin_username,
+                    "password": config.admin_initial_password,
+                    "redirect": "false",
+                },
+            )
+    except httpx.HTTPError as error:
+        raise DeploymentError(
+            "No se pudieron verificar las credenciales del administrador preexistente."
+        ) from error
+    if response.status_code in {200, 204}:
+        return True
+    if response.status_code in {401, 403}:
+        return False
+    raise DeploymentError(
+        "La verificación del administrador preexistente falló: Bonita respondió "
+        f"HTTP {response.status_code} {response.reason_phrase}."
+    )
+
+
+def ensure_initial_admin(client: httpx.Client, config: Config) -> None:
+    """Crea el administrador inicial y le asigna el perfil Administrator.
+
+    Una cuenta ya mapeada no se modifica para no restablecer una contraseña que
+    el administrador haya cambiado. Si el nombre existe pero aún no posee el
+    perfil, las credenciales compartidas se verifican antes de elevarlo.
+    """
+
+    profile = _find_administrator_profile(client, config)
+    user = _find_admin_user(client, config)
+    created = user is None
+    if created:
+        response = client.post(
+            f"{config.base_url}/API/identity/user",
+            json={
+                "userName": config.admin_username,
+                "password": config.admin_initial_password,
+                "password_confirm": config.admin_initial_password,
+                "firstname": "Administrador",
+                "lastname": "RescueSync",
+                "enabled": "true",
+            },
+        )
+        _ensure_success(response, "La creación del administrador inicial", {200, 201})
+        user = IdentityUser.from_object(
+            _decode_json(response, "la creación del administrador inicial")
+        )
+        if user.username != config.admin_username:
+            raise DeploymentError("Bonita creó una cuenta distinta de ADMIN_EMAIL.")
+
+    if _admin_has_profile(client, config, user, profile):
+        LOGGER.info("El administrador inicial ya existe y tiene su perfil en Bonita.")
+        return
+    if not created and not _admin_credentials_match(config):
+        raise DeploymentError(
+            "ADMIN_EMAIL ya existe en Bonita con otras credenciales y no tiene el "
+            "perfil Administrator; no se modificó la cuenta."
+        )
+
+    response = client.post(
+        f"{config.base_url}/API/portal/profileMember",
+        json={
+            "profile_id": profile.id,
+            "member_type": "USER",
+            "user_id": user.id,
+        },
+    )
+    _ensure_success(response, "La asignación del perfil Administrator", {200, 201})
+    LOGGER.info("Administrador inicial creado y habilitado en Bonita.")
 
 
 def find_process(
@@ -679,6 +915,7 @@ def deploy(config: Config) -> None:
         headers={"Accept": "application/json"},
     ) as client:
         login_when_ready(client, config)
+        ensure_initial_admin(client, config)
         ensure_actor_users(client, config, bar_path)
         process = find_process(client, config)
         if process is not None and remove_unusable_process(client, config, process):

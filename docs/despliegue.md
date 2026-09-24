@@ -20,3 +20,7 @@ primer despliegue productivo se deben establecer `ADMIN_EMAIL` y
 `ADMIN_INITIAL_PASSWORD` con valores propios. La contraseña es temporal y el
 primer login obliga a reemplazarla; el bootstrap nunca registra ni vuelve a
 aplicar la clave sobre una cuenta existente.
+
+`bonita-deploy` usa esas mismas variables para crear la identidad equivalente en
+Bonita y asignarle el perfil `Administrator`. El aprovisionamiento es idempotente
+y no restablece la contraseña de una identidad ya mapeada.
