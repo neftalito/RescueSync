@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
+import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { EmergenciaForm } from "../components/EmergenciaForm";
 import { sessionQueryKey } from "../hooks/useSession";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
@@ -20,12 +21,6 @@ interface Stage {
 }
 
 const stages: Stage[] = [
-  {
-    role: "COORDINADOR_REGIONAL",
-    actor: "Centro coordinador",
-    title: "Generar y publicar lotes",
-    description: "Necesidades cuantificadas antes de abrir la convocatoria.",
-  },
   {
     role: "REPRESENTANTE_ONG",
     actor: "ONG",
@@ -54,6 +49,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
     (stage) => stage.role === session.usuario.rol,
   );
   const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
+  const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -142,8 +138,13 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
           </h2>
 
           {esMunicipio ? (
-            <div className="mt-5">
+            <div className="mt-5 space-y-8">
               <EmergenciaForm csrfToken={session.csrf_token} />
+              <BandejaEmergencias rol={session.usuario.rol} />
+            </div>
+          ) : esCoordinador ? (
+            <div className="mt-5">
+              <BandejaEmergencias rol={session.usuario.rol} />
             </div>
           ) : visibleStages.length === 0 ? (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

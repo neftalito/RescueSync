@@ -47,7 +47,9 @@ function sessionForRole(role: Role): Session {
 }
 
 const session = sessionForRole("OPERADOR_MUNICIPAL");
-const server = setupServer();
+const server = setupServer(
+  http.get(`${API_URL}/emergencias`, () => HttpResponse.json([], { status: 200 })),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -196,31 +198,30 @@ describe("navegación por rol", () => {
     {
       role: "OPERADOR_MUNICIPAL",
       visible: "Registrar emergencia",
-      hidden: ["Generar y publicar lotes", "Presentar oferta"],
+      hidden: ["Emergencias pendientes", "Presentar oferta"],
     },
     {
       role: "COORDINADOR_REGIONAL",
-      visible: "Generar y publicar lotes",
+      visible: "Emergencias pendientes",
       hidden: ["Registrar emergencia", "Presentar oferta"],
     },
     {
       role: "REPRESENTANTE_ONG",
       visible: "Presentar oferta",
-      hidden: ["Registrar emergencia", "Generar y publicar lotes"],
+      hidden: ["Registrar emergencia", "Mis emergencias", "Emergencias pendientes"],
     },
     {
       role: "AUDITOR_DIRECTIVO",
       visible: null,
-      hidden: [
-        "Registrar emergencia",
-        "Generar y publicar lotes",
-        "Presentar oferta",
-      ],
+      hidden: ["Registrar emergencia", "Emergencias pendientes", "Presentar oferta"],
     },
   ])("muestra únicamente las acciones habilitadas para $role", async (testCase) => {
     server.use(
       http.get(`${API_URL}/auth/me`, () =>
         HttpResponse.json(sessionForRole(testCase.role)),
+      ),
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json([], { status: 200 }),
       ),
     );
     renderApp("/");
@@ -235,7 +236,7 @@ describe("navegación por rol", () => {
       ).toBeInTheDocument();
     } else {
       expect(
-        screen.getByRole("heading", { name: testCase.visible }),
+        await screen.findByRole("heading", { name: testCase.visible }),
       ).toBeInTheDocument();
     }
 
