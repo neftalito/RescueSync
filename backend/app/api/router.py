@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 
-
 from app.api.routes import auth, bonita, emergencias, health, lotes, ofertas, usuarios
 
 api_router = APIRouter()
