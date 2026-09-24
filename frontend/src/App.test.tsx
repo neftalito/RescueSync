@@ -187,6 +187,61 @@ describe("autenticación", () => {
     expect(csrfHeader).toBe("csrf-firmado");
     expect(requestCredentials).toBe("include");
   });
+
+  it("no reutiliza el caché de emergencias del usuario anterior tras cerrar e iniciar sesión con otro", async () => {
+    const emergenciaDelMunicipio = {
+      id: 31,
+      municipio_id: 3,
+      centro_coordinador_id: null,
+      creada_por_usuario_id: 7,
+      gravedad: "ALTA",
+      zona: "Ribera norte",
+      descripcion: "Inundación con familias evacuadas",
+      estado: "REGISTRADA",
+      bonita_sync: "PENDIENTE",
+      bonita_process_instance_id: null,
+      creada_en: "2026-09-19T18:20:39.102766Z",
+      actualizada_en: "2026-09-19T18:20:39.102766Z",
+    };
+    const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
+    let usuarioActivo: "municipio" | "coordinador" = "municipio";
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)),
+      http.post(`${API_URL}/auth/logout`, () => new HttpResponse(null, { status: 204 })),
+      http.post(`${API_URL}/auth/login`, () => {
+        usuarioActivo = "coordinador";
+        return HttpResponse.json(coordinadorSession);
+      }),
+      http.get(`${API_URL}/emergencias`, () =>
+        usuarioActivo === "municipio"
+          ? HttpResponse.json([emergenciaDelMunicipio], { status: 200 })
+          : HttpResponse.json([], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderApp("/");
+
+    await screen.findByText("Alta · Ribera norte");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Cerrar sesión" }),
+    );
+    await screen.findByRole("heading", { name: "Iniciá sesión" });
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Correo electrónico" }),
+      "coordinador_regional@rescuesync.org",
+    );
+    await user.type(screen.getByLabelText("Contraseña"), "Una-clave-segura");
+    await user.click(
+      screen.getByRole("button", { name: "Ingresar a RescueSync" }),
+    );
+
+    expect(
+      await screen.findByText("No hay emergencias registradas pendientes."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
+  });
 });
 
 describe("navegación por rol", () => {

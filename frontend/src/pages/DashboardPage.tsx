@@ -6,7 +6,6 @@ import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { EmergenciaForm } from "../components/EmergenciaForm";
-import { sessionQueryKey } from "../hooks/useSession";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
 interface DashboardPageProps {
@@ -35,7 +34,11 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => logout(session.csrf_token),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: sessionQueryKey });
+      // Limpia todo el caché (no solo la sesión): sin esto, una bandeja
+      // consultada por este usuario podría seguir en caché y mostrarse
+      // brevemente a la siguiente persona que inicie sesión en la misma
+      // pestaña, antes de que ese query vuelva a pedirse.
+      queryClient.clear();
       navigate("/login", { replace: true });
     },
   });
