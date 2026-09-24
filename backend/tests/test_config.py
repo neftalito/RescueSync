@@ -1,11 +1,10 @@
 import pytest
-from pydantic import ValidationError
-
 from app.core.config import (
     ADMIN_INITIAL_PASSWORD_DESARROLLO,
     BONITA_CALLBACK_TOKEN_DESARROLLO,
     Settings,
 )
+from pydantic import ValidationError
 
 
 def test_produccion_exige_secret_estable() -> None:

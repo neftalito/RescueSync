@@ -5,7 +5,6 @@ from xml.etree import ElementTree
 from zipfile import ZipFile
 
 import pytest
-
 from app.integrations.bonita.deploy import Config, ensure_bar_matches_contract
 
 DOCS = Path(__file__).resolve().parents[4] / "docs"

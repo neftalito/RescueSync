@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
-
 DEFAULT_OWNER = "neftalito"
 DEFAULT_PROJECT_NUMBER = 6
 DEFAULT_TITLE = "RescueSync — Entrega 2"
@@ -44,8 +43,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     repository_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
         description=(
-            "Genera docs/generated/gantt-entrega-2.png y .pdf desde GitHub "
-            "Projects."
+            "Genera docs/generated/gantt-entrega-2.png y .pdf desde GitHub Projects."
         )
     )
     parser.add_argument("--owner", default=DEFAULT_OWNER, help="Dueño del Project.")
@@ -135,9 +133,7 @@ def parse_project_items(payload: object) -> list[ProjectItem]:
         content = require_mapping(item.get("content"), f"items[{index}].content")
         number = require_integer(content.get("number"), f"items[{index}].number")
         start = parse_iso_date(item.get("start date"), f"issue #{number} Start date")
-        target = parse_iso_date(
-            item.get("target date"), f"issue #{number} Target date"
-        )
+        target = parse_iso_date(item.get("target date"), f"issue #{number} Target date")
         if target < start:
             raise ValueError(f"El issue #{number} termina antes de su fecha de inicio.")
 
@@ -176,7 +172,9 @@ def load_project_payload(
         except OSError as error:
             raise RuntimeError(f"No se pudo leer {input_json}: {error}") from error
         except json.JSONDecodeError as error:
-            raise RuntimeError(f"{input_json} no contiene JSON válido: {error}") from error
+            raise RuntimeError(
+                f"{input_json} no contiene JSON válido: {error}"
+            ) from error
 
     if shutil.which("gh") is None:
         raise RuntimeError("No se encontró gh. Instalá GitHub CLI antes de continuar.")
@@ -386,7 +384,7 @@ def build_html(
         <div class="calendar-label">Issue y estimación</div>
         <div class="calendar-days">{header_cells}</div>
       </div>
-      {''.join(rows)}
+      {"".join(rows)}
     </section>
   </main>
 </body>
@@ -401,7 +399,9 @@ def render_with_playwright(
     """Renderiza el HTML con Chromium mediante el Playwright del frontend."""
 
     repository_root = Path(__file__).resolve().parent.parent
-    playwright_module = repository_root / "frontend" / "node_modules" / "playwright" / "index.mjs"
+    playwright_module = (
+        repository_root / "frontend" / "node_modules" / "playwright" / "index.mjs"
+    )
     if not playwright_module.exists():
         raise RuntimeError(
             "No se encontró Playwright. Ejecutá npm install dentro de frontend."

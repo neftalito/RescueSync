@@ -15,8 +15,6 @@ from decimal import Decimal
 
 import httpx
 import pytest
-from sqlalchemy.orm import Session
-
 from app.core.config import get_settings
 from app.db.models import (
     Convocatoria,
@@ -47,6 +45,7 @@ from app.integrations.bonita.contratos import (
     USUARIO_ACTOR_COORDINADOR,
     ContratoInicioProceso,
 )
+from sqlalchemy.orm import Session
 
 pytestmark = [
     pytest.mark.bonita_e2e,

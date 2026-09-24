@@ -1,7 +1,4 @@
 import pytest
-from sqlalchemy import delete
-from sqlalchemy.orm import Session
-
 from app.core.config import Settings
 from app.core.security import generar_password_hash, verificar_password
 from app.db.models import RolUsuario, Usuario
@@ -9,6 +6,8 @@ from app.services.bootstrap import (
     AdminInicialEnConflictoError,
     asegurar_admin_inicial,
 )
+from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 
 def _settings() -> Settings:

@@ -3,12 +3,11 @@ from collections.abc import Iterator
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
-
 from app.api.dependencies import obtener_cliente_bonita
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.main import app
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 BASE_URL = "http://bonita:8080/bonita"
 

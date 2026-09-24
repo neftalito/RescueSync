@@ -2,12 +2,6 @@ from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
-from fastapi.testclient import TestClient
-from psycopg import Error as PsycopgError
-from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 from app.core.security import (
     crear_token_csrf,
     crear_valor_sesion,
@@ -29,6 +23,11 @@ from app.db.session import get_db
 from app.main import app
 from app.schemas.lote import LoteItem
 from app.services import lotes as servicio_lotes
+from fastapi.testclient import TestClient
+from psycopg import Error as PsycopgError
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 PASSWORD = "Una-clave-segura-2026"
 

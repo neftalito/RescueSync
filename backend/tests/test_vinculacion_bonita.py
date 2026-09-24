@@ -4,10 +4,6 @@ from collections.abc import Iterator
 import httpx
 import pytest
 import respx
-from fastapi.testclient import TestClient
-from pydantic import SecretStr
-from sqlalchemy.orm import Session
-
 from app.api.dependencies import obtener_cliente_bonita
 from app.core.security import (
     crear_token_csrf,
@@ -30,6 +26,9 @@ from app.main import app
 from app.schemas.emergencia import EmergenciaCreate
 from app.services import emergencias as servicio_emergencias
 from app.services.vinculacion_bonita import vincular_emergencia_con_bonita
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
+from sqlalchemy.orm import Session
 
 BASE_URL = "http://bonita:8080/bonita"
 PASSWORD = "Una-clave-segura-2026"

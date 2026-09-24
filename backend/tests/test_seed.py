@@ -1,6 +1,3 @@
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-
 from app.core.config import get_settings
 from app.db.models import (
     Convocatoria,
@@ -12,6 +9,8 @@ from app.db.models import (
 )
 from app.scripts.seed import seed_development_data
 from app.services.auth import autenticar_usuario
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 EMAILS = (
     "municipio@rescuesync.org",

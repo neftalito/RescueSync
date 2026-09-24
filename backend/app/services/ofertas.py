@@ -71,9 +71,7 @@ def registrar_oferta(
         convocatoria.estado is not EstadoConvocatoria.ABIERTA
         or datetime.now(UTC) >= convocatoria.cierra_en
     ):
-        raise ConvocatoriaNoReceptivaError(
-            "La convocatoria no admite nuevas ofertas."
-        )
+        raise ConvocatoriaNoReceptivaError("La convocatoria no admite nuevas ofertas.")
 
     publicaciones = _publicaciones_bloqueadas(
         session, convocatoria.id, [item.lote_id for item in datos.items]

@@ -1,5 +1,4 @@
 import pytest
-
 from app.scripts.create_user import _leer_password
 
 

@@ -4,8 +4,6 @@ from collections.abc import Iterator
 import httpx
 import pytest
 import respx
-from pydantic import SecretStr, ValidationError
-
 from app.db.models.enums import GravedadEmergencia
 from app.integrations.bonita.cliente import (
     BonitaCredencialesError,
@@ -18,6 +16,7 @@ from app.integrations.bonita.cliente import (
     ConfiguracionBonita,
 )
 from app.integrations.bonita.contratos import ContratoInicioProceso
+from pydantic import SecretStr, ValidationError
 
 BASE_URL = "http://bonita:8080/bonita"
 PASSWORD = "clave-tecnica-secreta"
