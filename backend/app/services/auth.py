@@ -3,7 +3,23 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.roles import TIPO_ORGANIZACION_POR_ROL
 from app.core.security import generar_password_hash, verificar_password
-from app.db.models import Usuario
+from app.db.models import Organizacion, TipoOrganizacion, Usuario
+
+
+def organizacion_vigente_de_tipo(
+    usuario: Usuario, tipo: TipoOrganizacion
+) -> Organizacion | None:
+    """Devuelve la organización si está activa y es del tipo requerido."""
+
+    organizacion = usuario.organizacion
+    if (
+        usuario.organizacion_id is None
+        or organizacion is None
+        or organizacion.tipo is not tipo
+        or not organizacion.activa
+    ):
+        return None
+    return organizacion
 
 
 def usuario_tiene_contexto_vigente(usuario: Usuario) -> bool:
@@ -12,16 +28,12 @@ def usuario_tiene_contexto_vigente(usuario: Usuario) -> bool:
     if not usuario.activo:
         return False
 
-    organizacion = usuario.organizacion
     tipo_requerido = TIPO_ORGANIZACION_POR_ROL.get(usuario.rol)
     if tipo_requerido is None:
+        organizacion = usuario.organizacion
         return organizacion is None or organizacion.activa
 
-    return (
-        organizacion is not None
-        and organizacion.activa
-        and organizacion.tipo is tipo_requerido
-    )
+    return organizacion_vigente_de_tipo(usuario, tipo_requerido) is not None
 
 
 def obtener_usuario_vigente(

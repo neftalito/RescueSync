@@ -4,7 +4,8 @@ import { Link, useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
-import { sessionQueryKey } from "../hooks/useSession";
+import { BandejaEmergencias } from "../components/BandejaEmergencias";
+import { EmergenciaForm } from "../components/EmergenciaForm";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
 interface DashboardPageProps {
@@ -20,18 +21,6 @@ interface Stage {
 
 const stages: Stage[] = [
   {
-    role: "OPERADOR_MUNICIPAL",
-    actor: "Municipio",
-    title: "Registrar emergencia",
-    description: "Gravedad, zona afectada y descripción inicial.",
-  },
-  {
-    role: "COORDINADOR_REGIONAL",
-    actor: "Centro coordinador",
-    title: "Generar y publicar lotes",
-    description: "Necesidades cuantificadas antes de abrir la convocatoria.",
-  },
-  {
     role: "REPRESENTANTE_ONG",
     actor: "ONG",
     title: "Presentar oferta",
@@ -45,7 +34,11 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => logout(session.csrf_token),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: sessionQueryKey });
+      // Limpia todo el caché (no solo la sesión): sin esto, una bandeja
+      // consultada por este usuario podría seguir en caché y mostrarse
+      // brevemente a la siguiente persona que inicie sesión en la misma
+      // pestaña, antes de que ese query vuelva a pedirse.
+      queryClient.clear();
       navigate("/login", { replace: true });
     },
   });
@@ -58,6 +51,8 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const visibleStages = stages.filter(
     (stage) => stage.role === session.usuario.rol,
   );
+  const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
+  const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -175,6 +170,15 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 Abrir administración
               </Link>
             </article>
+          ) : esMunicipio ? (
+            <div className="mt-5 space-y-8">
+              <EmergenciaForm csrfToken={session.csrf_token} />
+              <BandejaEmergencias rol="OPERADOR_MUNICIPAL" />
+            </div>
+          ) : esCoordinador ? (
+            <div className="mt-5">
+              <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
+            </div>
           ) : visibleStages.length === 0 ? (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-xl font-semibold text-slate-950">
