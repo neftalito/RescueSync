@@ -163,6 +163,22 @@ def test_administrador_crea_edita_desactiva_y_reactiva_usuario(
     assert edicion.json()["rol"] == "AUDITOR_DIRECTIVO"
     assert edicion.json()["organizacion"] is None
 
+    reasignacion = client.patch(
+        f"/api/v1/usuarios/{usuario_id}",
+        headers=_csrf(administrador),
+        json={
+            "rol": "OPERADOR_MUNICIPAL",
+            "organizacion_id": municipio.id,
+        },
+    )
+    assert reasignacion.status_code == 200
+    assert reasignacion.json()["rol"] == "OPERADOR_MUNICIPAL"
+    assert reasignacion.json()["organizacion"] == {
+        "id": municipio.id,
+        "nombre": municipio.nombre,
+        "tipo": "MUNICIPIO",
+    }
+
     baja = client.delete(
         f"/api/v1/usuarios/{usuario_id}",
         headers=_csrf(administrador),

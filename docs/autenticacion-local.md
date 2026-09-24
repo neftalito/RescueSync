@@ -40,7 +40,8 @@ cuenta incompatible, el backend no arranca para evitar tomar control de ella.
 
 Los valores por defecto son públicos y sirven para facilitar el primer acceso.
 En producción deben sobreescribirse antes del primer arranque y comunicarse por
-un canal seguro. Ninguna contraseña se imprime en los logs.
+un canal seguro. El backend rechaza el arranque productivo si conserva la
+contraseña pública de desarrollo. Ninguna contraseña se imprime en los logs.
 
 ## Datos de desarrollo
 

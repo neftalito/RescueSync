@@ -314,6 +314,43 @@ describe("autenticación", () => {
     });
   });
 
+  it("reactiva un usuario sin sobrescribir sus datos con valores de la caché", async () => {
+    const adminSession = sessionForRole("ADMINISTRADOR");
+    const inactiveUser = {
+      id: 20,
+      email: "operador@rescuesync.org",
+      rol: "OPERADOR_MUNICIPAL",
+      organizacion: {
+        id: 3,
+        nombre: "Municipio del Delta",
+        tipo: "MUNICIPIO",
+      },
+      activo: false,
+      requiere_cambio_password: false,
+      creado_en: "2026-09-17T20:00:00Z",
+      actualizado_en: "2026-09-17T20:00:00Z",
+    };
+    let updatePayload: unknown;
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(adminSession)),
+      http.get(`${API_URL}/usuarios`, () => HttpResponse.json([inactiveUser])),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json([inactiveUser.organizacion]),
+      ),
+      http.patch(`${API_URL}/usuarios/20`, async ({ request }) => {
+        updatePayload = await request.json();
+        return HttpResponse.json({ ...inactiveUser, activo: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/usuarios");
+
+    await user.click(await screen.findByRole("button", { name: "Reactivar" }));
+
+    expect(await screen.findByText("Usuario reactivado.")).toBeInTheDocument();
+    expect(updatePayload).toEqual({ activo: true });
+  });
+
   it("no reutiliza el caché de emergencias del usuario anterior tras cerrar e iniciar sesión con otro", async () => {
     const emergenciaDelMunicipio = {
       id: 31,

@@ -65,6 +65,17 @@ export function deactivateUser(
   });
 }
 
+export function reactivateUser(
+  userId: number,
+  csrfToken: string,
+): Promise<ManagedUser> {
+  return apiRequest(`/usuarios/${userId}`, userSchema, {
+    method: "PATCH",
+    headers: { "X-CSRF-Token": csrfToken },
+    body: JSON.stringify({ activo: true }),
+  });
+}
+
 export function resetUserPassword(
   userId: number,
   values: ResetPasswordForm,

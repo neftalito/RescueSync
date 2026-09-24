@@ -71,18 +71,27 @@ def cambiar_password_propia(
     password_actual: str,
     password_nueva: str,
 ) -> Usuario:
-    """Cambia la contraseña propia e invalida cualquier otra sesión abierta."""
+    """Serializa el cambio de clave e invalida cualquier otra sesión abierta."""
 
-    if not verificar_password(password_actual, usuario.password_hash):
+    usuario_bloqueado = session.scalar(
+        select(Usuario)
+        .where(Usuario.id == usuario.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if usuario_bloqueado is None:
         raise PasswordActualIncorrectaError
-    if verificar_password(password_nueva, usuario.password_hash):
+
+    if not verificar_password(password_actual, usuario_bloqueado.password_hash):
+        raise PasswordActualIncorrectaError
+    if verificar_password(password_nueva, usuario_bloqueado.password_hash):
         raise PasswordSinCambiosError
 
-    usuario.password_hash = generar_password_hash(password_nueva)
-    usuario.requiere_cambio_password = False
-    usuario.version_sesion += 1
+    usuario_bloqueado.password_hash = generar_password_hash(password_nueva)
+    usuario_bloqueado.requiere_cambio_password = False
+    usuario_bloqueado.version_sesion += 1
     session.flush()
-    return usuario
+    return usuario_bloqueado
 
 
 def autenticar_usuario(session: Session, email: str, password: str) -> Usuario | None:

@@ -1,7 +1,11 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import BONITA_CALLBACK_TOKEN_DESARROLLO, Settings
+from app.core.config import (
+    ADMIN_INITIAL_PASSWORD_DESARROLLO,
+    BONITA_CALLBACK_TOKEN_DESARROLLO,
+    Settings,
+)
 
 
 def test_produccion_exige_secret_estable() -> None:
@@ -15,6 +19,7 @@ def test_produccion_activa_cookie_secure_por_defecto() -> None:
         app_env="production",
         SESSION_SECRET="s" * 32,
         bonita_callback_token="p" * 64,
+        admin_initial_password="Clave-productiva-2026",
     )
 
     assert settings.cookies_seguras is True
@@ -50,6 +55,7 @@ def test_produccion_exige_un_callback_token_propio(token: str | None) -> None:
             app_env="production",
             SESSION_SECRET="s" * 32,
             bonita_callback_token=token,
+            admin_initial_password="Clave-productiva-2026",
         )
 
 
@@ -59,9 +65,24 @@ def test_produccion_acepta_un_callback_token_propio() -> None:
         app_env="production",
         SESSION_SECRET="s" * 32,
         bonita_callback_token="p" * 64,
+        admin_initial_password="Clave-productiva-2026",
     )
 
     assert settings.bonita_callback_token is not None
+
+
+def test_produccion_rechaza_password_publica_del_administrador() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="ADMIN_INITIAL_PASSWORD propio es obligatorio en producción",
+    ):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            SESSION_SECRET="s" * 32,
+            bonita_callback_token="p" * 64,
+            admin_initial_password=ADMIN_INITIAL_PASSWORD_DESARROLLO,
+        )
 
 
 def test_administrador_inicial_tiene_defaults_documentados() -> None:

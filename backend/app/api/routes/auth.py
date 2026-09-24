@@ -128,7 +128,7 @@ def cambiar_password(
     _: Annotated[None, Depends(validar_csrf)],
 ) -> SesionResponse:
     try:
-        cambiar_password_propia(
+        usuario = cambiar_password_propia(
             session,
             usuario,
             datos.password_actual.get_secret_value(),

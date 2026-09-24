@@ -16,6 +16,9 @@ from sqlalchemy import URL
 BONITA_CALLBACK_TOKEN_DESARROLLO = "dev-only-rescuesync-bonita-callback-token"
 """Token compartido por Compose en desarrollo; nunca es válido en producción."""
 
+ADMIN_INITIAL_PASSWORD_DESARROLLO = "administrador123"
+"""Clave pública del entorno local; nunca es válida en producción."""
+
 
 class Settings(BaseSettings):
     _session_secret_desarrollo: str = PrivateAttr(
@@ -63,7 +66,7 @@ class Settings(BaseSettings):
     session_cookie_secure: bool | None = None
 
     admin_email: EmailStr = "admin@rescuesync.org"
-    admin_initial_password: SecretStr = SecretStr("administrador123")
+    admin_initial_password: SecretStr = SecretStr(ADMIN_INITIAL_PASSWORD_DESARROLLO)
 
     @field_validator("session_secret", "bonita_callback_token", mode="before")
     @classmethod
@@ -119,6 +122,14 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "BONITA_CALLBACK_TOKEN propio es obligatorio en producción"
+            )
+        if (
+            self.app_env.casefold() == "production"
+            and self.admin_initial_password.get_secret_value()
+            == ADMIN_INITIAL_PASSWORD_DESARROLLO
+        ):
+            raise ValueError(
+                "ADMIN_INITIAL_PASSWORD propio es obligatorio en producción"
             )
         if self.session_cookie_samesite == "none" and not self.cookies_seguras:
             raise ValueError("SameSite=None requiere cookies Secure")

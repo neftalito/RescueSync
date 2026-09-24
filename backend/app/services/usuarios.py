@@ -210,7 +210,7 @@ def actualizar_usuario(
     usuario.email = nuevo_email
     usuario.rol = nuevo_rol
     usuario.activo = nuevo_activo
-    usuario.organizacion_id = organizacion.id if organizacion is not None else None
+    usuario.organizacion = organizacion
     if se_desactiva:
         usuario.version_sesion += 1
     _flush_email_seguro(session)

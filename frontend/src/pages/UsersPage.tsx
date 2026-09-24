@@ -10,6 +10,7 @@ import {
   deactivateUser,
   getOrganizations,
   getUsers,
+  reactivateUser,
   resetUserPassword,
   updateUser,
 } from "../api/users";
@@ -51,16 +52,7 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
   const statusMutation = useMutation({
     mutationFn: async ({ user, active }: { user: ManagedUser; active: boolean }) => {
       if (active) {
-        return updateUser(
-          user.id,
-          {
-            email: user.email,
-            rol: user.rol,
-            organizacion_id: String(user.organizacion?.id ?? ""),
-            activo: true,
-          },
-          session.csrf_token,
-        );
+        return reactivateUser(user.id, session.csrf_token);
       }
       await deactivateUser(user.id, session.csrf_token);
       return null;

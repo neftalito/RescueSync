@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from httpx import Response
+from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import requerir_operacion
@@ -16,8 +17,9 @@ from app.core.security import (
     generar_password_hash,
 )
 from app.db.models import Organizacion, RolUsuario, TipoOrganizacion, Usuario
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.main import app
+from app.services.auth import PasswordActualIncorrectaError, cambiar_password_propia
 
 PASSWORD = "Una-clave-segura-2026"
 
@@ -284,6 +286,48 @@ def test_cambio_password_rechaza_la_clave_actual_incorrecta(
 
     assert response.status_code == 400
     assert response.json() == {"detail": "La contraseña actual es incorrecta."}
+
+
+def test_cambio_password_relee_un_restablecimiento_administrativo_con_bloqueo() -> None:
+    email = "carrera-password@rescuesync.org"
+    password_restablecida = "Clave-restablecida-2026"
+    with SessionLocal.begin() as preparacion:
+        preparacion.execute(delete(Usuario).where(Usuario.email == email))
+        usuario = Usuario(
+            email=email,
+            password_hash=generar_password_hash(PASSWORD),
+            rol=RolUsuario.AUDITOR_DIRECTIVO,
+        )
+        preparacion.add(usuario)
+        preparacion.flush()
+        usuario_id = usuario.id
+
+    sesion_usuario = SessionLocal()
+    try:
+        usuario_desactualizado = sesion_usuario.get(Usuario, usuario_id)
+        assert usuario_desactualizado is not None
+
+        with SessionLocal.begin() as sesion_administrador:
+            usuario_restablecido = sesion_administrador.get(Usuario, usuario_id)
+            assert usuario_restablecido is not None
+            usuario_restablecido.password_hash = generar_password_hash(
+                password_restablecida
+            )
+            usuario_restablecido.version_sesion += 1
+
+        with pytest.raises(PasswordActualIncorrectaError):
+            cambiar_password_propia(
+                sesion_usuario,
+                usuario_desactualizado,
+                PASSWORD,
+                "Otra-clave-segura-2026",
+            )
+        assert usuario_desactualizado.version_sesion == 2
+    finally:
+        sesion_usuario.rollback()
+        sesion_usuario.close()
+        with SessionLocal.begin() as limpieza:
+            limpieza.execute(delete(Usuario).where(Usuario.email == email))
 
 
 def test_sesion_rechaza_cookie_ausente_o_manipulada(
