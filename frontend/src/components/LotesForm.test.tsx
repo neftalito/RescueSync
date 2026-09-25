@@ -306,6 +306,140 @@ describe("LotesForm", () => {
     });
   });
 
+  it("pide confirmación antes de eliminar un borrador guardado", async () => {
+    let eliminaciones = 0;
+    server.use(
+      http.delete(`${URL_LOTES}/7`, () => {
+        eliminaciones += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+
+    await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
+
+    expect(
+      screen.getByRole("group", {
+        name: "¿Eliminar el lote 1? Esta acción no se puede deshacer.",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(
+      screen.queryByRole("group", { name: /¿Eliminar el lote 1\?/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+      "Agua potable",
+    );
+    expect(eliminaciones).toBe(0);
+  });
+
+  it("elimina un borrador y conserva las ediciones pendientes de los demás", async () => {
+    let requestCredentials: RequestCredentials | undefined;
+    let csrfHeader: string | null = null;
+    let cuerpo: unknown;
+    server.use(
+      http.delete(`${URL_LOTES}/7`, ({ request }) => {
+        requestCredentials = request.credentials;
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        return new HttpResponse(null, { status: 204 });
+      }),
+      http.post(URL_LOTES, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json(
+          [loteGuardado(8, "Abrigo", "250.000", "mantas")],
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm([
+      loteGuardado(7, "Agua potable", "500.000", "litros"),
+      loteGuardado(8, "Abrigo", "100.000", "mantas"),
+    ]);
+
+    const cantidadAbrigo = campo("Cantidad requerida", 1);
+    await user.clear(cantidadAbrigo);
+    await user.type(cantidadAbrigo, "250");
+    await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
+    await user.click(
+      screen.getByRole("button", { name: "Sí, eliminar lote 1" }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Lote eliminado definitivamente.",
+    );
+    expect(requestCredentials).toBe("include");
+    expect(csrfHeader).toBe(CSRF_TOKEN);
+    expect(screen.getAllByLabelText("Tipo de necesidad")).toHaveLength(1);
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("Abrigo");
+    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("250");
+
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+
+    await screen.findByText("1 lote guardado en borrador.");
+    expect(cuerpo).toEqual({
+      lotes: [
+        {
+          id: 8,
+          tipo_necesidad: "Abrigo",
+          cantidad_requerida: "250",
+          unidad: "mantas",
+          descripcion: null,
+        },
+      ],
+    });
+  });
+
+  it("deja una fila vacía al eliminar el único borrador", async () => {
+    server.use(
+      http.delete(
+        `${URL_LOTES}/7`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+
+    await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
+    await user.click(
+      screen.getByRole("button", { name: "Sí, eliminar lote 1" }),
+    );
+
+    await screen.findByText("Lote eliminado definitivamente.");
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: "Guardar borrador" }),
+    ).toBeEnabled();
+  });
+
+  it("muestra el error al eliminar y conserva el lote", async () => {
+    server.use(
+      http.delete(`${URL_LOTES}/7`, () =>
+        HttpResponse.json(
+          { detail: "El lote 7 está PUBLICADO y ya no puede eliminarse." },
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+
+    await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
+    await user.click(
+      screen.getByRole("button", { name: "Sí, eliminar lote 1" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El lote 7 está PUBLICADO y ya no puede eliminarse.",
+    );
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+      "Agua potable",
+    );
+  });
+
   it("muestra el error accionable del backend", async () => {
     server.use(
       http.post(URL_LOTES, () =>

@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { type ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { ApiError } from "../api/client";
+import { useEliminarLote } from "../hooks/useEliminarLote";
 import { useGuardarLotes } from "../hooks/useGuardarLotes";
 import {
   estadoLoteLabels,
@@ -53,22 +54,28 @@ export function LotesForm({
     control,
     handleSubmit,
     reset,
-    formState: { errors, isDirty },
+    getValues,
+    formState: { errors, isDirty, defaultValues },
   } = useForm<LotesFormData>({
     resolver: zodResolver(lotesFormSchema),
     defaultValues: {
       lotes: borradores.length > 0 ? borradores.map(aFormulario) : [loteVacio],
     },
   });
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control,
     name: "lotes",
     // `id` pertenece al lote persistido; RHF usa otra clave para sus filas.
     keyName: "clave",
   });
   const mutation = useGuardarLotes(emergenciaId);
+  const eliminacion = useEliminarLote(emergenciaId);
+  // Borrador cuya eliminación espera confirmación: es estado de la interfaz,
+  // no un valor del formulario.
+  const [confirmando, setConfirmando] = useState<number | null>(null);
 
   const submit = (datos: LotesFormData): void => {
+    eliminacion.reset();
     mutation.mutate(
       { ...datos, csrfToken },
       {
@@ -79,6 +86,27 @@ export function LotesForm({
       },
     );
   };
+  const eliminarGuardado = (loteId: number): void => {
+    mutation.reset();
+    eliminacion.mutate(
+      { loteId, csrfToken },
+      {
+        onSuccess: () => {
+          setConfirmando(null);
+          const sinLote = <T extends { id?: number | null } | undefined>(
+            items: T[],
+          ): T[] => items.filter((item) => item?.id !== loteId);
+          const actuales = sinLote(getValues("lotes"));
+          // El lote ya no existe en la base: se quita también de los valores
+          // iniciales para que las ediciones sin guardar de otras filas sigan
+          // contando como cambios pendientes.
+          reset({ lotes: sinLote(defaultValues?.lotes ?? []) });
+          replace(actuales.length > 0 ? actuales : [loteVacio]);
+        },
+      },
+    );
+  };
+  const ocupado = mutation.isPending || eliminacion.isPending;
   const requestError =
     mutation.error instanceof ApiError
       ? mutation.error.message
@@ -87,6 +115,12 @@ export function LotesForm({
         : null;
   const guardados = mutation.isSuccess ? mutation.data : [];
   const sinCambios = !isDirty && fields.every((field) => field.id !== null);
+  const eliminacionError =
+    eliminacion.error instanceof ApiError
+      ? eliminacion.error.message
+      : eliminacion.isError
+        ? "No pudimos eliminar el lote. Intentá nuevamente."
+        : null;
 
   return (
     <article className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -96,8 +130,8 @@ export function LotesForm({
       </h2>
       <p className="mt-2 leading-7 text-slate-600">
         Desglosá la emergencia en lotes con tipo, cantidad y unidad. Los lotes
-        se guardan en borrador y podés editarlos mientras no se publiquen:
-        guardar no publica la convocatoria.
+        se guardan en borrador y podés editarlos o eliminarlos mientras no se
+        publiquen: guardar no publica la convocatoria.
       </p>
 
       {noEditables.length > 0 && (
@@ -288,14 +322,67 @@ export function LotesForm({
                     </div>
                   </div>
 
-                  {/* La API no elimina lotes: solo se quitan filas sin guardar. */}
-                  {loteId === null && fields.length > 1 && (
+                  {loteId === null ? (
+                    fields.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => remove(index)}
+                        className="mt-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                      >
+                        Quitar lote {index + 1}
+                      </button>
+                    )
+                  ) : confirmando === loteId ? (
+                    <div
+                      role="group"
+                      aria-labelledby={`${prefijo}-confirmar`}
+                      className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-900"
+                    >
+                      <p id={`${prefijo}-confirmar`} className="font-semibold">
+                        ¿Eliminar el lote {index + 1}? Esta acción no se puede
+                        deshacer.
+                      </p>
+                      {eliminacionError &&
+                        eliminacion.variables?.loteId === loteId && (
+                          <p role="alert" className="mt-1 text-red-800">
+                            {eliminacionError}
+                          </p>
+                        )}
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        <button
+                          type="button"
+                          disabled={ocupado}
+                          onClick={() => eliminarGuardado(loteId)}
+                          className="rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 disabled:cursor-wait disabled:opacity-70"
+                        >
+                          {eliminacion.isPending
+                            ? "Eliminando…"
+                            : `Sí, eliminar lote ${index + 1}`}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={eliminacion.isPending}
+                          onClick={() => {
+                            eliminacion.reset();
+                            setConfirmando(null);
+                          }}
+                          className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:opacity-60"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => remove(index)}
-                      className="mt-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                      disabled={ocupado}
+                      onClick={() => {
+                        eliminacion.reset();
+                        setConfirmando(loteId);
+                      }}
+                      className="mt-5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-semibold text-red-800 transition hover:border-red-400 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 disabled:opacity-60"
                     >
-                      Quitar lote {index + 1}
+                      Eliminar lote {index + 1}
                     </button>
                   )}
                 </fieldset>
@@ -317,6 +404,15 @@ export function LotesForm({
         >
           Agregar lote
         </button>
+
+        {eliminacion.isSuccess && (
+          <p
+            role="status"
+            className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm leading-6 font-semibold text-green-900"
+          >
+            Lote eliminado definitivamente.
+          </p>
+        )}
 
         {mutation.isSuccess && !isDirty && (
           <div
@@ -346,7 +442,7 @@ export function LotesForm({
 
         <button
           type="submit"
-          disabled={mutation.isPending || sinCambios}
+          disabled={ocupado || sinCambios}
           className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-70 aria-busy:cursor-wait"
           aria-busy={mutation.isPending}
         >

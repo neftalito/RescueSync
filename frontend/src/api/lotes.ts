@@ -1,5 +1,5 @@
 import { lotesSchema, type Lote, type LotesFormData } from "../schemas/lote";
-import { apiRequest } from "./client";
+import { apiRequest, apiRequestVoid } from "./client";
 
 export function listarLotes(emergenciaId: number): Promise<Lote[]> {
   return apiRequest(`/emergencias/${emergenciaId}/lotes`, lotesSchema);
@@ -21,5 +21,16 @@ export function guardarLotes(
     method: "POST",
     headers: { "X-CSRF-Token": csrfToken },
     body: JSON.stringify({ lotes }),
+  });
+}
+
+export function eliminarLote(
+  emergenciaId: number,
+  loteId: number,
+  csrfToken: string,
+): Promise<void> {
+  return apiRequestVoid(`/emergencias/${emergenciaId}/lotes/${loteId}`, {
+    method: "DELETE",
+    headers: { "X-CSRF-Token": csrfToken },
   });
 }
