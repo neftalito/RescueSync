@@ -15,6 +15,8 @@ import {
 interface LotesFormProps {
   emergenciaId: number;
   csrfToken: string;
+  /** Lotes persistidos: los borradores se editan y el resto se muestra fijo. */
+  lotes: Lote[];
 }
 
 const inputClasses =
@@ -41,7 +43,11 @@ function aFormulario(lote: Lote): LoteItemFormData {
 export function LotesForm({
   emergenciaId,
   csrfToken,
+  lotes,
 }: LotesFormProps): ReactElement {
+  // El backend rechaza con 409 editar un lote que ya salió del borrador.
+  const borradores = lotes.filter((lote) => lote.estado === "BORRADOR");
+  const noEditables = lotes.filter((lote) => lote.estado !== "BORRADOR");
   const {
     register,
     control,
@@ -50,7 +56,9 @@ export function LotesForm({
     formState: { errors, isDirty },
   } = useForm<LotesFormData>({
     resolver: zodResolver(lotesFormSchema),
-    defaultValues: { lotes: [loteVacio] },
+    defaultValues: {
+      lotes: borradores.length > 0 ? borradores.map(aFormulario) : [loteVacio],
+    },
   });
   const { fields, append, remove } = useFieldArray({
     control,
@@ -64,9 +72,9 @@ export function LotesForm({
     mutation.mutate(
       { ...datos, csrfToken },
       {
-        onSuccess: (lotes) => {
+        onSuccess: (guardados) => {
           // Los lotes guardados vuelven con `id`: el próximo envío los edita.
-          reset({ lotes: lotes.map(aFormulario) });
+          reset({ lotes: guardados.map(aFormulario) });
         },
       },
     );
@@ -78,7 +86,7 @@ export function LotesForm({
         ? "No pudimos guardar los lotes. Intentá nuevamente."
         : null;
   const guardados = mutation.isSuccess ? mutation.data : [];
-  const estadoPorId = new Map(guardados.map((lote) => [lote.id, lote.estado]));
+  const sinCambios = !isDirty && fields.every((field) => field.id !== null);
 
   return (
     <article className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
@@ -88,8 +96,43 @@ export function LotesForm({
       </h2>
       <p className="mt-2 leading-7 text-slate-600">
         Desglosá la emergencia en lotes con tipo, cantidad y unidad. Los lotes
-        se guardan en borrador: guardar no publica la convocatoria.
+        se guardan en borrador y podés editarlos mientras no se publiquen:
+        guardar no publica la convocatoria.
       </p>
+
+      {noEditables.length > 0 && (
+        <section aria-labelledby="lotes-no-editables" className="mt-6">
+          <h3
+            id="lotes-no-editables"
+            className="text-sm font-semibold text-slate-900"
+          >
+            Lotes ya publicados
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Salieron del borrador y ya no admiten edición.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {noEditables.map((lote) => (
+              <li
+                key={lote.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
+              >
+                <div>
+                  <p className="font-semibold text-slate-900">
+                    {lote.tipo_necesidad}
+                  </p>
+                  <p className="mt-1 text-slate-600">
+                    {lote.cantidad_requerida} {lote.unidad} · N.º {lote.id}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {estadoLoteLabels[lote.estado]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <form
         className="mt-6 space-y-6"
@@ -101,7 +144,6 @@ export function LotesForm({
             const erroresLote = errors.lotes?.[index];
             const prefijo = `lote-${index}`;
             const loteId = field.id;
-            const estado = loteId === null ? undefined : estadoPorId.get(loteId);
             const describedBy = (campo: string, conError: boolean): string | undefined =>
               conError ? `${prefijo}-${campo}-error` : undefined;
 
@@ -116,9 +158,9 @@ export function LotesForm({
                       </span>
                     )}
                   </legend>
-                  {estado && (
+                  {loteId !== null && (
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                      {estadoLoteLabels[estado]}
+                      {estadoLoteLabels.BORRADOR}
                     </span>
                   )}
 
@@ -304,10 +346,15 @@ export function LotesForm({
 
         <button
           type="submit"
-          disabled={mutation.isPending}
-          className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+          disabled={mutation.isPending || sinCambios}
+          className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-70 aria-busy:cursor-wait"
+          aria-busy={mutation.isPending}
         >
-          {mutation.isPending ? "Guardando…" : "Guardar borrador"}
+          {mutation.isPending
+            ? "Guardando…"
+            : sinCambios
+              ? "Sin cambios para guardar"
+              : "Guardar borrador"}
         </button>
       </form>
     </article>

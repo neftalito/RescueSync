@@ -69,6 +69,7 @@ describe("LotesPage", () => {
   it("muestra el detalle de la emergencia junto al formulario de lotes", async () => {
     server.use(
       http.get(`${API_URL}/emergencias`, () => HttpResponse.json([emergencia])),
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([])),
     );
     renderPage("/emergencias/31/lotes");
 
@@ -79,8 +80,60 @@ describe("LotesPage", () => {
       screen.getByText("Inundación con familias evacuadas."),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Guardar borrador" }),
+      await screen.findByRole("button", { name: "Guardar borrador" }),
     ).toBeInTheDocument();
+  });
+
+  it("carga los borradores guardados para editarlos", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias`, () => HttpResponse.json([emergencia])),
+      http.get(`${API_URL}/emergencias/31/lotes`, () =>
+        HttpResponse.json([
+          {
+            id: 7,
+            emergencia_id: 31,
+            creado_por_usuario_id: 2,
+            tipo_necesidad: "Agua potable",
+            descripcion: "Bidones de 5 litros",
+            cantidad_requerida: "500.000",
+            unidad: "litros",
+            estado: "BORRADOR",
+            version: 1,
+            creado_en: "2026-09-19T18:20:39.102766Z",
+            actualizado_en: "2026-09-19T18:20:39.102766Z",
+          },
+        ]),
+      ),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    expect(await screen.findByLabelText("Tipo de necesidad")).toHaveValue(
+      "Agua potable",
+    );
+    expect(screen.getByLabelText("Descripción (opcional)")).toHaveValue(
+      "Bidones de 5 litros",
+    );
+  });
+
+  it("muestra el error al consultar los lotes con opción de reintentar", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias`, () => HttpResponse.json([emergencia])),
+      http.get(`${API_URL}/emergencias/31/lotes`, () =>
+        HttpResponse.json(
+          { detail: "Solo el centro coordinador asignado consulta estos lotes." },
+          { status: 403 },
+        ),
+      ),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Solo el centro coordinador asignado consulta estos lotes.",
+    );
+    expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Guardar borrador" }),
+    ).not.toBeInTheDocument();
   });
 
   it("avisa si la emergencia no está en la bandeja del coordinador", async () => {

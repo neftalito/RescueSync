@@ -21,7 +21,8 @@ export function useGuardarLotes(
     mutationFn: ({ csrfToken, ...datos }: GuardarLotesVariables) =>
       guardarLotes(emergenciaId, datos, csrfToken),
     onSuccess: () => {
-      // Guardar el primer lote asigna el centro coordinador a la emergencia.
+      // Guardar el primer lote asigna el centro coordinador a la emergencia;
+      // la clave común también invalida el listado de lotes de la emergencia.
       void queryClient.invalidateQueries({ queryKey: emergenciasQueryKey });
     },
   });

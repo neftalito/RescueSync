@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import type { EstadoLote, Lote } from "../schemas/lote";
 import { LotesForm } from "./LotesForm";
 
 const API_URL = "http://localhost:8000/api/v1";
@@ -18,7 +19,8 @@ function loteGuardado(
   tipo: string,
   cantidad: string,
   unidad: string,
-): Record<string, unknown> {
+  estado: EstadoLote = "BORRADOR",
+): Lote {
   return {
     id,
     emergencia_id: 31,
@@ -27,7 +29,7 @@ function loteGuardado(
     descripcion: null,
     cantidad_requerida: cantidad,
     unidad,
-    estado: "BORRADOR",
+    estado,
     version: 1,
     creado_en: "2026-09-19T18:20:39.102766Z",
     actualizado_en: "2026-09-19T18:20:39.102766Z",
@@ -43,13 +45,13 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderForm(): void {
+function renderForm(lotes: Lote[] = []): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <LotesForm emergenciaId={31} csrfToken={CSRF_TOKEN} />
+      <LotesForm emergenciaId={31} csrfToken={CSRF_TOKEN} lotes={lotes} />
     </QueryClientProvider>,
   );
 }
@@ -206,6 +208,102 @@ describe("LotesForm", () => {
     expect(
       screen.queryByRole("button", { name: "Quitar lote 1" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("precarga los borradores guardados y los edita por id", async () => {
+    let cuerpo: unknown;
+    server.use(
+      http.post(URL_LOTES, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json(
+          [
+            loteGuardado(7, "Agua potable", "900.000", "litros"),
+            loteGuardado(9, "Pañales", "30", "paquetes"),
+          ],
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+      "Agua potable",
+    );
+    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500.000");
+    expect(screen.getByText("Borrador")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Sin cambios para guardar" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Quitar lote 1" }),
+    ).not.toBeInTheDocument();
+
+    const cantidad = screen.getByLabelText("Cantidad requerida");
+    await user.clear(cantidad);
+    await user.type(cantidad, "900");
+    await user.click(screen.getByRole("button", { name: "Agregar lote" }));
+    await completarLote(user, 1, "Pañales", "30", "paquetes");
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 lotes guardados en borrador.",
+    );
+    expect(cuerpo).toEqual({
+      lotes: [
+        {
+          id: 7,
+          tipo_necesidad: "Agua potable",
+          cantidad_requerida: "900",
+          unidad: "litros",
+          descripcion: null,
+        },
+        {
+          tipo_necesidad: "Pañales",
+          cantidad_requerida: "30",
+          unidad: "paquetes",
+          descripcion: null,
+        },
+      ],
+    });
+  });
+
+  it("muestra los lotes publicados sin permitir editarlos ni reenviarlos", async () => {
+    let cuerpo: unknown;
+    server.use(
+      http.post(URL_LOTES, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json(
+          [loteGuardado(8, "Abrigo", "100", "mantas")],
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm([
+      loteGuardado(5, "Colchones", "40.000", "unidades", "PUBLICADO"),
+    ]);
+
+    const publicados = screen.getByRole("region", { name: "Lotes ya publicados" });
+    expect(publicados).toHaveTextContent("Colchones");
+    expect(publicados).toHaveTextContent("40.000 unidades");
+    expect(publicados).toHaveTextContent("Publicado");
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("");
+
+    await completarLote(user, 0, "Abrigo", "100", "mantas");
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+
+    await screen.findByText("1 lote guardado en borrador.");
+    expect(cuerpo).toEqual({
+      lotes: [
+        {
+          tipo_necesidad: "Abrigo",
+          cantidad_requerida: "100",
+          unidad: "mantas",
+          descripcion: null,
+        },
+      ],
+    });
   });
 
   it("muestra el error accionable del backend", async () => {

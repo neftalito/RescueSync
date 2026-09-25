@@ -1,6 +1,10 @@
 import { lotesSchema, type Lote, type LotesFormData } from "../schemas/lote";
 import { apiRequest } from "./client";
 
+export function listarLotes(emergenciaId: number): Promise<Lote[]> {
+  return apiRequest(`/emergencias/${emergenciaId}/lotes`, lotesSchema);
+}
+
 export function guardarLotes(
   emergenciaId: number,
   datos: LotesFormData,

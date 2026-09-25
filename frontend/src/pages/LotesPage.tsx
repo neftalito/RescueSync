@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router";
 import { ApiError } from "../api/client";
 import { LotesForm } from "../components/LotesForm";
 import { useEmergencias } from "../hooks/useEmergencias";
+import { useLotes } from "../hooks/useLotes";
 import { estadoLabels, gravedadLabels } from "../schemas/emergencia";
 import type { Session } from "../schemas/auth";
 
@@ -48,6 +49,64 @@ function Aviso({
   );
 }
 
+function ErrorConReintento({
+  mensaje,
+  onReintentar,
+}: {
+  mensaje: string;
+  onReintentar: () => void;
+}): ReactElement {
+  return (
+    <Aviso tono="error">
+      <p>{mensaje}</p>
+      <button
+        type="button"
+        onClick={onReintentar}
+        className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+      >
+        Reintentar
+      </button>
+    </Aviso>
+  );
+}
+
+function SeccionLotes({
+  emergenciaId,
+  csrfToken,
+}: {
+  emergenciaId: number;
+  csrfToken: string;
+}): ReactElement {
+  const query = useLotes(emergenciaId);
+
+  if (query.isPending) {
+    return <Aviso tono="neutro">Cargando lotes…</Aviso>;
+  }
+
+  if (query.isError) {
+    const mensaje =
+      query.error instanceof ApiError
+        ? query.error.message
+        : "No pudimos consultar los lotes. Intentá nuevamente.";
+    return (
+      <ErrorConReintento
+        mensaje={mensaje}
+        onReintentar={() => void query.refetch()}
+      />
+    );
+  }
+
+  // El formulario toma los borradores como valores iniciales solo al montarse;
+  // después de guardar se sincroniza con la respuesta del POST.
+  return (
+    <LotesForm
+      emergenciaId={emergenciaId}
+      csrfToken={csrfToken}
+      lotes={query.data}
+    />
+  );
+}
+
 function Contenido({
   emergenciaId,
   csrfToken,
@@ -73,16 +132,10 @@ function Contenido({
         ? query.error.message
         : "No pudimos consultar la emergencia. Intentá nuevamente.";
     return (
-      <Aviso tono="error">
-        <p>{mensaje}</p>
-        <button
-          type="button"
-          onClick={() => void query.refetch()}
-          className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
-        >
-          Reintentar
-        </button>
-      </Aviso>
+      <ErrorConReintento
+        mensaje={mensaje}
+        onReintentar={() => void query.refetch()}
+      />
     );
   }
 
@@ -139,7 +192,7 @@ function Contenido({
         </dl>
       </aside>
 
-      <LotesForm emergenciaId={emergencia.id} csrfToken={csrfToken} />
+      <SeccionLotes emergenciaId={emergencia.id} csrfToken={csrfToken} />
     </div>
   );
 }
