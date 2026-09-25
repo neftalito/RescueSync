@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from app.api.routes import auth, bonita, emergencias, health, lotes, ofertas, usuarios
+from app.api.routes import (
+    auth,
+    bonita,
+    convocatorias,
+    emergencias,
+    health,
+    lotes,
+    ofertas,
+    usuarios,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
@@ -20,6 +29,11 @@ api_router.include_router(
     lotes.router,
     prefix="/emergencias",
     tags=["lotes"],
+)
+api_router.include_router(
+    convocatorias.router,
+    prefix="/emergencias",
+    tags=["convocatorias"],
 )
 api_router.include_router(
     bonita.router,
