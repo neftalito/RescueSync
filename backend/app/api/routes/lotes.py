@@ -1,4 +1,4 @@
-"""Consulta, creación y edición de lotes de necesidades en borrador."""
+"""Consulta, creación, edición y eliminación de lotes de necesidades en borrador."""
 
 from typing import Annotated
 
@@ -21,6 +21,7 @@ UsuarioCoordinador = Annotated[
     Depends(requerir_operacion(OperacionProtegida.GESTIONAR_LOTES)),
 ]
 EmergenciaId = Annotated[int, Path(gt=0)]
+LoteId = Annotated[int, Path(gt=0)]
 
 
 def exigir_coordinador_con_csrf(
@@ -119,6 +120,40 @@ def listar_lotes(
     except servicio.LoteError as error:
         raise _error_http(error) from error
     return [LoteResponse.model_validate(lote) for lote in lotes]
+
+
+@router.delete(
+    "/{emergencia_id}/lotes/{lote_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        codigo: RESPUESTAS_ERROR[codigo]
+        for codigo in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_409_CONFLICT,
+        )
+    },
+    summary="Eliminar un lote en borrador",
+    description=(
+        "Quita definitivamente un lote que sigue en borrador. Un lote "
+        "publicado, cerrado o cancelado responde 409 y se conserva. Repetir "
+        "la eliminación responde 404. Solo el centro coordinador asignado con "
+        "token CSRF vigente."
+    ),
+)
+def eliminar_lote(
+    emergencia_id: EmergenciaId,
+    lote_id: LoteId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioGestionaLotes,
+) -> None:
+    """Elimina el borrador en una transacción propia."""
+
+    try:
+        servicio.eliminar_lote(session, usuario, emergencia_id, lote_id)
+    except servicio.LoteError as error:
+        raise _error_http(error) from error
 
 
 def _error_http(error: servicio.LoteError) -> HTTPException:

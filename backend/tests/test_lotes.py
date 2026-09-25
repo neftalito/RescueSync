@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -15,6 +16,7 @@ from app.core.security import (
 )
 from app.db.models import (
     Convocatoria,
+    ConvocatoriaLote,
     Emergencia,
     EstadoEmergencia,
     EstadoLote,
@@ -913,6 +915,284 @@ def test_servicio_listar_rechaza_coordinador_sin_centro(
         servicio_lotes.listar_lotes(db_session, coordinador_suelto, emergencia.id)
 
 
+def _url_lote(emergencia: Emergencia, lote_id: int) -> str:
+    return f"/api/v1/emergencias/{emergencia.id}/lotes/{lote_id}"
+
+
+def test_elimina_borrador_y_conserva_los_demas(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    eliminado = _lote(db_session, emergencia, coordinador, tipo="Agua potable")
+    conservado = _lote(db_session, emergencia, coordinador, tipo="Abrigo")
+    csrf = _autenticar(client, coordinador)
+
+    response = client.delete(
+        _url_lote(emergencia, eliminado.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+    listado = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+    assert [item["id"] for item in listado.json()] == [conservado.id]
+    db_session.expire_all()
+    assert db_session.get(Lote, eliminado.id) is None
+    emergencia_guardada = db_session.get(Emergencia, emergencia.id)
+    assert emergencia_guardada is not None
+    assert emergencia_guardada.estado is EstadoEmergencia.REGISTRADA
+    assert _contar_convocatorias(db_session, emergencia.id) == 0
+
+
+def test_eliminar_dos_veces_responde_no_encontrado(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    lote = _lote(db_session, emergencia, coordinador)
+    csrf = _autenticar(client, coordinador)
+
+    primera = client.delete(
+        _url_lote(emergencia, lote.id), headers={"X-CSRF-Token": csrf}
+    )
+    segunda = client.delete(
+        _url_lote(emergencia, lote.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert primera.status_code == 204
+    assert segunda.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "estado",
+    [EstadoLote.PUBLICADO, EstadoLote.CERRADO, EstadoLote.CANCELADO],
+)
+def test_rechaza_eliminar_lote_fuera_de_borrador(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+    estado: EstadoLote,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    lote = _lote(db_session, emergencia, coordinador, estado=estado)
+    csrf = _autenticar(client, coordinador)
+
+    response = client.delete(
+        _url_lote(emergencia, lote.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert response.status_code == 409
+    db_session.expire_all()
+    assert db_session.get(Lote, lote.id) is not None
+
+
+def test_no_elimina_borrador_referenciado_por_una_convocatoria(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    lote = _lote(db_session, emergencia, coordinador)
+    convocatoria = Convocatoria(
+        emergencia_id=emergencia.id,
+        numero=1,
+        cierra_en=datetime.now(UTC) + timedelta(days=1),
+    )
+    db_session.add(convocatoria)
+    db_session.flush()
+    db_session.add(
+        ConvocatoriaLote(
+            convocatoria_id=convocatoria.id,
+            lote_id=lote.id,
+            cantidad_publicada=Decimal(1000),
+            unidad_publicada="litros",
+        )
+    )
+    # Confirma el escenario para que el rollback del servicio solo deshaga
+    # el intento de eliminación.
+    db_session.commit()
+    csrf = _autenticar(client, coordinador)
+
+    response = client.delete(
+        _url_lote(emergencia, lote.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert response.status_code == 409
+    db_session.expire_all()
+    assert db_session.get(Lote, lote.id) is not None
+
+
+def test_rechaza_eliminar_lote_de_otra_emergencia(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+    municipio: Organizacion,
+    operador: Usuario,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    otra = Emergencia(
+        municipio_id=municipio.id,
+        creada_por_usuario_id=operador.id,
+        gravedad=GravedadEmergencia.MEDIA,
+        zona="Otra zona",
+        descripcion="Otra emergencia",
+        centro_coordinador_id=centro.id,
+    )
+    db_session.add(otra)
+    db_session.flush()
+    ajeno = _lote(db_session, otra, coordinador)
+    csrf = _autenticar(client, coordinador)
+
+    response = client.delete(
+        _url_lote(emergencia, ajeno.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert response.status_code == 404
+    db_session.expire_all()
+    assert db_session.get(Lote, ajeno.id) is not None
+
+
+def test_eliminar_rechaza_lote_o_emergencia_inexistentes(
+    client: TestClient,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    csrf = _autenticar(client, coordinador)
+
+    sin_lote = client.delete(
+        _url_lote(emergencia, 999999), headers={"X-CSRF-Token": csrf}
+    )
+    sin_emergencia = client.delete(
+        "/api/v1/emergencias/999999/lotes/1", headers={"X-CSRF-Token": csrf}
+    )
+
+    assert sin_lote.status_code == 404
+    assert sin_emergencia.status_code == 404
+
+
+def test_eliminar_deniega_centro_distinto_del_asignado(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    otro_centro = Organizacion(
+        tipo=TipoOrganizacion.CENTRO_COORDINADOR,
+        nombre="Centro que no elimina",
+    )
+    db_session.add(otro_centro)
+    db_session.flush()
+    emergencia.centro_coordinador_id = otro_centro.id
+    db_session.flush()
+    lote = _lote(db_session, emergencia, coordinador)
+    csrf = _autenticar(client, coordinador)
+
+    response = client.delete(
+        _url_lote(emergencia, lote.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert response.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(Lote, lote.id) is not None
+
+
+def test_eliminar_exige_sesion(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    lote = _lote(db_session, emergencia, coordinador)
+
+    response = client.delete(_url_lote(emergencia, lote.id))
+
+    assert response.status_code == 401
+    assert db_session.get(Lote, lote.id) is not None
+
+
+@pytest.mark.parametrize("token", [None, "token-invalido"])
+def test_eliminar_exige_csrf_vigente(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+    token: str | None,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    lote = _lote(db_session, emergencia, coordinador)
+    _autenticar(client, coordinador)
+    headers = {"X-CSRF-Token": token} if token is not None else {}
+
+    response = client.delete(_url_lote(emergencia, lote.id), headers=headers)
+
+    assert response.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(Lote, lote.id) is not None
+
+
+@pytest.mark.parametrize(
+    "rol",
+    [
+        RolUsuario.OPERADOR_MUNICIPAL,
+        RolUsuario.REPRESENTANTE_ONG,
+        RolUsuario.AUDITOR_DIRECTIVO,
+    ],
+)
+def test_eliminar_deniega_roles_que_no_gestionan_lotes(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+    rol: RolUsuario,
+) -> None:
+    lote = _lote(db_session, emergencia, coordinador)
+    csrf = _autenticar(client, usuarios_denegados[rol])
+
+    response = client.delete(
+        _url_lote(emergencia, lote.id), headers={"X-CSRF-Token": csrf}
+    )
+
+    assert response.status_code == 403
+    db_session.expire_all()
+    assert db_session.get(Lote, lote.id) is not None
+
+
+def test_servicio_eliminar_rechaza_coordinador_sin_centro(
+    db_session: Session, emergencia: Emergencia, coordinador: Usuario
+) -> None:
+    lote = _lote(db_session, emergencia, coordinador)
+    coordinador_suelto = Usuario(
+        organizacion_id=None,
+        email="suelto-eliminar@centro.org",
+        password_hash=generar_password_hash(PASSWORD),
+        rol=RolUsuario.COORDINADOR_REGIONAL,
+    )
+
+    with pytest.raises(servicio_lotes.CentroNoAutorizadoError):
+        servicio_lotes.eliminar_lote(
+            db_session, coordinador_suelto, emergencia.id, lote.id
+        )
+
+
 def test_postgresql_rechaza_cantidad_no_positiva(
     db_session: Session, emergencia: Emergencia, coordinador: Usuario
 ) -> None:
@@ -1000,3 +1280,15 @@ def test_openapi_documenta_listado_de_lotes(client: TestClient) -> None:
     assert operacion["summary"]
     assert operacion["description"]
     assert {"200", "401", "403", "404"} <= set(operacion["responses"])
+
+
+def test_openapi_documenta_eliminacion_de_borradores(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operacion = response.json()["paths"][
+        "/api/v1/emergencias/{emergencia_id}/lotes/{lote_id}"
+    ]["delete"]
+    assert operacion["summary"]
+    assert operacion["description"]
+    assert {"204", "401", "403", "404", "409"} <= set(operacion["responses"])
