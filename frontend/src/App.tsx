@@ -6,6 +6,7 @@ import { useSession } from "./hooks/useSession";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { LotesPage } from "./pages/LotesPage";
 import { UsersPage } from "./pages/UsersPage";
 
 function LoadingScreen(): ReactElement {
@@ -75,6 +76,16 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "ADMINISTRADOR" ? (
             <UsersPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/emergencias/:emergenciaId/lotes"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <LotesPage session={session.data} />
           ) : (
             <Navigate to="/" replace />
           )
