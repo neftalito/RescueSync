@@ -1,4 +1,4 @@
-"""Creación y edición de lotes de necesidades en borrador."""
+"""Consulta, creación y edición de lotes de necesidades en borrador."""
 
 from typing import Annotated
 
@@ -84,3 +84,44 @@ def guardar_lotes(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
     return [LoteResponse.model_validate(lote) for lote in lotes]
+
+
+@router.get(
+    "/{emergencia_id}/lotes",
+    response_model=list[LoteResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        codigo: RESPUESTAS_ERROR[codigo]
+        for codigo in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+        )
+    },
+    summary="Listar los lotes de una emergencia",
+    description=(
+        "Devuelve todos los lotes de la emergencia, en borrador o publicados, "
+        "ordenados por alta, para que el coordinador retome su edición. El "
+        "campo `estado` indica cuáles siguen siendo editables. Solo el centro "
+        "coordinador asignado a la emergencia; si aún no tiene centro, la "
+        "lista está vacía y la consulta no la reclama."
+    ),
+)
+def listar_lotes(
+    emergencia_id: EmergenciaId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioCoordinador,
+) -> list[LoteResponse]:
+    """Consulta los lotes del centro autenticado sin modificar la emergencia."""
+
+    try:
+        lotes = servicio.listar_lotes(session, usuario, emergencia_id)
+    except servicio.LoteError as error:
+        raise _error_http(error) from error
+    return [LoteResponse.model_validate(lote) for lote in lotes]
+
+
+def _error_http(error: servicio.LoteError) -> HTTPException:
+    """Traduce un error de dominio de lotes a su respuesta HTTP."""
+
+    return HTTPException(status_code=_CODIGOS_ERROR[type(error)], detail=str(error))

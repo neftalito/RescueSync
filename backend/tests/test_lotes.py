@@ -743,6 +743,176 @@ def test_hace_rollback_ante_fallo_de_persistencia(
     assert _contar_lotes(db_session) == iniciales
 
 
+def test_lista_borradores_y_publicados_del_centro_asignado(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+    municipio: Organizacion,
+    operador: Usuario,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    borrador = _lote(db_session, emergencia, coordinador, tipo="Agua potable")
+    publicado = _lote(
+        db_session,
+        emergencia,
+        coordinador,
+        tipo="Colchones",
+        estado=EstadoLote.PUBLICADO,
+    )
+    otra = Emergencia(
+        municipio_id=municipio.id,
+        creada_por_usuario_id=operador.id,
+        gravedad=GravedadEmergencia.BAJA,
+        zona="Otra zona",
+        descripcion="Otra emergencia",
+        centro_coordinador_id=centro.id,
+    )
+    db_session.add(otra)
+    db_session.flush()
+    _lote(db_session, otra, coordinador, tipo="Ajeno")
+    _autenticar(client, coordinador)
+
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [(item["id"], item["estado"]) for item in payload] == [
+        (borrador.id, EstadoLote.BORRADOR.value),
+        (publicado.id, EstadoLote.PUBLICADO.value),
+    ]
+    assert payload[0]["tipo_necesidad"] == "Agua potable"
+    assert payload[0]["descripcion"] == "Necesidad prioritaria"
+    assert Decimal(payload[0]["cantidad_requerida"]) == Decimal(1000)
+    assert payload[0]["unidad"] == "litros"
+
+
+def test_lista_lo_guardado_para_retomar_la_edicion(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    csrf = _autenticar(client, coordinador)
+    alta = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/lotes",
+        json={
+            "lotes": [
+                {
+                    "tipo_necesidad": "Agua",
+                    "cantidad_requerida": 10,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert alta.status_code == 201
+
+    consulta = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert consulta.status_code == 200
+    assert consulta.json() == alta.json()
+
+
+def test_lista_vacia_sin_reclamar_emergencia_sin_centro(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    _autenticar(client, coordinador)
+
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    db_session.expire_all()
+    emergencia_guardada = db_session.get(Emergencia, emergencia.id)
+    assert emergencia_guardada is not None
+    assert emergencia_guardada.centro_coordinador_id is None
+
+
+def test_listar_rechaza_emergencia_inexistente(
+    client: TestClient, coordinador: Usuario
+) -> None:
+    _autenticar(client, coordinador)
+
+    response = client.get("/api/v1/emergencias/999999/lotes")
+
+    assert response.status_code == 404
+
+
+def test_listar_deniega_centro_distinto_del_asignado(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    otro_centro = Organizacion(
+        tipo=TipoOrganizacion.CENTRO_COORDINADOR,
+        nombre="Centro ajeno",
+    )
+    db_session.add(otro_centro)
+    db_session.flush()
+    emergencia.centro_coordinador_id = otro_centro.id
+    db_session.flush()
+    _lote(db_session, emergencia, coordinador)
+    _autenticar(client, coordinador)
+
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert response.status_code == 403
+    assert "Agua potable" not in response.text
+
+
+def test_listar_exige_sesion(client: TestClient, emergencia: Emergencia) -> None:
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "rol",
+    [
+        RolUsuario.OPERADOR_MUNICIPAL,
+        RolUsuario.REPRESENTANTE_ONG,
+        RolUsuario.AUDITOR_DIRECTIVO,
+    ],
+)
+def test_listar_deniega_roles_que_no_gestionan_lotes(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+    rol: RolUsuario,
+) -> None:
+    _lote(db_session, emergencia, coordinador)
+    _autenticar(client, usuarios_denegados[rol])
+
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert response.status_code == 403
+    assert "Agua potable" not in response.text
+
+
+def test_servicio_listar_rechaza_coordinador_sin_centro(
+    db_session: Session, emergencia: Emergencia
+) -> None:
+    coordinador_suelto = Usuario(
+        organizacion_id=None,
+        email="suelto-listar@centro.org",
+        password_hash=generar_password_hash(PASSWORD),
+        rol=RolUsuario.COORDINADOR_REGIONAL,
+    )
+
+    with pytest.raises(servicio_lotes.CentroNoAutorizadoError):
+        servicio_lotes.listar_lotes(db_session, coordinador_suelto, emergencia.id)
+
+
 def test_postgresql_rechaza_cantidad_no_positiva(
     db_session: Session, emergencia: Emergencia, coordinador: Usuario
 ) -> None:
@@ -818,3 +988,15 @@ def test_openapi_documenta_lotes_en_borrador(client: TestClient) -> None:
     assert operacion["responses"]["201"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
+
+
+def test_openapi_documenta_listado_de_lotes(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operacion = response.json()["paths"]["/api/v1/emergencias/{emergencia_id}/lotes"][
+        "get"
+    ]
+    assert operacion["summary"]
+    assert operacion["description"]
+    assert {"200", "401", "403", "404"} <= set(operacion["responses"])

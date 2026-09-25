@@ -1,4 +1,4 @@
-"""Caso de uso para crear y editar lotes de necesidades en borrador."""
+"""Casos de uso para consultar, crear y editar lotes de necesidades."""
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -100,6 +100,35 @@ def guardar_lotes(
     for lote in resultado:
         session.refresh(lote)
     return resultado
+
+
+def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list[Lote]:
+    """Devuelve todos los lotes de la emergencia para que el coordinador los edite.
+
+    Incluye borradores y lotes ya publicados, ordenados por alta; el estado
+    indica cuáles admiten edición. Consultar no reclama la emergencia: una
+    emergencia sin centro asignado todavía no tiene lotes y devuelve una lista
+    vacía.
+
+    Raises:
+        CentroNoAutorizadoError: Si el usuario no conserva un centro activo
+            o la emergencia está asignada a otro centro.
+        EmergenciaNoEncontradaError: Si la emergencia no existe.
+    """
+
+    centro = _obtener_centro(usuario)
+    emergencia = session.get(Emergencia, emergencia_id)
+    if emergencia is None:
+        raise EmergenciaNoEncontradaError("La emergencia no existe.")
+    if emergencia.centro_coordinador_id not in (None, centro.id):
+        raise CentroNoAutorizadoError(
+            "Solo el centro coordinador asignado consulta estos lotes."
+        )
+    return list(
+        session.scalars(
+            select(Lote).where(Lote.emergencia_id == emergencia.id).order_by(Lote.id)
+        ).all()
+    )
 
 
 def _obtener_centro(usuario: Usuario) -> Organizacion:
