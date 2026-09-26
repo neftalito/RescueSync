@@ -1,4 +1,5 @@
 import { type ReactElement } from "react";
+import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
 import { useEmergencias } from "../hooks/useEmergencias";
@@ -36,7 +37,13 @@ function formatearFecha(iso: string): string {
   });
 }
 
-function TarjetaEmergencia({ emergencia }: { emergencia: Emergencia }): ReactElement {
+function TarjetaEmergencia({
+  emergencia,
+  rol,
+}: {
+  emergencia: Emergencia;
+  rol: RolConBandeja;
+}): ReactElement {
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
@@ -54,6 +61,14 @@ function TarjetaEmergencia({ emergencia }: { emergencia: Emergencia }): ReactEle
       </summary>
       <div className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-600">
         <p>{emergencia.descripcion}</p>
+        {rol === "COORDINADOR_REGIONAL" && (
+          <Link
+            to={`/emergencias/${emergencia.id}/lotes`}
+            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+          >
+            Generar lotes
+          </Link>
+        )}
       </div>
     </details>
   );
@@ -115,7 +130,11 @@ export function BandejaEmergencias({ rol }: BandejaEmergenciasProps): ReactEleme
       ) : (
         <div className="mt-4 space-y-3">
           {query.data.map((emergencia) => (
-            <TarjetaEmergencia key={emergencia.id} emergencia={emergencia} />
+            <TarjetaEmergencia
+              key={emergencia.id}
+              emergencia={emergencia}
+              rol={rol}
+            />
           ))}
         </div>
       )}

@@ -1,6 +1,6 @@
-"""Caso de uso para crear y editar lotes de necesidades en borrador."""
+"""Casos de uso para consultar, crear, editar y eliminar lotes de necesidades."""
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,10 @@ class LoteNoEditableError(LoteError):
     """Solo un lote en borrador admite edición destructiva."""
 
 
+class LoteDesactualizadoError(LoteError):
+    """La edición partió de una versión anterior del lote."""
+
+
 class DatosLoteInvalidosError(LoteError):
     """La base rechazó los lotes aunque Pydantic los haya aceptado."""
 
@@ -67,6 +71,7 @@ def guardar_lotes(
         EmergenciaNoEncontradaError: Si la emergencia no existe.
         LoteNoEncontradoError: Si un lote a editar no es de la emergencia.
         LoteNoEditableError: Si un lote a editar ya salió del borrador.
+        LoteDesactualizadoError: Si otro usuario modificó antes un lote.
         DatosLoteInvalidosError: Si la base rechaza la operación.
     """
 
@@ -100,6 +105,90 @@ def guardar_lotes(
     for lote in resultado:
         session.refresh(lote)
     return resultado
+
+
+def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list[Lote]:
+    """Devuelve todos los lotes de la emergencia para que el coordinador los edite.
+
+    Incluye borradores y lotes ya publicados, ordenados por alta; el estado
+    indica cuáles admiten edición. Consultar no reclama la emergencia: una
+    emergencia sin centro asignado todavía no tiene lotes y devuelve una lista
+    vacía.
+
+    Raises:
+        CentroNoAutorizadoError: Si el usuario no conserva un centro activo
+            o la emergencia está asignada a otro centro.
+        EmergenciaNoEncontradaError: Si la emergencia no existe.
+    """
+
+    centro = _obtener_centro(usuario)
+    emergencia = session.get(Emergencia, emergencia_id)
+    if emergencia is None:
+        raise EmergenciaNoEncontradaError("La emergencia no existe.")
+    if emergencia.centro_coordinador_id is None:
+        return []
+    if emergencia.centro_coordinador_id != centro.id:
+        raise CentroNoAutorizadoError(
+            "Solo el centro coordinador asignado consulta estos lotes."
+        )
+    return list(
+        session.scalars(
+            select(Lote).where(Lote.emergencia_id == emergencia.id).order_by(Lote.id)
+        ).all()
+    )
+
+
+def eliminar_lote(
+    session: Session, usuario: Usuario, emergencia_id: int, lote_id: int
+) -> None:
+    """Elimina físicamente un lote en borrador de la emergencia.
+
+    Un borrador nunca se publicó ni recibió ofertas, así que no deja rastro que
+    conservar. Los lotes que salieron del borrador se rechazan, y la clave
+    foránea `RESTRICT` de `convocatoria_lote` protege además a cualquier lote
+    que haya llegado a una convocatoria.
+
+    Raises:
+        CentroNoAutorizadoError: Si el usuario no conserva un centro activo
+            o la emergencia está asignada a otro centro.
+        EmergenciaNoEncontradaError: Si la emergencia no existe.
+        LoteNoEncontradoError: Si el lote no existe dentro de la emergencia.
+        LoteNoEditableError: Si el lote ya salió del borrador.
+    """
+
+    centro = _obtener_centro(usuario)
+    emergencia = session.scalar(
+        select(Emergencia).where(Emergencia.id == emergencia_id).with_for_update()
+    )
+    if emergencia is None:
+        raise EmergenciaNoEncontradaError("La emergencia no existe.")
+    if emergencia.centro_coordinador_id not in (None, centro.id):
+        raise CentroNoAutorizadoError(
+            "Solo el centro coordinador asignado gestiona estos lotes."
+        )
+
+    lote = _lotes_bloqueados(session, [lote_id]).get(lote_id)
+    if lote is None or lote.emergencia_id != emergencia.id:
+        raise LoteNoEncontradoError(
+            f"El lote {lote_id} no pertenece a esta emergencia."
+        )
+    if lote.estado is not EstadoLote.BORRADOR:
+        raise LoteNoEditableError(
+            f"El lote {lote_id} está {lote.estado} y ya no puede eliminarse."
+        )
+
+    # DELETE directo: `session.delete()` intentaría anular `lote_id` en
+    # `convocatoria_lote`, que es parte de su clave primaria, antes de que
+    # PostgreSQL aplique la restricción `RESTRICT`.
+    try:
+        session.execute(delete(Lote).where(Lote.id == lote.id))
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        raise LoteNoEditableError(
+            f"El lote {lote_id} fue publicado en una convocatoria y no puede "
+            "eliminarse."
+        ) from error
 
 
 def _obtener_centro(usuario: Usuario) -> Organizacion:
@@ -160,8 +249,15 @@ def _editar_lote(
         raise LoteNoEditableError(
             f"El lote {item.id} está {lote.estado} y ya no admite edición."
         )
+    assert item.version is not None
+    if lote.version != item.version:
+        raise LoteDesactualizadoError(
+            f"El lote {item.id} cambió desde que lo consultaste. "
+            "Recargá los lotes antes de volver a guardar."
+        )
     lote.tipo_necesidad = item.tipo_necesidad
     lote.descripcion = item.descripcion
     lote.cantidad_requerida = item.cantidad_requerida
     lote.unidad = item.unidad
+    lote.version += 1
     return lote
