@@ -39,8 +39,21 @@ const emergencia = {
   actualizada_en: "2026-09-19T18:20:39.102766Z",
 };
 
-const server = setupServer();
+const loteBorrador = {
+  id: 7,
+  emergencia_id: 31,
+  creado_por_usuario_id: 2,
+  tipo_necesidad: "Agua potable",
+  descripcion: null,
+  cantidad_requerida: "500.000",
+  unidad: "litros",
+  estado: "BORRADOR",
+  version: 1,
+  creado_en: "2026-09-19T18:20:39.102766Z",
+  actualizado_en: "2026-09-19T18:20:39.102766Z",
+};
 
+const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
@@ -186,17 +199,95 @@ describe("LotesPage", () => {
   });
 
   it("avisa si la emergencia no está en la bandeja del coordinador", async () => {
+    // La bandeja del coordinador solo lista emergencias REGISTRADA: al
+    // publicar, la emergencia desaparece de ella pero sus lotes siguen
+    // consultables y la pantalla no se reemplaza.
     server.use(
       http.get(`${API_URL}/emergencias`, () => HttpResponse.json([emergencia])),
+      http.get(`${API_URL}/emergencias/99/lotes`, () =>
+        HttpResponse.json([
+          {
+            id: 12,
+            emergencia_id: 99,
+            creado_por_usuario_id: 2,
+            tipo_necesidad: "Agua potable",
+            descripcion: null,
+            cantidad_requerida: "500.000",
+            unidad: "litros",
+            estado: "PUBLICADO",
+            version: 1,
+            creado_en: "2026-09-19T18:20:39.102766Z",
+            actualizado_en: "2026-09-19T18:20:39.102766Z",
+          },
+        ]),
+      ),
     );
     renderPage("/emergencias/99/lotes");
 
     expect(
-      await screen.findByText(/no está disponible en tu bandeja/),
+      await screen.findByText(/ya no está pendiente y por eso no aparece/),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("Tipo de necesidad")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Guardar borrador" }),
+    ).toBeInTheDocument();
+  });
+
+  it("publica la convocatoria y conserva el resultado aunque la emergencia salga de la bandeja", async () => {
+    // El backend solo lista emergencias REGISTRADA: al publicar, la bandeja
+    // refrescada deja de traerla. La pantalla no puede lose ese resultado.
+    let publicada = false;
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json(publicada ? [] : [emergencia]),
+      ),
+      http.get(`${API_URL}/emergencias/31/lotes`, () =>
+        HttpResponse.json(
+          publicada
+            ? [{ ...loteBorrador, estado: "PUBLICADO" }]
+            : [loteBorrador],
+        ),
+      ),
+      http.post(`${API_URL}/emergencias/31/publicar`, () => {
+        publicada = true;
+        return HttpResponse.json(
+          {
+            id: 4,
+            emergencia_id: 31,
+            numero: 1,
+            estado: "ABIERTA",
+            publicada_en: "2026-09-19T18:20:39.102766Z",
+            cierra_en: "2026-09-19T20:20:39.102766Z",
+            lotes: [
+              {
+                lote_id: 7,
+                cantidad_publicada: "500.000",
+                unidad_publicada: "litros",
+              },
+            ],
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage("/emergencias/31/lotes");
+
+    await screen.findByLabelText("Tipo de necesidad");
+    await user.click(
+      screen.getByRole("button", { name: "Publicar convocatoria" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Sí, publicar" }));
+
+    expect(
+      await screen.findByText("Convocatoria N.º 1 publicada"),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Guardar borrador" }),
-    ).not.toBeInTheDocument();
+      await screen.findByText(/ya no está pendiente y por eso no aparece/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Se publicaron 1 lote/),
+    ).toBeInTheDocument();
   });
 
   it("rechaza un identificador inválido", async () => {

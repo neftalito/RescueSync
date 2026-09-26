@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
-from app.db.models.enums import EstadoConvocatoria
+from app.db.models.enums import EstadoConvocatoria, GravedadEmergencia
 
 
 class LotePublicadoResponse(BaseModel):
@@ -29,3 +29,23 @@ class ConvocatoriaResponse(BaseModel):
     publicada_en: AwareDatetime
     cierra_en: AwareDatetime
     lotes: list[LotePublicadoResponse]
+
+
+class ConvocatoriaResumenResponse(BaseModel):
+    """Convocatoria del centro coordinador en el listado de consulta."""
+
+    id: int
+    emergencia_id: int
+    numero: int
+    estado: EstadoConvocatoria
+    publicada_en: AwareDatetime
+    cierra_en: AwareDatetime
+    cantidad_lotes: int
+    gravedad: GravedadEmergencia
+    zona: str
+
+
+class ConvocatoriasListResponse(BaseModel):
+    """Listado de convocatorias del centro coordinador autenticado."""
+
+    items: list[ConvocatoriaResumenResponse]

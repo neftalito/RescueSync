@@ -36,6 +36,11 @@ api_router.include_router(
     tags=["convocatorias"],
 )
 api_router.include_router(
+    convocatorias.consultas_router,
+    prefix="/convocatorias",
+    tags=["convocatorias"],
+)
+api_router.include_router(
     bonita.router,
     prefix="/emergencias",
     tags=["callbacks de Bonita"],

@@ -755,7 +755,8 @@ Cerrar y seleccionar el snapshot dentro de la misma transacción evita que una
 | `POST /api/v1/emergencias/{id}/lotes` | `lote` | Crea o edita lotes en `BORRADOR`. |
 | `GET /api/v1/emergencias/{id}/lotes` | `lote`, `convocatoria_lote` | Lista lotes y distingue borradores de publicados. |
 | `POST /api/v1/emergencias/{id}/publicar` | `emergencia`, `convocatoria`, `convocatoria_lote`, `lote` | Publica al menos un lote de forma atómica. |
-| `GET /api/v1/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote`, `lote` | Lista ventanas abiertas y sus necesidades. |
+| `GET /api/v1/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote` | Lista las convocatorias del centro coordinador, con filtro opcional por estado. |
+| `GET /api/v1/ofertas/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote`, `lote` | Lista a la ONG las ventanas abiertas y sus lotes publicados. |
 | `POST /api/v1/ofertas` | `oferta`, `oferta_version`, `oferta_item` | Registra una oferta sobre lotes publicados. |
 | `GET /api/v1/ofertas` | `oferta`, `oferta_version` | Devuelve las ofertas visibles para la ONG autenticada. |
 

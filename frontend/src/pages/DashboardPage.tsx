@@ -178,7 +178,13 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
               <BandejaEmergencias rol="OPERADOR_MUNICIPAL" />
             </div>
           ) : esCoordinador ? (
-            <div className="mt-5">
+            <div className="mt-5 space-y-6">
+              <Link
+                to="/convocatorias"
+                className="inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+              >
+                Ver convocatorias
+              </Link>
               <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
             </div>
           ) : esOng ? (

@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { ConvocatoriasPage } from "./pages/ConvocatoriasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
@@ -76,6 +77,16 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "ADMINISTRADOR" ? (
             <UsersPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/convocatorias"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <ConvocatoriasPage />
           ) : (
             <Navigate to="/" replace />
           )

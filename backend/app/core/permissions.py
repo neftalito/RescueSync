@@ -16,6 +16,7 @@ class OperacionProtegida(StrEnum):
     CONSULTAR_EMERGENCIAS = "CONSULTAR_EMERGENCIAS"
     GESTIONAR_LOTES = "GESTIONAR_LOTES"
     PUBLICAR_CONVOCATORIA = "PUBLICAR_CONVOCATORIA"
+    CONSULTAR_CONVOCATORIAS = "CONSULTAR_CONVOCATORIAS"
     PRESENTAR_OFERTA = "PRESENTAR_OFERTA"
 
 
@@ -40,6 +41,9 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
                 {RolUsuario.COORDINADOR_REGIONAL}
             ),
             OperacionProtegida.PUBLICAR_CONVOCATORIA: frozenset(
+                {RolUsuario.COORDINADOR_REGIONAL}
+            ),
+            OperacionProtegida.CONSULTAR_CONVOCATORIAS: frozenset(
                 {RolUsuario.COORDINADOR_REGIONAL}
             ),
             OperacionProtegida.PRESENTAR_OFERTA: frozenset(

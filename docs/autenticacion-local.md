@@ -91,6 +91,8 @@ recargan el usuario y aplican la matriz RBAC antes de responder.
 | --- | --- |
 | Registrar una emergencia | Operador Municipal |
 | Gestionar y publicar lotes | Centro Coordinador Regional |
+| Publicar una convocatoria | Centro Coordinador Regional |
+| Consultar las convocatorias del centro | Centro Coordinador Regional |
 | Presentar una oferta | Representante de ONG |
 | Gestionar usuarios | Administrador |
 
@@ -104,6 +106,24 @@ y asignar contraseñas temporales. Las cuentas operativas solo pueden asociarse 
 una organización activa del tipo compatible. La baja es lógica para conservar
 la trazabilidad y no se permite quitar el acceso propio ni dejar el sistema sin
 un administrador activo.
+
+## Publicar una convocatoria
+
+El coordinadorregional genera lotes en borrador desde
+`/emergencias/{id}/lotes` y los publica con la acción explícita de esa misma
+pantalla. Publicar es irreversible para esos lotes: el backend exige al menos un
+lote en borrador, el centro coordinador asignado y una sesión con token CSRF
+vigente, y hace todo en una única transacción.
+
+`GET /api/v1/convocatorias` lista las convocatorias del centro del coordinador
+con su estado, ventana y cantidad de lotes, y acepta `?estado=ABIERTA`,
+`CERRADA` o `CANCELADA`. Alimenta la pantalla `/convocatorias`, que es el
+seguimiento luego de publicar: la bandeja de emergencias solo lista las
+pendientes (`REGISTRADA`), así que al publicar la emergencia deja de aparecer
+allí.
+
+La convocatoria queda con una fecha de cierre provisoria hasta que Bonita
+confirme la ventana real; ver [callbacks de Bonita](bonita/callbacks.md).
 
 ## Contraseñas y sesiones
 

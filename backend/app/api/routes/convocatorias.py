@@ -2,23 +2,34 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Convocatoria, Usuario
+from app.db.models import Convocatoria, EstadoConvocatoria, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.convocatoria import ConvocatoriaResponse, LotePublicadoResponse
+from app.schemas.convocatoria import (
+    ConvocatoriaResponse,
+    ConvocatoriaResumenResponse,
+    ConvocatoriasListResponse,
+    LotePublicadoResponse,
+)
 from app.services import convocatorias as servicio
+from app.services.convocatorias import ConvocatoriaResumen
 
 router = APIRouter()
+consultas_router = APIRouter()
 
 UsuarioCoordinador = Annotated[
     Usuario,
     Depends(requerir_operacion(OperacionProtegida.PUBLICAR_CONVOCATORIA)),
+]
+UsuarioConsultaConvocatorias = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CONSULTAR_CONVOCATORIAS)),
 ]
 EmergenciaId = Annotated[int, Path(gt=0)]
 
@@ -72,6 +83,22 @@ def _respuesta(convocatoria: Convocatoria) -> ConvocatoriaResponse:
     )
 
 
+def _resumen(fila: ConvocatoriaResumen) -> ConvocatoriaResumenResponse:
+    """Proyecta la fila del servicio al contrato HTTP del listado."""
+
+    return ConvocatoriaResumenResponse(
+        id=fila.id,
+        emergencia_id=fila.emergencia_id,
+        numero=fila.numero,
+        estado=fila.estado,
+        publicada_en=fila.publicada_en,
+        cierra_en=fila.cierra_en,
+        cantidad_lotes=fila.cantidad_lotes,
+        gravedad=fila.gravedad,
+        zona=fila.zona,
+    )
+
+
 @router.post(
     "/{emergencia_id}/publicar",
     response_model=ConvocatoriaResponse,
@@ -100,3 +127,37 @@ def publicar_convocatoria(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
     return _respuesta(convocatoria)
+
+
+@consultas_router.get(
+    "",
+    response_model=ConvocatoriasListResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
+    },
+    summary="Listar las convocatorias del centro coordinador",
+    description=(
+        "Devuelve las convocatorias de las emergencias asignadas al centro "
+        "coordinador del usuario autenticado, de la más reciente a la más "
+        "antigua, con la cantidad de lotes publicados. `estado` acota el "
+        "resultado a `ABIERTA`, `CERRADA` o `CANCELADA`; si se omite, llegan "
+        "todas. No requiere token CSRF por ser una consulta."
+    ),
+)
+def listar_convocatorias(
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioConsultaConvocatorias,
+    estado: Annotated[EstadoConvocatoria | None, Query()] = None,
+) -> ConvocatoriasListResponse:
+    """Lista las convocatorias visibles para el coordinador autenticado."""
+
+    try:
+        filas = servicio.listar_convocatorias(session, usuario, estado)
+    except servicio.CentroNoAutorizadoError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail=str(error)
+        ) from error
+    return ConvocatoriasListResponse(items=[_resumen(fila) for fila in filas])

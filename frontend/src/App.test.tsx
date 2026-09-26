@@ -538,4 +538,38 @@ describe("navegación por rol", () => {
       ).not.toBeInTheDocument();
     }
   });
+
+  it("deja consultar las convocatorias solo al coordinador regional", async () => {
+    server.use(
+      http.get(`${API_URL}/auth/me`, () =>
+        HttpResponse.json(sessionForRole("COORDINADOR_REGIONAL")),
+      ),
+      http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json({ items: [] })),
+    );
+    renderApp("/convocatorias");
+
+    expect(
+      await screen.findByRole("heading", { name: "Convocatorias de tu centro" }),
+    ).toBeInTheDocument();
+  });
+
+  it.each<Role>([
+    "OPERADOR_MUNICIPAL",
+    "REPRESENTANTE_ONG",
+    "AUDITOR_DIRECTIVO",
+    "ADMINISTRADOR",
+  ])("redirige a $role fuera del listado de convocatorias", async (rol) => {
+    server.use(
+      http.get(`${API_URL}/auth/me`, () =>
+        HttpResponse.json(sessionForRole(rol)),
+      ),
+      http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
+    );
+    renderApp("/convocatorias");
+
+    expect(
+      await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+    ).toBeInTheDocument();
+  });
 });

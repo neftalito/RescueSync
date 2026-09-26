@@ -1,22 +1,22 @@
-import { type ReactElement, type ReactNode } from "react";
+import { type ReactElement } from "react";
 import { Link, useParams } from "react-router";
 
 import { ApiError } from "../api/client";
+import {
+  Aviso,
+  AvisoRefresco,
+  ErrorConReintento,
+} from "../components/EstadosConsulta";
 import { LotesForm } from "../components/LotesForm";
+import { PublicarConvocatoria } from "../components/PublicarConvocatoria";
 import { useEmergencias } from "../hooks/useEmergencias";
 import { useLotes } from "../hooks/useLotes";
-import { estadoLabels, gravedadLabels } from "../schemas/emergencia";
+import { estadoLabels, gravedadLabels, type Emergencia } from "../schemas/emergencia";
 import type { Session } from "../schemas/auth";
+import { formatearFecha } from "../utils/fechas";
 
 interface LotesPageProps {
   session: Session;
-}
-
-function formatearFecha(iso: string): string {
-  return new Date(iso).toLocaleString("es-AR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 }
 
 function parsearId(valor: string | undefined): number | null {
@@ -25,81 +25,14 @@ function parsearId(valor: string | undefined): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-function Aviso({
-  tono,
-  children,
-}: {
-  tono: "neutro" | "error";
-  children: ReactNode;
-}): ReactElement {
-  return tono === "error" ? (
-    <section
-      role="alert"
-      className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm leading-6 text-red-800 shadow-sm"
-    >
-      {children}
-    </section>
-  ) : (
-    <section
-      role="status"
-      className="rounded-2xl border border-slate-200 bg-white p-6 text-sm leading-6 text-slate-600 shadow-sm"
-    >
-      {children}
-    </section>
-  );
-}
-
-function ErrorConReintento({
-  mensaje,
-  onReintentar,
-}: {
-  mensaje: string;
-  onReintentar: () => void;
-}): ReactElement {
-  return (
-    <Aviso tono="error">
-      <p>{mensaje}</p>
-      <button
-        type="button"
-        onClick={onReintentar}
-        className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
-      >
-        Reintentar
-      </button>
-    </Aviso>
-  );
-}
-
-function AvisoRefresco({
-  mensaje,
-  onReintentar,
-}: {
-  mensaje: string;
-  onReintentar: () => void;
-}): ReactElement {
-  return (
-    <section
-      role="alert"
-      className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
-    >
-      <p>{mensaje} Seguimos mostrando los últimos datos disponibles.</p>
-      <button
-        type="button"
-        onClick={onReintentar}
-        className="mt-2 rounded-lg border border-amber-700 bg-white px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
-      >
-        Reintentar actualización
-      </button>
-    </section>
-  );
-}
-
 function SeccionLotes({
   emergenciaId,
   csrfToken,
+  publicada,
 }: {
   emergenciaId: number;
   csrfToken: string;
+  publicada: boolean;
 }): ReactElement {
   const query = useLotes(emergenciaId);
 
@@ -134,7 +67,71 @@ function SeccionLotes({
         csrfToken={csrfToken}
         lotes={query.data}
       />
+      <PublicarConvocatoria
+        emergenciaId={emergenciaId}
+        csrfToken={csrfToken}
+        lotes={query.data}
+        publicada={publicada}
+      />
     </div>
+  );
+}
+
+function DetalleEmergencia({
+  emergencia,
+  emergenciaId,
+}: {
+  emergencia: Emergencia | undefined;
+  emergenciaId: number;
+}): ReactElement {
+  return (
+    <aside
+      aria-labelledby="detalle-emergencia"
+      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+    >
+      <p className="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">
+        Emergencia N.º {emergenciaId}
+      </p>
+      <h2
+        id="detalle-emergencia"
+        className="mt-3 text-lg font-semibold text-slate-950"
+      >
+        {emergencia?.zona ?? "Sin detalle en la bandeja"}
+      </h2>
+      {emergencia === undefined ? (
+        <p role="status" className="mt-4 text-sm leading-6 text-slate-600">
+          Esta emergencia ya no está pendiente y por eso no aparece en tu
+          bandeja. Sus lotes siguen visibles y editables desde acá.
+        </p>
+      ) : (
+        <dl className="mt-4 space-y-4 text-sm">
+          <div>
+            <dt className="text-slate-500">Gravedad</dt>
+            <dd className="mt-1 font-semibold text-slate-950">
+              {gravedadLabels[emergencia.gravedad]}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Estado</dt>
+            <dd className="mt-1 font-semibold text-slate-950">
+              {estadoLabels[emergencia.estado]}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Registrada</dt>
+            <dd className="mt-1 font-semibold text-slate-950">
+              {formatearFecha(emergencia.creada_en)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-slate-500">Descripción</dt>
+            <dd className="mt-1 leading-6 text-slate-700">
+              {emergencia.descripcion}
+            </dd>
+          </div>
+        </dl>
+      )}
+    </aside>
   );
 }
 
@@ -170,14 +167,6 @@ function Contenido({
   }
 
   const emergencia = query.data.find((item) => item.id === emergenciaId);
-  if (emergencia === undefined) {
-    return (
-      <Aviso tono="neutro">
-        La emergencia no está disponible en tu bandeja. Puede que la gestione
-        otro centro coordinador o que ya no esté pendiente.
-      </Aviso>
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -187,49 +176,17 @@ function Contenido({
           onReintentar={() => void query.refetch()}
         />
       )}
+      {/* El detalle y la sección de lotes mantienen su posición en el árbol
+          aunque la emergencia desaparezca de la bandeja al publicar: si se
+          reemplazara una rama por otra, `PublicarConvocatoria` se remontaría y
+          perdería el resultado de la publicación que acaba de realizar. */}
       <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
-        <aside
-          aria-labelledby="detalle-emergencia"
-          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-        >
-          <p className="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">
-            Emergencia N.º {emergencia.id}
-          </p>
-          <h2
-            id="detalle-emergencia"
-            className="mt-3 text-lg font-semibold text-slate-950"
-          >
-            {emergencia.zona}
-          </h2>
-          <dl className="mt-4 space-y-4 text-sm">
-            <div>
-              <dt className="text-slate-500">Gravedad</dt>
-              <dd className="mt-1 font-semibold text-slate-950">
-                {gravedadLabels[emergencia.gravedad]}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Estado</dt>
-              <dd className="mt-1 font-semibold text-slate-950">
-                {estadoLabels[emergencia.estado]}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Registrada</dt>
-              <dd className="mt-1 font-semibold text-slate-950">
-                {formatearFecha(emergencia.creada_en)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Descripción</dt>
-              <dd className="mt-1 leading-6 text-slate-700">
-                {emergencia.descripcion}
-              </dd>
-            </div>
-          </dl>
-        </aside>
-
-        <SeccionLotes emergenciaId={emergencia.id} csrfToken={csrfToken} />
+        <DetalleEmergencia emergencia={emergencia} emergenciaId={emergenciaId} />
+        <SeccionLotes
+          emergenciaId={emergenciaId}
+          csrfToken={csrfToken}
+          publicada={emergencia?.estado === "PUBLICADA"}
+        />
       </div>
     </div>
   );

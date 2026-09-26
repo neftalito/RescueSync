@@ -1,6 +1,7 @@
 """Pruebas del endpoint de publicación de convocatorias."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -16,7 +17,9 @@ from app.core.security import (
 )
 from app.db.models import (
     Convocatoria,
+    ConvocatoriaLote,
     Emergencia,
+    EstadoConvocatoria,
     EstadoEmergencia,
     EstadoLote,
     GravedadEmergencia,
@@ -463,3 +466,258 @@ def test_openapi_documenta_publicar_convocatoria(client: TestClient) -> None:
     assert operacion["responses"]["201"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
+
+
+def _convocatoria(
+    db_session: Session,
+    emergencia: Emergencia,
+    *,
+    numero: int = 1,
+    estado: EstadoConvocatoria = EstadoConvocatoria.ABIERTA,
+    publicada_en: datetime | None = None,
+    horas: int = 1,
+) -> Convocatoria:
+    """Crea una convocatoria ya persistida con su fecha de publicación fijada."""
+
+    inicio = publicada_en or datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    convocatoria = Convocatoria(
+        emergencia_id=emergencia.id,
+        numero=numero,
+        estado=estado,
+        publicada_en=inicio,
+        cierra_en=inicio + timedelta(hours=horas),
+        cerrada_en=inicio if estado is EstadoConvocatoria.CERRADA else None,
+    )
+    db_session.add(convocatoria)
+    db_session.flush()
+    db_session.refresh(convocatoria)
+    return convocatoria
+
+
+def _publicar_lote(
+    db_session: Session,
+    convocatoria: Convocatoria,
+    lote: Lote,
+) -> ConvocatoriaLote:
+    """Snapshotea un lote en la convocatoria como lo hace la publicación."""
+
+    publicacion = ConvocatoriaLote(
+        convocatoria_id=convocatoria.id,
+        lote_id=lote.id,
+        cantidad_publicada=lote.cantidad_requerida,
+        unidad_publicada=lote.unidad,
+    )
+    lote.estado = EstadoLote.PUBLICADO
+    db_session.add(publicacion)
+    db_session.flush()
+    return publicacion
+
+
+def test_lista_las_convocatorias_del_centro_con_su_conteo_de_lotes(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    convocatoria = _convocatoria(db_session, emergencia)
+    _publicar_lote(
+        db_session, convocatoria, _lote(db_session, emergencia, coordinador, "Agua")
+    )
+    _publicar_lote(
+        db_session,
+        convocatoria,
+        _lote(db_session, emergencia, coordinador, "Abrigo", EstadoLote.PUBLICADO),
+    )
+    _autenticar(client, coordinador)
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [
+            {
+                "id": convocatoria.id,
+                "emergencia_id": emergencia.id,
+                "numero": 1,
+                "estado": "ABIERTA",
+                "publicada_en": "2026-09-20T12:00:00Z",
+                "cierra_en": "2026-09-20T13:00:00Z",
+                "cantidad_lotes": 2,
+                "gravedad": "ALTA",
+                "zona": "Ribera norte",
+            }
+        ]
+    }
+
+
+def test_lista_de_mas_reciente_a_mas_antigua(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    antigua = _convocatoria(
+        db_session,
+        emergencia,
+        numero=1,
+        estado=EstadoConvocatoria.CERRADA,
+        publicada_en=datetime(2026, 9, 18, 9, 0, tzinfo=UTC),
+    )
+    reciente = _convocatoria(
+        db_session,
+        emergencia,
+        numero=2,
+        publicada_en=datetime(2026, 9, 20, 9, 0, tzinfo=UTC),
+    )
+    _autenticar(client, coordinador)
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["items"]] == [
+        reciente.id,
+        antigua.id,
+    ]
+
+
+def test_no_lista_convocatorias_de_otros_centros(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    operador: Usuario,
+) -> None:
+    otro_emergencia = Emergencia(
+        municipio_id=emergencia.municipio_id,
+        creada_por_usuario_id=operador.id,
+        gravedad=GravedadEmergencia.BAJA,
+        zona="Barrio sur",
+        descripcion="Corte de luz",
+    )
+    db_session.add(otro_emergencia)
+    db_session.flush()
+    _convocatoria(db_session, emergencia, numero=1)
+    ajena = _convocatoria(db_session, otro_emergencia, numero=1)
+    _autenticar(client, coordinador)
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert ajena.id not in [item["id"] for item in response.json()["items"]]
+    assert response.json()["items"] == []
+
+
+def test_filtra_el_listado_por_estado(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    cerrada = _convocatoria(
+        db_session,
+        emergencia,
+        numero=1,
+        estado=EstadoConvocatoria.CERRADA,
+        publicada_en=datetime(2026, 9, 18, 9, 0, tzinfo=UTC),
+    )
+    _autenticar(client, coordinador)
+
+    sin_filtro = client.get("/api/v1/convocatorias")
+    abierta = client.get("/api/v1/convocatorias?estado=ABIERTA")
+    cerrada_response = client.get("/api/v1/convocatorias?estado=CERRADA")
+
+    assert sin_filtro.json()["items"] == [
+        {
+            "id": cerrada.id,
+            "emergencia_id": emergencia.id,
+            "numero": 1,
+            "estado": "CERRADA",
+            "publicada_en": "2026-09-18T09:00:00Z",
+            "cierra_en": "2026-09-18T10:00:00Z",
+            "cantidad_lotes": 0,
+            "gravedad": "ALTA",
+            "zona": "Ribera norte",
+        }
+    ]
+    assert abierta.json()["items"] == []
+    assert [item["id"] for item in cerrada_response.json()["items"]] == [cerrada.id]
+
+
+def test_rechaza_estado_desconocido_en_el_filtro(
+    client: TestClient, coordinador: Usuario
+) -> None:
+    _autenticar(client, coordinador)
+
+    response = client.get("/api/v1/convocatorias?estado=PUBLICADA")
+
+    assert response.status_code == 422
+
+
+def test_exige_sesion_para_listar_convocatorias(client: TestClient) -> None:
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 401
+
+
+def test_no_exige_csrf_para_listar_convocatorias(
+    client: TestClient, coordinador: Usuario
+) -> None:
+    _autenticar(client, coordinador)
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+
+
+def test_servicio_rechaza_listar_convocatorias_sin_centro(
+    db_session: Session, emergencia: Emergencia
+) -> None:
+    # Un coordinador sin centro no llega al endpoint: `obtener_usuario_actual`
+    # ya invalida la sesión. La defensa vive en el servicio, como en la
+    # publicación, y se verifica sin persistir el usuario para no chocar con el
+    # trigger que exige organización a ese rol.
+    coordinador_suelto = Usuario(
+        organizacion_id=None,
+        email="suelto-listado-convocatorias@centro.org",
+        password_hash=generar_password_hash(PASSWORD),
+        rol=RolUsuario.COORDINADOR_REGIONAL,
+    )
+
+    with pytest.raises(servicio_convocatorias.CentroNoAutorizadoError):
+        servicio_convocatorias.listar_convocatorias(db_session, coordinador_suelto)
+
+
+@pytest.mark.parametrize(
+    "rol",
+    [
+        RolUsuario.OPERADOR_MUNICIPAL,
+        RolUsuario.REPRESENTANTE_ONG,
+        RolUsuario.AUDITOR_DIRECTIVO,
+    ],
+)
+def test_deniega_listar_convocatorias_a_otros_roles(
+    client: TestClient,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+    rol: RolUsuario,
+) -> None:
+    _autenticar(client, usuarios_denegados[rol])
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 403
+
+
+def test_openapi_documenta_listar_convocatorias(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operacion = response.json()["paths"]["/api/v1/convocatorias"]["get"]
+    assert operacion["summary"]
+    assert operacion["description"]
+    assert "estado" in {param["name"] for param in operacion["parameters"]}
