@@ -66,5 +66,17 @@ export const emergenciaSchema = z.object({
 
 export const emergenciasSchema = z.array(emergenciaSchema);
 
+/**
+ * La bandeja suma los lotes que todavía se pueden publicar. Lo resuelve la base,
+ * así la interfaz no pide los lotes de cada fila para decidir si ofrece la
+ * acción de publicar.
+ */
+export const emergenciaBandejaSchema = emergenciaSchema.extend({
+  cantidad_lotes_borrador: z.number().int().nonnegative(),
+});
+
+export const emergenciasBandejaSchema = z.array(emergenciaBandejaSchema);
+
 export type EmergenciaFormData = z.infer<typeof emergenciaFormSchema>;
 export type Emergencia = z.infer<typeof emergenciaSchema>;
+export type EmergenciaBandeja = z.infer<typeof emergenciaBandejaSchema>;

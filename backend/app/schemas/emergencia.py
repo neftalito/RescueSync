@@ -41,3 +41,14 @@ class EmergenciaResponse(BaseModel):
     bonita_process_instance_id: int | None
     creada_en: AwareDatetime
     actualizada_en: AwareDatetime
+
+
+class EmergenciaBandejaResponse(EmergenciaResponse):
+    """Emergencia de la bandeja con los lotes que todavía puede publicar.
+
+    La cantidad viene del servicio de publicación, pero la resuelve la base para
+    que la interfaz no tenga que pedir los lotes de cada fila para decidir si
+    ofrece la acción de publicar.
+    """
+
+    cantidad_lotes_borrador: int = Field(ge=0)

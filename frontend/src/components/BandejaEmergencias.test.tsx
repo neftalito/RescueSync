@@ -25,6 +25,7 @@ const emergenciaBase = {
   bonita_process_instance_id: null,
   creada_en: "2026-09-19T18:20:39.102766Z",
   actualizada_en: "2026-09-19T18:20:39.102766Z",
+  cantidad_lotes_borrador: 0,
 };
 
 const server = setupServer();
@@ -43,7 +44,7 @@ function renderBandeja(rol: "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL"): void
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <BandejaEmergencias rol={rol} />
+        <BandejaEmergencias rol={rol} csrfToken="csrf-de-prueba" />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -169,6 +170,73 @@ describe("BandejaEmergencias", () => {
 
     expect(
       screen.queryByRole("link", { name: "Generar lotes" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("publica desde la lista cuando la emergencia ya tiene lotes en borrador", async () => {
+    let publicada = false;
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json(
+          publicada ? [] : [{ ...emergenciaBase, cantidad_lotes_borrador: 2 }],
+          { status: 200 },
+        ),
+      ),
+      http.post(`${API_URL}/emergencias/31/publicar`, () => {
+        publicada = true;
+        return HttpResponse.json(
+          {
+            id: 4,
+            emergencia_id: 31,
+            numero: 1,
+            estado: "ABIERTA",
+            publicada_en: "2026-09-19T18:20:39.102766Z",
+            cierra_en: "2026-09-19T20:20:39.102766Z",
+            lotes: [
+              { lote_id: 7, cantidad_publicada: "500.000", unidad_publicada: "litros" },
+              { lote_id: 8, cantidad_publicada: "40.000", unidad_publicada: "unidades" },
+            ],
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderBandeja("COORDINADOR_REGIONAL");
+
+    await user.click(await screen.findByText("Alta · Ribera norte"));
+
+    expect(screen.getByText(/Al publicar, los 2 lotes en borrador/)).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Publicar convocatoria" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Sí, publicar" }));
+
+    expect(
+      await screen.findByText("Convocatoria N.º 1 publicada"),
+    ).toBeInTheDocument();
+    // Al publicar, la emergencia sale de la bandeja del coordinador.
+    await waitFor(() => {
+      expect(
+        screen.getByText("No hay emergencias registradas pendientes."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("no ofrece publicar en la lista si la emergencia no tiene lotes", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json([emergenciaBase], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderBandeja("COORDINADOR_REGIONAL");
+
+    await user.click(await screen.findByText("Alta · Ribera norte"));
+
+    expect(screen.getByRole("link", { name: "Generar lotes" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Publicar convocatoria" }),
     ).not.toBeInTheDocument();
   });
 

@@ -15,13 +15,22 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    select,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import (
+    InstrumentedAttribute,
+    Mapped,
+    column_property,
+    declared_attr,
+    mapped_column,
+    relationship,
+)
 
 from app.db.base import Base
 from app.db.models.enums import (
     EstadoEmergencia,
+    EstadoLote,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
 )
@@ -147,3 +156,25 @@ class Emergencia(Base):
     convocatorias: Mapped[list[Convocatoria]] = relationship(
         back_populates="emergencia"
     )
+
+    @declared_attr
+    def cantidad_lotes_borrador(cls) -> InstrumentedAttribute[int]:
+        """Lotes aún publicables, como atributo derivado de solo lectura.
+
+        Es una subconsulta correlacionada, no una columna: la bandeja del
+        coordinador necesita el dato para habilitar la publicación, y la regla
+        de dominio es la misma que aplica el servicio de publicación (todo lote
+        en `BORRADOR`). Al no tener columna propia no genera DDL ni migración.
+        """
+
+        from app.db.models.lote import Lote
+
+        return column_property(
+            select(func.count(Lote.id))
+            .where(
+                Lote.emergencia_id == cls.id,
+                Lote.estado == EstadoLote.BORRADOR,
+            )
+            .correlate_except(Lote)
+            .scalar_subquery()
+        )

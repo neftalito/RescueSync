@@ -175,7 +175,10 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
           ) : esMunicipio ? (
             <div className="mt-5 space-y-8">
               <EmergenciaForm csrfToken={session.csrf_token} />
-              <BandejaEmergencias rol="OPERADOR_MUNICIPAL" />
+              <BandejaEmergencias
+                rol="OPERADOR_MUNICIPAL"
+                csrfToken={session.csrf_token}
+              />
             </div>
           ) : esCoordinador ? (
             <div className="mt-5 space-y-6">
@@ -185,7 +188,10 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
               >
                 Ver convocatorias
               </Link>
-              <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
+              <BandejaEmergencias
+                rol="COORDINADOR_REGIONAL"
+                csrfToken={session.csrf_token}
+              />
             </div>
           ) : esOng ? (
             <div className="mt-5">

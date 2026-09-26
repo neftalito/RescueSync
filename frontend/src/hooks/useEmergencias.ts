@@ -1,11 +1,11 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { listarEmergencias } from "../api/emergencias";
-import type { Emergencia } from "../schemas/emergencia";
+import type { EmergenciaBandeja } from "../schemas/emergencia";
 
 export const emergenciasQueryKey = ["emergencias"] as const;
 
-export function useEmergencias(): UseQueryResult<Emergencia[], Error> {
+export function useEmergencias(): UseQueryResult<EmergenciaBandeja[], Error> {
   return useQuery({
     queryKey: emergenciasQueryKey,
     queryFn: listarEmergencias,
