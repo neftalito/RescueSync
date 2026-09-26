@@ -368,6 +368,7 @@ describe("autenticación", () => {
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
       actualizada_en: "2026-09-19T18:20:39.102766Z",
+  cantidad_lotes_borrador: 0,
     };
     const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
     let usuarioActivo: "municipio" | "coordinador" = "municipio";
@@ -426,6 +427,7 @@ describe("autenticación", () => {
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
       actualizada_en: "2026-09-19T18:20:39.102766Z",
+  cantidad_lotes_borrador: 0,
     };
     const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
     let sesionVigente: "municipio" | "vencida" | "coordinador" = "municipio";

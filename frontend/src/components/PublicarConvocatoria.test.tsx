@@ -16,31 +16,11 @@ import {
   vi,
 } from "vitest";
 
-import type { EstadoLote, Lote } from "../schemas/lote";
 import { PublicarConvocatoria } from "./PublicarConvocatoria";
 
 const API_URL = "http://localhost:8000/api/v1";
 const CSRF_TOKEN = "csrf-firmado";
 const URL_PUBLICAR = `${API_URL}/emergencias/31/publicar`;
-
-function lote(
-  id: number,
-  estado: EstadoLote = "BORRADOR",
-): Lote {
-  return {
-    id,
-    emergencia_id: 31,
-    creado_por_usuario_id: 2,
-    tipo_necesidad: "Agua potable",
-    descripcion: null,
-    cantidad_requerida: "500.000",
-    unidad: "litros",
-    estado,
-    version: 1,
-    creado_en: "2026-09-19T18:20:39.102766Z",
-    actualizado_en: "2026-09-19T18:20:39.102766Z",
-  };
-}
 
 function convocatoriaPublicada(): Record<string, unknown> {
   return {
@@ -67,7 +47,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 function renderPanel(
-  lotes: Lote[],
+  cantidadBorrador: number,
   publicada = false,
 ): QueryClient {
   const queryClient = new QueryClient({
@@ -79,7 +59,7 @@ function renderPanel(
         <PublicarConvocatoria
           emergenciaId={31}
           csrfToken={CSRF_TOKEN}
-          lotes={lotes}
+          cantidadBorrador={cantidadBorrador}
           publicada={publicada}
         />
       </MemoryRouter>
@@ -100,7 +80,7 @@ describe("PublicarConvocatoria", () => {
       }),
     );
     const user = userEvent.setup();
-    renderPanel([lote(7), lote(8)]);
+    renderPanel(2);
 
     await user.click(
       screen.getByRole("button", { name: "Publicar convocatoria" }),
@@ -130,7 +110,7 @@ describe("PublicarConvocatoria", () => {
       }),
     );
     const user = userEvent.setup();
-    renderPanel([lote(7)]);
+    renderPanel(1);
 
     await user.click(
       screen.getByRole("button", { name: "Publicar convocatoria" }),
@@ -147,7 +127,7 @@ describe("PublicarConvocatoria", () => {
   });
 
   it("no permite publicar sin lotes en borrador", () => {
-    renderPanel([lote(7, "PUBLICADO")]);
+    renderPanel(0);
 
     expect(
       screen.getByRole("button", { name: "Sin lotes en borrador" }),
@@ -158,13 +138,13 @@ describe("PublicarConvocatoria", () => {
   });
 
   it("no ofrece volver a publicar una convocatoria ya publicada", () => {
-    renderPanel([lote(7, "PUBLICADO")], true);
+    renderPanel(0, true);
 
     expect(
       screen.getByRole("button", { name: "Convocatoria publicada" }),
     ).toBeDisabled();
     expect(
-      screen.getByText(/ya está publicada. Los lotes que agregues ahora/),
+      screen.getByText(/ya se publicó y no admite otra/),
     ).toBeInTheDocument();
   });
 
@@ -178,7 +158,7 @@ describe("PublicarConvocatoria", () => {
       ),
     );
     const user = userEvent.setup();
-    renderPanel([lote(7)]);
+    renderPanel(1);
 
     await user.click(
       screen.getByRole("button", { name: "Publicar convocatoria" }),
@@ -199,7 +179,7 @@ describe("PublicarConvocatoria", () => {
         HttpResponse.json(convocatoriaPublicada(), { status: 201 }),
       ),
     );
-    const queryClient = renderPanel([lote(7)]);
+    const queryClient = renderPanel(1);
     const invalidar = vi.spyOn(queryClient, "invalidateQueries");
 
     const user = userEvent.setup();

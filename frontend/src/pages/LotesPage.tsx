@@ -70,7 +70,7 @@ function SeccionLotes({
       <PublicarConvocatoria
         emergenciaId={emergenciaId}
         csrfToken={csrfToken}
-        lotes={query.data}
+        cantidadBorrador={query.data.filter((lote) => lote.estado === "BORRADOR").length}
         publicada={publicada}
       />
     </div>

@@ -3,10 +3,11 @@ import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
 import { useEmergencias } from "../hooks/useEmergencias";
+import { PublicarConvocatoria } from "./PublicarConvocatoria";
 import {
   estadoLabels,
   gravedadLabels,
-  type Emergencia,
+  type EmergenciaBandeja,
 } from "../schemas/emergencia";
 import type { Role } from "../schemas/auth";
 
@@ -17,6 +18,8 @@ type RolConBandeja = Extract<
 
 interface BandejaEmergenciasProps {
   rol: RolConBandeja;
+  /** Solo el coordinador publica; el municipio no necesita el token. */
+  csrfToken: string;
 }
 
 const copyPorRol: Record<RolConBandeja, { titulo: string; vacio: string }> = {
@@ -40,9 +43,11 @@ function formatearFecha(iso: string): string {
 function TarjetaEmergencia({
   emergencia,
   rol,
+  csrfToken,
 }: {
-  emergencia: Emergencia;
+  emergencia: EmergenciaBandeja;
   rol: RolConBandeja;
+  csrfToken: string;
 }): ReactElement {
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -62,19 +67,34 @@ function TarjetaEmergencia({
       <div className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-600">
         <p>{emergencia.descripcion}</p>
         {rol === "COORDINADOR_REGIONAL" && (
-          <Link
-            to={`/emergencias/${emergencia.id}/lotes`}
-            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
-          >
-            Generar lotes
-          </Link>
+          <div className="mt-4 space-y-4">
+            <Link
+              to={`/emergencias/${emergencia.id}/lotes`}
+              className="inline-flex rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-bold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+            >
+              {emergencia.cantidad_lotes_borrador > 0
+                ? "Ver lotes"
+                : "Generar lotes"}
+            </Link>
+            {emergencia.cantidad_lotes_borrador > 0 && (
+              <PublicarConvocatoria
+                emergenciaId={emergencia.id}
+                csrfToken={csrfToken}
+                cantidadBorrador={emergencia.cantidad_lotes_borrador}
+                publicada={false}
+              />
+            )}
+          </div>
         )}
       </div>
     </details>
   );
 }
 
-export function BandejaEmergencias({ rol }: BandejaEmergenciasProps): ReactElement {
+export function BandejaEmergencias({
+  rol,
+  csrfToken,
+}: BandejaEmergenciasProps): ReactElement {
   const query = useEmergencias();
   const copy = copyPorRol[rol];
 
@@ -134,6 +154,7 @@ export function BandejaEmergencias({ rol }: BandejaEmergenciasProps): ReactEleme
               key={emergencia.id}
               emergencia={emergencia}
               rol={rol}
+              csrfToken={csrfToken}
             />
           ))}
         </div>

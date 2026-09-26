@@ -11,7 +11,11 @@ from app.core.security import verificar_token_csrf
 from app.db.models import Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.emergencia import EmergenciaCreate, EmergenciaResponse
+from app.schemas.emergencia import (
+    EmergenciaBandejaResponse,
+    EmergenciaCreate,
+    EmergenciaResponse,
+)
 from app.services import emergencias as servicio
 from app.services.vinculacion_bonita import vincular_emergencia_con_bonita
 
@@ -90,7 +94,7 @@ UsuarioConsultaEmergencias = Annotated[
 
 @router.get(
     "",
-    response_model=list[EmergenciaResponse],
+    response_model=list[EmergenciaBandejaResponse],
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
@@ -101,13 +105,15 @@ UsuarioConsultaEmergencias = Annotated[
         "Un municipio ve únicamente sus propias emergencias con su estado "
         "actual. Un centro coordinador ve las emergencias en REGISTRADA sin "
         "centro asignado o ya asignadas al suyo. El filtro se aplica en el "
-        "backend según el rol autenticado, no en la interfaz."
+        "backend según el rol autenticado, no en la interfaz. Cada fila "
+        "incluye `cantidad_lotes_borrador`, los lotes que todavía se pueden "
+        "publicar como convocatoria."
     ),
 )
 def listar_bandeja_emergencias(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaEmergencias,
-) -> list[EmergenciaResponse]:
+) -> list[EmergenciaBandejaResponse]:
     """Devuelve la bandeja de emergencias filtrada por rol y organización vigente."""
 
     try:
@@ -122,4 +128,7 @@ def listar_bandeja_emergencias(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(error),
         ) from error
-    return [EmergenciaResponse.model_validate(emergencia) for emergencia in emergencias]
+    return [
+        EmergenciaBandejaResponse.model_validate(emergencia)
+        for emergencia in emergencias
+    ]
