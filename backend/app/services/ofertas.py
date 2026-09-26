@@ -17,7 +17,12 @@ from app.db.models import (
     TipoOrganizacion,
     Usuario,
 )
-from app.schemas.oferta import OfertaCreateRequest, OfertaItemRequest
+from app.schemas.oferta import (
+    ConvocatoriaOfertaDisponibleResponse,
+    LoteOfertaDisponibleResponse,
+    OfertaCreateRequest,
+    OfertaItemRequest,
+)
 from app.services.auth import organizacion_vigente_de_tipo
 
 
@@ -47,6 +52,53 @@ class UnidadIncompatibleError(OfertaError):
 
 class DatosOfertaInvalidosError(OfertaError):
     """La base rechazó la oferta aunque Pydantic la haya aceptado."""
+
+
+def listar_convocatorias_disponibles(
+    session: Session,
+    usuario: Usuario,
+) -> list[ConvocatoriaOfertaDisponibleResponse]:
+    """Lista convocatorias abiertas con lotes publicados para la ONG vigente."""
+
+    ong = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.ONG)
+    if ong is None:
+        raise OngNoAutorizadaError("Solo una ONG activa puede consultar convocatorias.")
+
+    ahora = datetime.now(UTC)
+    convocatorias = session.scalars(
+        select(Convocatoria)
+        .where(
+            Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+            Convocatoria.cierra_en > ahora,
+            Convocatoria.lotes.any(),
+        )
+        .options(
+            selectinload(Convocatoria.emergencia),
+            selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
+        )
+        .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
+    ).all()
+
+    return [
+        ConvocatoriaOfertaDisponibleResponse(
+            id=convocatoria.id,
+            numero=convocatoria.numero,
+            emergencia_id=convocatoria.emergencia_id,
+            gravedad=convocatoria.emergencia.gravedad,
+            zona=convocatoria.emergencia.zona,
+            lotes=[
+                LoteOfertaDisponibleResponse(
+                    lote_id=publicacion.lote_id,
+                    tipo_necesidad=publicacion.lote.tipo_necesidad,
+                    descripcion=publicacion.lote.descripcion,
+                    cantidad_publicada=publicacion.cantidad_publicada,
+                    unidad_publicada=publicacion.unidad_publicada,
+                )
+                for publicacion in convocatoria.lotes
+            ],
+        )
+        for convocatoria in convocatorias
+    ]
 
 
 def registrar_oferta(

@@ -6,6 +6,7 @@ import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { EmergenciaForm } from "../components/EmergenciaForm";
+import { OfertaForm } from "../components/OfertaForm";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
 interface DashboardPageProps {
@@ -53,6 +54,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   );
   const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
   const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
+  const esOng = session.usuario.rol === "REPRESENTANTE_ONG";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -178,6 +180,10 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
           ) : esCoordinador ? (
             <div className="mt-5">
               <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
+            </div>
+          ) : esOng ? (
+            <div className="mt-5">
+              <OfertaForm csrfToken={session.csrf_token} />
             </div>
           ) : visibleStages.length === 0 ? (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

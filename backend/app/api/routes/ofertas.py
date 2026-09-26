@@ -11,7 +11,12 @@ from app.core.security import verificar_token_csrf
 from app.db.models import Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.oferta import OfertaCreateRequest, OfertaItemResponse, OfertaResponse
+from app.schemas.oferta import (
+    ConvocatoriaOfertaDisponibleResponse,
+    OfertaCreateRequest,
+    OfertaItemResponse,
+    OfertaResponse,
+)
 from app.services import ofertas as servicio
 
 router = APIRouter()
@@ -51,6 +56,33 @@ _CODIGOS_ERROR: dict[type[servicio.OfertaError], int] = {
     servicio.UnidadIncompatibleError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     servicio.DatosOfertaInvalidosError: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
+
+
+@router.get(
+    "/convocatorias",
+    response_model=list[ConvocatoriaOfertaDisponibleResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    },
+    summary="Consultar convocatorias disponibles para ofertar",
+    description=(
+        "Devuelve convocatorias abiertas y dentro de su ventana de recepción, "
+        "con sus lotes publicados. Solo representantes de una ONG activa."
+    ),
+)
+def listar_convocatorias_disponibles(
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioOng,
+) -> list[ConvocatoriaOfertaDisponibleResponse]:
+    try:
+        return servicio.listar_convocatorias_disponibles(session, usuario)
+    except servicio.OngNoAutorizadaError as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(error),
+        ) from error
 
 
 @router.post(

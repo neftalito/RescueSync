@@ -258,6 +258,60 @@ def test_crea_oferta_con_multiples_items_en_distintos_lotes(
     assert len(response.json()["items"]) == 2
 
 
+def test_lista_convocatorias_abiertas_con_lotes_publicados_para_ong(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_solo_rol(client, escenario.representante)
+    vencida = Convocatoria(
+        emergencia_id=escenario.emergencia.id,
+        numero=2,
+        estado=EstadoConvocatoria.ABIERTA,
+        publicada_en=datetime.now(UTC) - timedelta(days=2),
+        cierra_en=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    db_session.add(vencida)
+    db_session.flush()
+
+    response = client.get("/api/v1/ofertas/convocatorias")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": escenario.convocatoria.id,
+            "numero": 1,
+            "emergencia_id": escenario.emergencia.id,
+            "gravedad": "CRITICA",
+            "zona": "Zona CB",
+            "lotes": [
+                {
+                    "lote_id": escenario.lote_agua.id,
+                    "tipo_necesidad": "Agua",
+                    "descripcion": None,
+                    "cantidad_publicada": "1000.000",
+                    "unidad_publicada": "litros",
+                },
+                {
+                    "lote_id": escenario.lote_kits.id,
+                    "tipo_necesidad": "Kits",
+                    "descripcion": None,
+                    "cantidad_publicada": "10.000",
+                    "unidad_publicada": "kits",
+                },
+            ],
+        }
+    ]
+
+
+def test_rechaza_consultar_convocatorias_con_usuario_que_no_es_ong(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_solo_rol(client, escenario.operador_municipal)
+
+    response = client.get("/api/v1/ofertas/convocatorias")
+
+    assert response.status_code == 403
+
+
 # --- Reglas de negocio del servicio -----------------------------------------
 
 

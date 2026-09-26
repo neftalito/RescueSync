@@ -52,6 +52,9 @@ function sessionForRole(role: Role, requiresPasswordChange = false): Session {
 const session = sessionForRole("OPERADOR_MUNICIPAL");
 const server = setupServer(
   http.get(`${API_URL}/emergencias`, () => HttpResponse.json([], { status: 200 })),
+  http.get(`${API_URL}/ofertas/convocatorias`, () =>
+    HttpResponse.json([], { status: 200 }),
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
