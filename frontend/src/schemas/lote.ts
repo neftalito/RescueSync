@@ -22,6 +22,7 @@ export const estadoLoteLabels: Record<EstadoLote, string> = {
 
 export const loteItemFormSchema = z.object({
   id: z.number().int().positive().nullable(),
+  version: z.number().int().positive().nullable(),
   tipo_necesidad: z
     .string()
     .trim()

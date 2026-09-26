@@ -25,6 +25,7 @@ const inputClasses =
 
 const loteVacio: LoteItemFormData = {
   id: null,
+  version: null,
   tipo_necesidad: "",
   cantidad_requerida: "",
   unidad: "",
@@ -34,6 +35,7 @@ const loteVacio: LoteItemFormData = {
 function aFormulario(lote: Lote): LoteItemFormData {
   return {
     id: lote.id,
+    version: lote.version,
     tipo_necesidad: lote.tipo_necesidad,
     cantidad_requerida: lote.cantidad_requerida,
     unidad: lote.unidad,
@@ -172,6 +174,7 @@ export function LotesForm({
         className="mt-6 space-y-6"
         onSubmit={(event) => void handleSubmit(submit)(event)}
         noValidate
+        aria-busy={ocupado}
       >
         <ol className="space-y-5">
           {fields.map((field, index) => {
@@ -183,7 +186,10 @@ export function LotesForm({
 
             return (
               <li key={field.clave}>
-                <fieldset className="rounded-2xl border border-slate-200 p-5">
+                <fieldset
+                  disabled={ocupado}
+                  className="rounded-2xl border border-slate-200 p-5 disabled:cursor-wait disabled:opacity-70"
+                >
                   <legend className="px-2 text-sm font-semibold text-slate-900">
                     Lote {index + 1}
                     {loteId !== null && (
@@ -399,8 +405,9 @@ export function LotesForm({
 
         <button
           type="button"
+          disabled={ocupado}
           onClick={() => append(loteVacio)}
-          className="w-full rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 sm:w-auto"
+          className="w-full rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
         >
           Agregar lote
         </button>

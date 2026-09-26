@@ -198,6 +198,7 @@ describe("LotesForm", () => {
       lotes: [
         {
           id: 7,
+          version: 1,
           tipo_necesidad: "Agua potable",
           cantidad_requerida: "750",
           unidad: "litros",
@@ -253,6 +254,7 @@ describe("LotesForm", () => {
       lotes: [
         {
           id: 7,
+          version: 1,
           tipo_necesidad: "Agua potable",
           cantidad_requerida: "900",
           unidad: "litros",
@@ -384,6 +386,7 @@ describe("LotesForm", () => {
       lotes: [
         {
           id: 8,
+          version: 1,
           tipo_necesidad: "Abrigo",
           cantidad_requerida: "250",
           unidad: "mantas",
@@ -475,6 +478,11 @@ describe("LotesForm", () => {
     expect(
       await screen.findByRole("button", { name: "Guardando…" }),
     ).toBeDisabled();
+    expect(screen.getByLabelText("Tipo de necesidad")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar lote" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Agregar lote" }));
+    expect(screen.getAllByLabelText("Tipo de necesidad")).toHaveLength(1);
 
     resolver?.(
       new Response(

@@ -11,7 +11,9 @@ export function guardarLotes(
   csrfToken: string,
 ): Promise<Lote[]> {
   const lotes = datos.lotes.map((lote) => ({
-    ...(lote.id === null ? {} : { id: lote.id }),
+    ...(lote.id === null
+      ? {}
+      : { id: lote.id, version: lote.version }),
     tipo_necesidad: lote.tipo_necesidad,
     cantidad_requerida: lote.cantidad_requerida.replace(",", "."),
     unidad: lote.unidad,

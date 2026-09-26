@@ -36,6 +36,10 @@ class LoteNoEditableError(LoteError):
     """Solo un lote en borrador admite edición destructiva."""
 
 
+class LoteDesactualizadoError(LoteError):
+    """La edición partió de una versión anterior del lote."""
+
+
 class DatosLoteInvalidosError(LoteError):
     """La base rechazó los lotes aunque Pydantic los haya aceptado."""
 
@@ -67,6 +71,7 @@ def guardar_lotes(
         EmergenciaNoEncontradaError: Si la emergencia no existe.
         LoteNoEncontradoError: Si un lote a editar no es de la emergencia.
         LoteNoEditableError: Si un lote a editar ya salió del borrador.
+        LoteDesactualizadoError: Si otro usuario modificó antes un lote.
         DatosLoteInvalidosError: Si la base rechaza la operación.
     """
 
@@ -120,7 +125,9 @@ def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list
     emergencia = session.get(Emergencia, emergencia_id)
     if emergencia is None:
         raise EmergenciaNoEncontradaError("La emergencia no existe.")
-    if emergencia.centro_coordinador_id not in (None, centro.id):
+    if emergencia.centro_coordinador_id is None:
+        return []
+    if emergencia.centro_coordinador_id != centro.id:
         raise CentroNoAutorizadoError(
             "Solo el centro coordinador asignado consulta estos lotes."
         )
@@ -242,8 +249,15 @@ def _editar_lote(
         raise LoteNoEditableError(
             f"El lote {item.id} está {lote.estado} y ya no admite edición."
         )
+    assert item.version is not None
+    if lote.version != item.version:
+        raise LoteDesactualizadoError(
+            f"El lote {item.id} cambió desde que lo consultaste. "
+            "Recargá los lotes antes de volver a guardar."
+        )
     lote.tipo_necesidad = item.tipo_necesidad
     lote.descripcion = item.descripcion
     lote.cantidad_requerida = item.cantidad_requerida
     lote.unidad = item.unidad
+    lote.version += 1
     return lote

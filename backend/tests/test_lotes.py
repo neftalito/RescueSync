@@ -247,6 +247,8 @@ def test_edita_lote_en_borrador_sin_crear_filas(
     emergencia: Emergencia,
     coordinador: Usuario,
 ) -> None:
+    # Representa un lote que otra transacción confirmó después de que esta
+    # consulta leyó la emergencia todavía sin centro asignado.
     lote = _lote(db_session, emergencia, coordinador)
     csrf = _autenticar(client, coordinador)
     iniciales = _contar_lotes(db_session)
@@ -257,6 +259,7 @@ def test_edita_lote_en_borrador_sin_crear_filas(
             "lotes": [
                 {
                     "id": lote.id,
+                    "version": lote.version,
                     "tipo_necesidad": "Agua potable",
                     "descripcion": "Agua embotellada",
                     "cantidad_requerida": 8000,
@@ -269,10 +272,95 @@ def test_edita_lote_en_borrador_sin_crear_filas(
 
     assert response.status_code == 201
     assert response.json()[0]["id"] == lote.id
+    assert response.json()[0]["version"] == 2
     assert Decimal(response.json()[0]["cantidad_requerida"]) == Decimal(8000)
     assert response.json()[0]["estado"] == EstadoLote.BORRADOR.value
     assert _contar_lotes(db_session) == iniciales
     assert _contar_convocatorias(db_session, emergencia.id) == 0
+
+
+def test_rechaza_edicion_con_version_obsoleta_sin_pisar_cambios(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+) -> None:
+    lote = _lote(db_session, emergencia, coordinador)
+    csrf = _autenticar(client, coordinador)
+    url = f"/api/v1/emergencias/{emergencia.id}/lotes"
+
+    primera = client.post(
+        url,
+        json={
+            "lotes": [
+                {
+                    "id": lote.id,
+                    "version": 1,
+                    "tipo_necesidad": "Agua potable",
+                    "cantidad_requerida": 8000,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+    obsoleta = client.post(
+        url,
+        json={
+            "lotes": [
+                {
+                    "id": lote.id,
+                    "version": 1,
+                    "tipo_necesidad": "Agua potable",
+                    "cantidad_requerida": 9999,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert primera.status_code == 201
+    assert primera.json()[0]["version"] == 2
+    assert obsoleta.status_code == 409
+    assert "cambió desde que lo consultaste" in obsoleta.json()["detail"]
+    db_session.expire_all()
+    guardado = db_session.get(Lote, lote.id)
+    assert guardado is not None
+    assert guardado.cantidad_requerida == Decimal(8000)
+    assert guardado.version == 2
+
+
+def test_rechaza_edicion_sin_version(
+    client: TestClient,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    db_session: Session,
+) -> None:
+    lote = _lote(db_session, emergencia, coordinador)
+    csrf = _autenticar(client, coordinador)
+
+    response = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/lotes",
+        json={
+            "lotes": [
+                {
+                    "id": lote.id,
+                    "tipo_necesidad": "Agua potable",
+                    "cantidad_requerida": 8000,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 422
+    db_session.expire_all()
+    guardado = db_session.get(Lote, lote.id)
+    assert guardado is not None
+    assert guardado.cantidad_requerida == Decimal(1000)
+    assert guardado.version == 1
 
 
 def test_crea_y_edita_en_la_misma_operacion_atomica(
@@ -291,6 +379,7 @@ def test_crea_y_edita_en_la_misma_operacion_atomica(
             "lotes": [
                 {
                     "id": lote.id,
+                    "version": lote.version,
                     "tipo_necesidad": "Abrigo",
                     "cantidad_requerida": 200,
                     "unidad": "mantas",
@@ -456,6 +545,7 @@ def test_rechaza_lote_ajeno_a_la_emergencia(
             "lotes": [
                 {
                     "id": ajeno.id,
+                    "version": ajeno.version,
                     "tipo_necesidad": "Agua",
                     "cantidad_requerida": 10,
                     "unidad": "litros",
@@ -484,6 +574,7 @@ def test_rechaza_editar_lote_publicado(
             "lotes": [
                 {
                     "id": lote.id,
+                    "version": lote.version,
                     "tipo_necesidad": "Agua potable",
                     "cantidad_requerida": 9999,
                     "unidad": "litros",
@@ -655,6 +746,7 @@ def test_primer_centro_reclama_emergencia_y_otro_no_edita_sus_lotes(
 
     assert alta.status_code == 201
     lote_id = alta.json()[0]["id"]
+    lote_version = alta.json()[0]["version"]
     db_session.expire_all()
     emergencia_asignada = db_session.get(Emergencia, emergencia.id)
     assert emergencia_asignada is not None
@@ -667,6 +759,7 @@ def test_primer_centro_reclama_emergencia_y_otro_no_edita_sus_lotes(
             "lotes": [
                 {
                     "id": lote_id,
+                    "version": lote_version,
                     "tipo_necesidad": "Agua",
                     "cantidad_requerida": 999,
                     "unidad": "litros",
@@ -825,12 +918,14 @@ def test_lista_vacia_sin_reclamar_emergencia_sin_centro(
     emergencia: Emergencia,
     coordinador: Usuario,
 ) -> None:
+    lote = _lote(db_session, emergencia, coordinador)
     _autenticar(client, coordinador)
 
     response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
 
     assert response.status_code == 200
     assert response.json() == []
+    assert db_session.get(Lote, lote.id) is not None
     db_session.expire_all()
     emergencia_guardada = db_session.get(Emergencia, emergencia.id)
     assert emergencia_guardada is not None

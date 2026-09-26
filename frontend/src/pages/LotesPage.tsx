@@ -70,6 +70,30 @@ function ErrorConReintento({
   );
 }
 
+function AvisoRefresco({
+  mensaje,
+  onReintentar,
+}: {
+  mensaje: string;
+  onReintentar: () => void;
+}): ReactElement {
+  return (
+    <section
+      role="alert"
+      className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+    >
+      <p>{mensaje} Seguimos mostrando los últimos datos disponibles.</p>
+      <button
+        type="button"
+        onClick={onReintentar}
+        className="mt-2 rounded-lg border border-amber-700 bg-white px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+      >
+        Reintentar actualización
+      </button>
+    </section>
+  );
+}
+
 function SeccionLotes({
   emergenciaId,
   csrfToken,
@@ -79,11 +103,10 @@ function SeccionLotes({
 }): ReactElement {
   const query = useLotes(emergenciaId);
 
-  if (query.isPending) {
-    return <Aviso tono="neutro">Cargando lotes…</Aviso>;
-  }
-
-  if (query.isError) {
+  if (query.data === undefined) {
+    if (!query.isError) {
+      return <Aviso tono="neutro">Cargando lotes…</Aviso>;
+    }
     const mensaje =
       query.error instanceof ApiError
         ? query.error.message
@@ -99,11 +122,19 @@ function SeccionLotes({
   // El formulario toma los borradores como valores iniciales solo al montarse;
   // después de guardar se sincroniza con la respuesta del POST.
   return (
-    <LotesForm
-      emergenciaId={emergenciaId}
-      csrfToken={csrfToken}
-      lotes={query.data}
-    />
+    <div className="min-w-0 space-y-4">
+      {query.isRefetchError && (
+        <AvisoRefresco
+          mensaje="No pudimos actualizar los lotes."
+          onReintentar={() => void query.refetch()}
+        />
+      )}
+      <LotesForm
+        emergenciaId={emergenciaId}
+        csrfToken={csrfToken}
+        lotes={query.data}
+      />
+    </div>
   );
 }
 
@@ -122,11 +153,10 @@ function Contenido({
     return <Aviso tono="error">El identificador de emergencia no es válido.</Aviso>;
   }
 
-  if (query.isPending) {
-    return <Aviso tono="neutro">Cargando emergencia…</Aviso>;
-  }
-
-  if (query.isError) {
+  if (query.data === undefined) {
+    if (!query.isError) {
+      return <Aviso tono="neutro">Cargando emergencia…</Aviso>;
+    }
     const mensaje =
       query.error instanceof ApiError
         ? query.error.message
@@ -150,49 +180,57 @@ function Contenido({
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
-      <aside
-        aria-labelledby="detalle-emergencia"
-        className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-      >
-        <p className="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">
-          Emergencia N.º {emergencia.id}
-        </p>
-        <h2
-          id="detalle-emergencia"
-          className="mt-3 text-lg font-semibold text-slate-950"
+    <div className="space-y-4">
+      {query.isRefetchError && (
+        <AvisoRefresco
+          mensaje="No pudimos actualizar la emergencia."
+          onReintentar={() => void query.refetch()}
+        />
+      )}
+      <div className="grid gap-8 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
+        <aside
+          aria-labelledby="detalle-emergencia"
+          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
         >
-          {emergencia.zona}
-        </h2>
-        <dl className="mt-4 space-y-4 text-sm">
-          <div>
-            <dt className="text-slate-500">Gravedad</dt>
-            <dd className="mt-1 font-semibold text-slate-950">
-              {gravedadLabels[emergencia.gravedad]}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Estado</dt>
-            <dd className="mt-1 font-semibold text-slate-950">
-              {estadoLabels[emergencia.estado]}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Registrada</dt>
-            <dd className="mt-1 font-semibold text-slate-950">
-              {formatearFecha(emergencia.creada_en)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Descripción</dt>
-            <dd className="mt-1 leading-6 text-slate-700">
-              {emergencia.descripcion}
-            </dd>
-          </div>
-        </dl>
-      </aside>
+          <p className="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">
+            Emergencia N.º {emergencia.id}
+          </p>
+          <h2
+            id="detalle-emergencia"
+            className="mt-3 text-lg font-semibold text-slate-950"
+          >
+            {emergencia.zona}
+          </h2>
+          <dl className="mt-4 space-y-4 text-sm">
+            <div>
+              <dt className="text-slate-500">Gravedad</dt>
+              <dd className="mt-1 font-semibold text-slate-950">
+                {gravedadLabels[emergencia.gravedad]}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Estado</dt>
+              <dd className="mt-1 font-semibold text-slate-950">
+                {estadoLabels[emergencia.estado]}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Registrada</dt>
+              <dd className="mt-1 font-semibold text-slate-950">
+                {formatearFecha(emergencia.creada_en)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-slate-500">Descripción</dt>
+              <dd className="mt-1 leading-6 text-slate-700">
+                {emergencia.descripcion}
+              </dd>
+            </div>
+          </dl>
+        </aside>
 
-      <SeccionLotes emergenciaId={emergencia.id} csrfToken={csrfToken} />
+        <SeccionLotes emergenciaId={emergencia.id} csrfToken={csrfToken} />
+      </div>
     </div>
   );
 }

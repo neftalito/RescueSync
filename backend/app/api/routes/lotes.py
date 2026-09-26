@@ -52,6 +52,7 @@ _CODIGOS_ERROR: dict[type[servicio.LoteError], int] = {
     servicio.CentroNoAutorizadoError: status.HTTP_403_FORBIDDEN,
     servicio.LoteNoEncontradoError: status.HTTP_404_NOT_FOUND,
     servicio.LoteNoEditableError: status.HTTP_409_CONFLICT,
+    servicio.LoteDesactualizadoError: status.HTTP_409_CONFLICT,
     servicio.DatosLoteInvalidosError: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
@@ -65,9 +66,9 @@ _CODIGOS_ERROR: dict[type[servicio.LoteError], int] = {
     description=(
         "Registra uno o más lotes con tipo y cantidad positiva para la "
         "emergencia. Los ítems sin `id` se crean y los que traen `id` deben "
-        "pertenecer a la emergencia y seguir en borrador. Guardar nunca "
-        "publica la convocatoria. Solo el centro coordinador con token CSRF "
-        "vigente."
+        "incluir su `version`, pertenecer a la emergencia y seguir en borrador. "
+        "Una versión obsoleta responde 409. Guardar nunca publica la "
+        "convocatoria. Solo el centro coordinador con token CSRF vigente."
     ),
 )
 def guardar_lotes(

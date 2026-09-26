@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -47,7 +48,7 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderPage(ruta: string): void {
+function renderPage(ruta: string): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -63,6 +64,7 @@ function renderPage(ruta: string): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 describe("LotesPage", () => {
@@ -113,6 +115,53 @@ describe("LotesPage", () => {
     expect(screen.getByLabelText("Descripción (opcional)")).toHaveValue(
       "Bidones de 5 litros",
     );
+  });
+
+  it("conserva las ediciones si falla una actualización en segundo plano", async () => {
+    let fallarRefresco = false;
+    const lote = {
+      id: 7,
+      emergencia_id: 31,
+      creado_por_usuario_id: 2,
+      tipo_necesidad: "Agua potable",
+      descripcion: null,
+      cantidad_requerida: "500.000",
+      unidad: "litros",
+      estado: "BORRADOR",
+      version: 1,
+      creado_en: "2026-09-19T18:20:39.102766Z",
+      actualizado_en: "2026-09-19T18:20:39.102766Z",
+    };
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        fallarRefresco
+          ? HttpResponse.json({ detail: "Falla temporal." }, { status: 503 })
+          : HttpResponse.json([emergencia]),
+      ),
+      http.get(`${API_URL}/emergencias/31/lotes`, () =>
+        fallarRefresco
+          ? HttpResponse.json({ detail: "Falla temporal." }, { status: 503 })
+          : HttpResponse.json([lote]),
+      ),
+    );
+    const user = userEvent.setup();
+    const queryClient = renderPage("/emergencias/31/lotes");
+    const cantidad = await screen.findByLabelText("Cantidad requerida");
+    await user.clear(cantidad);
+    await user.type(cantidad, "750");
+
+    fallarRefresco = true;
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["emergencias"] });
+    });
+
+    expect(cantidad).toHaveValue("750");
+    expect(
+      await screen.findAllByText(/Seguimos mostrando los últimos datos disponibles/),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getByRole("button", { name: "Guardar borrador" }),
+    ).toBeInTheDocument();
   });
 
   it("muestra el error al consultar los lotes con opción de reintentar", async () => {
