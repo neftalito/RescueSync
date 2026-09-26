@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { BandejaEmergencias } from "./BandejaEmergencias";
@@ -41,7 +42,9 @@ function renderBandeja(rol: "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL"): void
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <BandejaEmergencias rol={rol} />
+      <MemoryRouter>
+        <BandejaEmergencias rol={rol} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -134,6 +137,39 @@ describe("BandejaEmergencias", () => {
     expect(
       screen.getByText("Inundación con familias evacuadas y acceso restringido."),
     ).toBeVisible();
+  });
+
+  it("ofrece generar lotes solo al centro coordinador", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json([emergenciaBase], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderBandeja("COORDINADOR_REGIONAL");
+
+    await user.click(await screen.findByText("Alta · Ribera norte"));
+
+    expect(screen.getByRole("link", { name: "Generar lotes" })).toHaveAttribute(
+      "href",
+      "/emergencias/31/lotes",
+    );
+  });
+
+  it("no ofrece generar lotes al municipio", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json([emergenciaBase], { status: 200 }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderBandeja("OPERADOR_MUNICIPAL");
+
+    await user.click(await screen.findByText("Alta · Ribera norte"));
+
+    expect(
+      screen.queryByRole("link", { name: "Generar lotes" }),
+    ).not.toBeInTheDocument();
   });
 
   it("muestra el error accionable cuando falla la consulta", async () => {
