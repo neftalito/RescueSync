@@ -262,20 +262,59 @@ def test_lista_convocatorias_abiertas_con_lotes_publicados_para_ong(
     client: TestClient, escenario: Escenario, db_session: Session
 ) -> None:
     _autenticar_solo_rol(client, escenario.representante)
+    # El índice parcial uq_convocatoria_abierta_por_emergencia admite una sola
+    # convocatoria ABIERTA por emergencia, así que la vencida necesita la suya.
+    # Lleva un lote publicado para que el descarte se deba al cierre vencido y
+    # no a que le falten lotes publicados.
+    emergencia_vencida = Emergencia(
+        municipio_id=escenario.emergencia.municipio_id,
+        creada_por_usuario_id=escenario.operador_municipal.id,
+        gravedad=GravedadEmergencia.ALTA,
+        zona="Zona vencida",
+        descripcion="Emergencia con convocatoria vencida",
+        bonita_process_instance_id=4243,
+        bonita_sync=EstadoSincronizacionBonita.VINCULADA,
+    )
+    db_session.add(emergencia_vencida)
+    db_session.flush()
+    lote_vencido = Lote(
+        emergencia_id=emergencia_vencida.id,
+        creado_por_usuario_id=escenario.operador_municipal.id,
+        tipo_necesidad="Frazadas",
+        cantidad_requerida=Decimal(200),
+        unidad="unidades",
+    )
+    db_session.add(lote_vencido)
+    db_session.flush()
     vencida = Convocatoria(
-        emergencia_id=escenario.emergencia.id,
-        numero=2,
+        emergencia_id=emergencia_vencida.id,
+        numero=1,
         estado=EstadoConvocatoria.ABIERTA,
         publicada_en=datetime.now(UTC) - timedelta(days=2),
         cierra_en=datetime.now(UTC) - timedelta(minutes=1),
     )
     db_session.add(vencida)
     db_session.flush()
+    db_session.add(
+        ConvocatoriaLote(
+            convocatoria_id=vencida.id,
+            lote_id=lote_vencido.id,
+            cantidad_publicada=lote_vencido.cantidad_requerida,
+            unidad_publicada=lote_vencido.unidad,
+        )
+    )
+    db_session.flush()
 
     response = client.get("/api/v1/ofertas/convocatorias")
 
     assert response.status_code == 200
-    assert response.json() == [
+    # El listado no se compara por igualdad completa: la base es compartida con
+    # las cargas de demostración, así que pueden existir otras convocatorias
+    # abiertas legítimas. Lo que se verifica es que la vigente llegue con sus
+    # lotes y que la vencida no aparezca.
+    items = response.json()
+    assert vencida.id not in {item["id"] for item in items}
+    assert [item for item in items if item["id"] == escenario.convocatoria.id] == [
         {
             "id": escenario.convocatoria.id,
             "numero": 1,
