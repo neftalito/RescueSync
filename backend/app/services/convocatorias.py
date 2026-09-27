@@ -1,9 +1,10 @@
 """Caso de uso para publicar la convocatoria de una emergencia.
 
-La sincronización con la tarea humana `Generar lotes de necesidades` de
-Bonita queda fuera de este caso de uso (ver ticket de seguimiento): esta
-función solo confirma la publicación local. Mientras ese ticket no exista, el
-proceso BPM queda detenido en esa tarea después de publicar aquí.
+Esta función solo confirma la publicación local; la sincronización con la
+tarea humana `Generar lotes de necesidades` de Bonita se hace aparte, desde
+la ruta HTTP, con `app.services.publicacion_bonita.completar_generacion_lotes`
+(mismo criterio que separa `registrar_emergencia` de
+`vincular_emergencia_con_bonita`).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -69,20 +70,26 @@ def publicar_convocatoria(
     `ConvocatoriaLote`, los pasa a `PUBLICADO` y transiciona la emergencia a
     `PUBLICADA`, todo en una única transacción.
 
+    Si la emergencia ya está `PUBLICADA` y conserva una convocatoria
+    `ABIERTA`, no crea nada nuevo: devuelve esa convocatoria tal cual, para
+    que el llamador pueda reintentar solo la sincronización con Bonita.
+
     Args:
         session: Sesión SQLAlchemy con la que se confirma la transacción.
         usuario: Coordinador regional vigente cargado desde PostgreSQL.
         emergencia_id: Emergencia a publicar.
 
     Returns:
-        La convocatoria recién publicada.
+        La convocatoria recién publicada, o la ya abierta si se trata de un
+        reintento.
 
     Raises:
         EmergenciaNoEncontradaError: Si la emergencia no existe.
         CentroNoAutorizadoError: Si el usuario no conserva un centro activo o
             no es el asignado a la emergencia.
         EstadoEmergenciaInvalidoError: Si la emergencia no admite publicación
-            en su estado actual (por ejemplo, ya fue publicada).
+            ni reintento en su estado actual (por ejemplo, ya se cerró la
+            convocatoria).
         SinLotesValidosError: Si no hay ningún lote en borrador para publicar.
         DatosConvocatoriaInvalidosError: Si la base rechaza la operación.
     """
@@ -96,6 +103,14 @@ def publicar_convocatoria(
     if emergencia.centro_coordinador_id != centro.id:
         raise CentroNoAutorizadoError(
             "Solo el centro coordinador asignado publica esta convocatoria."
+        )
+    if emergencia.estado is EstadoEmergencia.PUBLICADA:
+        convocatoria_abierta = _convocatoria_abierta(session, emergencia.id)
+        if convocatoria_abierta is not None:
+            return convocatoria_abierta
+        raise EstadoEmergenciaInvalidoError(
+            "La emergencia ya está publicada y no tiene una convocatoria "
+            "abierta para reintentar."
         )
     if emergencia.estado not in ESTADOS_EMERGENCIA_PUBLICABLES:
         raise EstadoEmergenciaInvalidoError(
@@ -159,6 +174,19 @@ def _obtener_centro(usuario: Usuario) -> Organizacion:
             "Solo un centro coordinador activo publica convocatorias."
         )
     return centro
+
+
+def _convocatoria_abierta(session: Session, emergencia_id: int) -> Convocatoria | None:
+    """Busca, bloqueada, la convocatoria `ABIERTA` de la emergencia, si existe."""
+
+    return session.scalar(
+        select(Convocatoria)
+        .where(
+            Convocatoria.emergencia_id == emergencia_id,
+            Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+        )
+        .with_for_update()
+    )
 
 
 def _siguiente_numero(session: Session, emergencia_id: int) -> int:

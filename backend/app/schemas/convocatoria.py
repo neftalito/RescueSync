@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
-from app.db.models.enums import EstadoConvocatoria
+from app.db.models.enums import EstadoConvocatoria, EstadoTareaBonita
 
 
 class LotePublicadoResponse(BaseModel):
@@ -29,3 +29,6 @@ class ConvocatoriaResponse(BaseModel):
     publicada_en: AwareDatetime
     cierra_en: AwareDatetime
     lotes: list[LotePublicadoResponse]
+    bonita_generar_lotes_estado: EstadoTareaBonita
+    bonita_generar_lotes_ultimo_error: str | None
+    bonita_generar_lotes_ultimo_intento_en: AwareDatetime | None

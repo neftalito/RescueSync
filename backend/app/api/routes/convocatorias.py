@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_operacion
+from app.api.dependencies import ClienteBonitaDep, requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Convocatoria, Usuario
@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas.convocatoria import ConvocatoriaResponse, LotePublicadoResponse
 from app.services import convocatorias as servicio
+from app.services.publicacion_bonita import completar_generacion_lotes
 
 router = APIRouter()
 
@@ -69,6 +70,11 @@ def _respuesta(convocatoria: Convocatoria) -> ConvocatoriaResponse:
             LotePublicadoResponse.model_validate(publicacion)
             for publicacion in sorted(convocatoria.lotes, key=lambda p: p.lote_id)
         ],
+        bonita_generar_lotes_estado=convocatoria.bonita_generar_lotes_estado,
+        bonita_generar_lotes_ultimo_error=convocatoria.bonita_generar_lotes_ultimo_error,
+        bonita_generar_lotes_ultimo_intento_en=(
+            convocatoria.bonita_generar_lotes_ultimo_intento_en
+        ),
     )
 
 
@@ -80,18 +86,22 @@ def _respuesta(convocatoria: Convocatoria) -> ConvocatoriaResponse:
     summary="Publicar la convocatoria de una emergencia",
     description=(
         "Exige al menos un lote en borrador, crea la convocatoria y "
-        "transiciona la emergencia a PUBLICADA de forma atómica. Solo el "
-        "centro coordinador asignado, con token CSRF vigente. La "
-        "sincronización con la tarea humana de Bonita queda para un ticket "
-        "de seguimiento: `cierra_en` se guarda con un valor provisorio."
+        "transiciona la emergencia a PUBLICADA de forma atómica; `cierra_en` "
+        "se guarda con un valor provisorio hasta que Bonita confirme la "
+        "fecha real. Completa además la tarea `Generar lotes de "
+        "necesidades` en Bonita; si esa sincronización falla, la "
+        "publicación local igual queda confirmada y se puede reintentar "
+        "llamando de nuevo a este mismo endpoint. Solo el centro "
+        "coordinador asignado, con token CSRF vigente."
     ),
 )
 def publicar_convocatoria(
     emergencia_id: EmergenciaId,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPublicaConvocatoria,
+    cliente: ClienteBonitaDep,
 ) -> ConvocatoriaResponse:
-    """Valida el estado en base de datos y publica la convocatoria."""
+    """Valida el estado en base de datos, publica y sincroniza con Bonita."""
 
     try:
         convocatoria = servicio.publicar_convocatoria(session, usuario, emergencia_id)
@@ -99,4 +109,7 @@ def publicar_convocatoria(
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
+    convocatoria = completar_generacion_lotes(
+        session, convocatoria.emergencia, convocatoria, cliente
+    )
     return _respuesta(convocatoria)

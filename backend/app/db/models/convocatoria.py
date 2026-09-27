@@ -15,6 +15,7 @@ from sqlalchemy import (
     Numeric,
     PrimaryKeyConstraint,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -22,7 +23,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.models.enums import EstadoConvocatoria
+from app.db.models.enums import EstadoConvocatoria, EstadoTareaBonita
 
 if TYPE_CHECKING:
     from app.db.models.emergencia import Emergencia
@@ -81,6 +82,20 @@ class Convocatoria(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+    bonita_generar_lotes_estado: Mapped[EstadoTareaBonita] = mapped_column(
+        Enum(EstadoTareaBonita, name="estado_tarea_bonita"),
+        nullable=False,
+        default=EstadoTareaBonita.PENDIENTE,
+        server_default=text("'PENDIENTE'"),
+    )
+    bonita_generar_lotes_ultimo_error: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    bonita_generar_lotes_ultimo_intento_en: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     emergencia: Mapped[Emergencia] = relationship(back_populates="convocatorias")

@@ -1,14 +1,19 @@
 """Pruebas del endpoint de publicación de convocatorias."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import obtener_cliente_bonita
 from app.core.security import (
     crear_token_csrf,
     crear_valor_sesion,
@@ -17,8 +22,10 @@ from app.core.security import (
 from app.db.models import (
     Convocatoria,
     Emergencia,
+    EstadoConvocatoria,
     EstadoEmergencia,
     EstadoLote,
+    EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
     Organizacion,
@@ -27,10 +34,18 @@ from app.db.models import (
     Usuario,
 )
 from app.db.session import get_db
+from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
+from app.integrations.bonita.contratos import (
+    TAREA_GENERAR_LOTES,
+    USUARIO_ACTOR_COORDINADOR,
+)
 from app.main import app
 from app.services import convocatorias as servicio_convocatorias
 
 PASSWORD = "Una-clave-segura-2026"
+BASE_URL_BONITA = "http://bonita:8080/bonita"
+CASE_ID_BONITA = 4242
+TAREA_ID_BONITA = 17
 
 
 @pytest.fixture
@@ -123,12 +138,16 @@ def usuarios_denegados(
 def emergencia(
     db_session: Session, municipio: Organizacion, operador: Usuario
 ) -> Emergencia:
+    """Emergencia ya vinculada a un caso de Bonita (simula un alta previa)."""
+
     emergencia = Emergencia(
         municipio_id=municipio.id,
         creada_por_usuario_id=operador.id,
         gravedad=GravedadEmergencia.ALTA,
         zona="Ribera norte",
         descripcion="Inundación con familias evacuadas",
+        bonita_sync=EstadoSincronizacionBonita.VINCULADA,
+        bonita_process_instance_id=CASE_ID_BONITA,
     )
     db_session.add(emergencia)
     db_session.flush()
@@ -137,14 +156,72 @@ def emergencia(
 
 
 @pytest.fixture
-def client(db_session: Session) -> Iterator[TestClient]:
+def cliente_bonita() -> Iterator[ClienteBonita]:
+    configuracion = ConfiguracionBonita(
+        base_url=BASE_URL_BONITA,
+        usuario="install",
+        password=SecretStr("clave-tecnica"),
+        nombre_proceso="RescueSync",
+        version_proceso="1.2",
+        timeout_conexion_segundos=1,
+        timeout_lectura_segundos=1,
+    )
+    with ClienteBonita(configuracion) as cliente:
+        yield cliente
+
+
+@pytest.fixture
+def client(db_session: Session, cliente_bonita: ClienteBonita) -> Iterator[TestClient]:
     def usar_sesion_de_prueba() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
+    app.dependency_overrides[obtener_cliente_bonita] = lambda: cliente_bonita
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def _login_bonita(router: respx.MockRouter, token: str = "csrf-1") -> None:
+    router.post(f"{BASE_URL_BONITA}/loginservice").mock(
+        return_value=httpx.Response(
+            204, headers={"set-cookie": f"X-Bonita-API-Token={token}"}
+        )
+    )
+
+
+def _tarea_generar_lotes_lista(router: respx.MockRouter) -> None:
+    router.get(f"{BASE_URL_BONITA}/API/bpm/humanTask").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": str(TAREA_ID_BONITA),
+                    "name": TAREA_GENERAR_LOTES,
+                    "state": "ready",
+                    "caseId": str(CASE_ID_BONITA),
+                }
+            ],
+        )
+    )
+
+
+def _completar_tarea_generar_lotes(router: respx.MockRouter) -> None:
+    """Mockea el ciclo completo: login, búsqueda, identidad y ejecución."""
+
+    _login_bonita(router)
+    _tarea_generar_lotes_lista(router)
+    router.get(f"{BASE_URL_BONITA}/API/identity/user").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": "9", "userName": USUARIO_ACTOR_COORDINADOR}]
+        )
+    )
+    router.put(f"{BASE_URL_BONITA}/API/bpm/humanTask/{TAREA_ID_BONITA}").mock(
+        return_value=httpx.Response(200)
+    )
+    router.post(f"{BASE_URL_BONITA}/API/bpm/userTask/{TAREA_ID_BONITA}/execution").mock(
+        return_value=httpx.Response(204)
+    )
 
 
 def _autenticar(client: TestClient, usuario: Usuario) -> str:
@@ -202,16 +279,21 @@ def test_publica_convocatoria_con_lotes_en_borrador_y_pasa_a_publicada(
     db_session.flush()
     csrf = _autenticar(client, coordinador)
 
-    response = client.post(
-        f"/api/v1/emergencias/{emergencia.id}/publicar",
-        headers={"X-CSRF-Token": csrf},
-    )
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        response = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
 
     assert response.status_code == 201
     payload = response.json()
     assert payload["numero"] == 1
     assert payload["estado"] == "ABIERTA"
     assert payload["emergencia_id"] == emergencia.id
+    assert payload["bonita_generar_lotes_estado"] == "COMPLETADA"
+    assert payload["bonita_generar_lotes_ultimo_error"] is None
+    assert payload["bonita_generar_lotes_ultimo_intento_en"] is not None
     assert {item["lote_id"] for item in payload["lotes"]} == {lote.id, otro_lote.id}
     assert all(
         Decimal(item["cantidad_publicada"]) == Decimal(1000)
@@ -300,7 +382,7 @@ def test_rechaza_publicar_centro_distinto(
     assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
-def test_rechaza_publicar_emergencia_ya_publicada(
+def test_reintenta_sincronizacion_bonita_si_la_convocatoria_sigue_abierta(
     client: TestClient,
     db_session: Session,
     emergencia: Emergencia,
@@ -312,11 +394,59 @@ def test_rechaza_publicar_emergencia_ya_publicada(
     db_session.flush()
     csrf = _autenticar(client, coordinador)
 
-    primera = client.post(
-        f"/api/v1/emergencias/{emergencia.id}/publicar",
-        headers={"X-CSRF-Token": csrf},
-    )
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        primera = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
     assert primera.status_code == 201
+    assert primera.json()["bonita_generar_lotes_estado"] == "COMPLETADA"
+    primer_intento_en = primera.json()["bonita_generar_lotes_ultimo_intento_en"]
+
+    # La tarea ya se completó: el segundo intento no debe volver a llamar a
+    # Bonita, solo reconfirma el estado ya sincronizado.
+    with respx.mock(assert_all_called=False) as router:
+        acceso = router.post(f"{BASE_URL_BONITA}/loginservice").mock(
+            return_value=httpx.Response(204)
+        )
+        segunda = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert segunda.status_code == 201
+    assert segunda.json()["id"] == primera.json()["id"]
+    assert segunda.json()["bonita_generar_lotes_ultimo_intento_en"] == primer_intento_en
+    assert acceso.call_count == 0
+    assert _contar_convocatorias(db_session, emergencia.id) == 1
+
+
+def test_rechaza_publicar_si_la_convocatoria_ya_cerro(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    _lote(db_session, emergencia, coordinador)
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        primera = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert primera.status_code == 201
+
+    convocatoria = db_session.get(Convocatoria, primera.json()["id"])
+    assert convocatoria is not None
+    convocatoria.estado = EstadoConvocatoria.CERRADA
+    convocatoria.cerrada_en = datetime.now(UTC)
+    db_session.commit()
 
     segunda = client.post(
         f"/api/v1/emergencias/{emergencia.id}/publicar",
@@ -325,6 +455,56 @@ def test_rechaza_publicar_emergencia_ya_publicada(
 
     assert segunda.status_code == 409
     assert _contar_convocatorias(db_session, emergencia.id) == 1
+
+
+def test_publica_localmente_aunque_falle_la_sincronizacion_con_bonita(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    _lote(db_session, emergencia, coordinador)
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    with respx.mock(assert_all_called=True) as router:
+        _login_bonita(router)
+        router.get(f"{BASE_URL_BONITA}/API/bpm/humanTask").mock(
+            return_value=httpx.Response(500)
+        )
+        response = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["bonita_generar_lotes_estado"] in {"ERROR", "RESULTADO_DESCONOCIDO"}
+    assert payload["bonita_generar_lotes_ultimo_error"]
+    assert _contar_convocatorias(db_session, emergencia.id) == 1
+
+
+def test_rechaza_publicar_emergencia_en_estado_no_publicable(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    emergencia.estado = EstadoEmergencia.CANCELADA
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    response = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/publicar",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 409
+    assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
 def test_exige_sesion_y_csrf(

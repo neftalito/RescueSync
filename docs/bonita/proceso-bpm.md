@@ -55,6 +55,17 @@ Inicio → Generar lotes de necesidades (Coordinador; FastAPI la completa al pub
 contrato está vacío. FastAPI la localiza por nombre, la asigna al usuario
 `coordinador.regional` y la completa cuando la publicación local ya es coherente.
 
+`POST /api/v1/emergencias/{id}/publicar` confirma primero la convocatoria en
+PostgreSQL y recién después completa esa tarea
+(`app/services/publicacion_bonita.py::completar_generacion_lotes`), en una
+llamada separada que nunca hace fallar la respuesta local. El resultado
+queda en `Convocatoria.bonita_generar_lotes_estado`
+(`PENDIENTE`/`COMPLETADA`/`ERROR`/`RESULTADO_DESCONOCIDO`) y
+`bonita_generar_lotes_ultimo_error`. Si la sincronización falla, volver a
+llamar al mismo endpoint reintenta solo ese paso: no crea una convocatoria
+nueva mientras la anterior siga `ABIERTA`, y antes de reejecutar la tarea
+vuelve a preguntarle a Bonita si sigue lista.
+
 `Validar Oferta` no tiene conector en esta versión. La validación, el bloqueo y
 la liberación de recursos del Sistema Nacional quedan fuera de la Entrega 2.
 
