@@ -26,7 +26,10 @@ from app.integrations.bonita.contratos import (
 )
 from app.schemas.emergencia import EmergenciaCreate
 from app.services import emergencias as servicio_emergencias
-from app.services.publicacion_bonita import completar_generacion_lotes
+from app.services.publicacion_bonita import (
+    RECLAMO_VIGENTE_DURANTE,
+    completar_generacion_lotes,
+)
 
 BASE_URL = "http://bonita:8080/bonita"
 PASSWORD = "Una-clave-segura-2026"
@@ -315,3 +318,53 @@ def test_no_repite_nada_si_ya_estaba_completada(
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
     assert acceso.call_count == 0
+
+
+def test_no_hace_nada_si_hay_un_reclamo_vigente_de_otro_intento(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """Un reclamo EN_PROGRESO reciente evita que dos intentos ejecuten a la vez."""
+
+    convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.EN_PROGRESO
+    convocatoria.bonita_generar_lotes_ultimo_intento_en = datetime.now(UTC)
+    db_session.commit()
+
+    with respx.mock(assert_all_called=False) as router:
+        acceso = router.post(f"{BASE_URL}/loginservice").mock(
+            return_value=httpx.Response(204)
+        )
+
+        resultado = completar_generacion_lotes(
+            db_session, emergencia, convocatoria, cliente
+        )
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.EN_PROGRESO
+    assert acceso.call_count == 0
+
+
+def test_reclama_un_intento_en_progreso_vencido_y_reconcilia(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """Un reclamo EN_PROGRESO abandonado (más viejo que la ventana) se retoma."""
+
+    convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.EN_PROGRESO
+    convocatoria.bonita_generar_lotes_ultimo_intento_en = (
+        datetime.now(UTC) - RECLAMO_VIGENTE_DURANTE - timedelta(seconds=1)
+    )
+    db_session.commit()
+
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        _sin_tarea_lista(router)
+
+        resultado = completar_generacion_lotes(
+            db_session, emergencia, convocatoria, cliente
+        )
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA

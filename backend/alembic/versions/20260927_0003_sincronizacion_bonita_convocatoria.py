@@ -17,6 +17,7 @@ depends_on: str | None = None
 
 ESTADO_TAREA_BONITA = postgresql.ENUM(
     "PENDIENTE",
+    "EN_PROGRESO",
     "COMPLETADA",
     "ERROR",
     "RESULTADO_DESCONOCIDO",
