@@ -1,18 +1,18 @@
 """Completa en Bonita la tarea humana `Generar lotes de necesidades`.
 
-La convocatoria ya quedó confirmada en PostgreSQL antes de llamar a esta
-función: acá solo se sincroniza con Bonita. El bloqueo pesimista de la fila
-se mantiene durante la llamada a Bonita a propósito, para que dos intentos
-concurrentes (por ejemplo, dos reintentos casi simultáneos) queden
-serializados por Postgres en vez de pisarse el resultado entre sí.
+La publicación local ya está confirmada cuando empieza este caso de uso. Cada
+intento toma un claim persistido en una transacción corta, llama a Bonita sin
+una transacción PostgreSQL abierta y guarda el resultado en otra transacción.
 """
 
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Convocatoria, Emergencia, EstadoSincronizacionBonita
+from app.db.models import Convocatoria, EstadoSincronizacionBonita
 from app.db.models.enums import EstadoTareaBonita
 from app.integrations.bonita.cliente import (
     BonitaResultadoDesconocidoError,
@@ -24,98 +24,219 @@ from app.integrations.bonita.contratos import (
     USUARIO_ACTOR_COORDINADOR,
 )
 
+_DURACION_CLAIM_MINIMA = timedelta(minutes=15)
+_MARGEN_SOLICITUDES_HTTP = 20
+
+
+@dataclass(frozen=True)
+class _IntentoSincronizacion:
+    """Datos inmutables necesarios durante la llamada externa sin transacción."""
+
+    id: UUID
+    convocatoria_id: int
+    case_id: int
+    reconciliando_resultado_incierto: bool
+
 
 def completar_generacion_lotes(
     session: Session,
-    emergencia: Emergencia,
     convocatoria: Convocatoria,
     cliente: ClienteBonita,
 ) -> Convocatoria:
-    """Completa `Generar lotes de necesidades` del caso vinculado a la emergencia.
+    """Completa `Generar lotes de necesidades` sin duplicar intentos concurrentes.
 
-    Vuelve a leer y bloquear la convocatoria (`SELECT ... FOR UPDATE`) antes
-    de decidir si hace falta llamar a Bonita, para que el chequeo de
-    "¿ya está completada?" y la persistencia del resultado sean atómicos
-    frente a otro intento concurrente sobre la misma fila.
+    Un claim vigente hace que los demás reintentos devuelvan de inmediato el
+    último estado estable, sin consultar ni ejecutar la tarea. Si el proceso se
+    interrumpe después de tomar el claim, otro pedido puede recuperarlo una vez
+    vencida una ventana calculada por encima de los timeouts HTTP configurados.
 
-    Si Bonita no encuentra la tarea lista, solo se interpreta como éxito
-    (reconciliación) cuando el intento anterior había quedado en
-    `RESULTADO_DESCONOCIDO` — mismo criterio que
-    `vinculacion_bonita.py::_adoptar_caso_si_existe`. Si nunca se había
-    intentado o el intento previo falló de forma definitiva, no encontrar la
-    tarea se trata como error: puede significar que el caso todavía no llegó
-    a ese paso, no que ya se haya completado.
+    Si Bonita no encuentra la tarea lista, solo se interpreta como éxito cuando
+    se está reconciliando un `RESULTADO_DESCONOCIDO`. En un primer intento puede
+    significar que el caso todavía no llegó a ese paso.
 
     Args:
-        session: Sesión SQLAlchemy con la que se persiste el resultado.
-        emergencia: Emergencia con el vínculo de caso de Bonita ya cargado.
-        convocatoria: Convocatoria recién publicada o reutilizada localmente.
+        session: Sesión SQLAlchemy usada en las transacciones locales breves.
+        convocatoria: Convocatoria publicada que debe avanzar en Bonita.
         cliente: Cliente Bonita compartido de la aplicación.
 
     Returns:
-        La convocatoria con su estado de sincronización actualizado. Ante
-        cualquier fallo de integración la convocatoria se conserva y queda
-        un error seguro que permite un reintento trazable.
+        La convocatoria con el último resultado estable conocido.
     """
 
-    convocatoria = session.scalar(
-        select(Convocatoria).where(Convocatoria.id == convocatoria.id).with_for_update()
-    )
-    if convocatoria.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA:
-        return convocatoria
-
-    if (
-        emergencia.bonita_sync is not EstadoSincronizacionBonita.VINCULADA
-        or emergencia.bonita_process_instance_id is None
-    ):
-        return _persistir(
-            session,
-            convocatoria,
-            EstadoTareaBonita.ERROR,
-            "La emergencia no está vinculada a un caso de Bonita.",
-        )
-
-    reconciliando_resultado_incierto = (
-        convocatoria.bonita_generar_lotes_estado
-        is EstadoTareaBonita.RESULTADO_DESCONOCIDO
-    )
+    toma = _tomar_intento(session, convocatoria.id, cliente)
+    if isinstance(toma, Convocatoria):
+        return toma
 
     try:
-        tarea = cliente.buscar_tarea_lista(
-            emergencia.bonita_process_instance_id, TAREA_GENERAR_LOTES
-        )
+        tarea = cliente.buscar_tarea_lista(toma.case_id, TAREA_GENERAR_LOTES)
         if tarea is not None:
+            resultado_concurrente = _marcar_ejecucion_iniciada(session, toma)
+            if resultado_concurrente is not None:
+                return resultado_concurrente
             cliente.ejecutar_tarea(tarea.id, USUARIO_ACTOR_COORDINADOR)
-        elif not reconciliando_resultado_incierto:
-            return _persistir(
+        elif not toma.reconciliando_resultado_incierto:
+            return _persistir_resultado(
                 session,
-                convocatoria,
+                toma,
                 EstadoTareaBonita.ERROR,
                 "No se encontró la tarea 'Generar lotes de necesidades' lista "
                 "en el caso; puede que el proceso todavía no haya llegado a "
                 "ese paso o se haya resuelto de otra forma.",
             )
     except BonitaResultadoDesconocidoError as error:
-        return _persistir(
-            session, convocatoria, EstadoTareaBonita.RESULTADO_DESCONOCIDO, str(error)
+        return _persistir_resultado(
+            session,
+            toma,
+            EstadoTareaBonita.RESULTADO_DESCONOCIDO,
+            str(error),
         )
     except ErrorBonita as error:
-        return _persistir(session, convocatoria, EstadoTareaBonita.ERROR, str(error))
+        return _persistir_resultado(
+            session,
+            toma,
+            EstadoTareaBonita.ERROR,
+            str(error),
+        )
 
-    return _persistir(session, convocatoria, EstadoTareaBonita.COMPLETADA, None)
+    return _persistir_resultado(
+        session,
+        toma,
+        EstadoTareaBonita.COMPLETADA,
+        None,
+    )
 
 
-def _persistir(
+def _tomar_intento(
     session: Session,
-    convocatoria: Convocatoria,
+    convocatoria_id: int,
+    cliente: ClienteBonita,
+) -> _IntentoSincronizacion | Convocatoria:
+    """Toma y confirma un claim, o devuelve la convocatoria sin llamar a Bonita."""
+
+    convocatoria = session.scalar(
+        select(Convocatoria).where(Convocatoria.id == convocatoria_id).with_for_update()
+    )
+    if convocatoria is None:
+        raise RuntimeError("La convocatoria desapareció durante la sincronización.")
+
+    if convocatoria.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA:
+        _liberar_claim(convocatoria)
+        session.commit()
+        return convocatoria
+
+    ahora = datetime.now(UTC)
+    if (
+        convocatoria.bonita_generar_lotes_intento_id is not None
+        and convocatoria.bonita_generar_lotes_intento_expira_en is not None
+        and convocatoria.bonita_generar_lotes_intento_expira_en > ahora
+    ):
+        session.commit()
+        return convocatoria
+
+    emergencia = convocatoria.emergencia
+    if (
+        emergencia.bonita_sync is not EstadoSincronizacionBonita.VINCULADA
+        or emergencia.bonita_process_instance_id is None
+    ):
+        convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.ERROR
+        convocatoria.bonita_generar_lotes_ultimo_error = (
+            "La emergencia no está vinculada a un caso de Bonita."
+        )
+        convocatoria.bonita_generar_lotes_ultimo_intento_en = ahora
+        _liberar_claim(convocatoria)
+        session.commit()
+        return convocatoria
+
+    intento_id = uuid4()
+    intento = _IntentoSincronizacion(
+        id=intento_id,
+        convocatoria_id=convocatoria.id,
+        case_id=emergencia.bonita_process_instance_id,
+        reconciliando_resultado_incierto=(
+            convocatoria.bonita_generar_lotes_estado
+            is EstadoTareaBonita.RESULTADO_DESCONOCIDO
+        ),
+    )
+    convocatoria.bonita_generar_lotes_intento_id = intento_id
+    convocatoria.bonita_generar_lotes_intento_expira_en = ahora + _duracion_claim(
+        cliente
+    )
+    session.commit()
+    return intento
+
+
+def _marcar_ejecucion_iniciada(
+    session: Session,
+    intento: _IntentoSincronizacion,
+) -> Convocatoria | None:
+    """Persiste la ambigüedad antes de ejecutar la operación no idempotente."""
+
+    convocatoria = session.scalar(
+        select(Convocatoria)
+        .where(Convocatoria.id == intento.convocatoria_id)
+        .with_for_update()
+    )
+    if convocatoria is None:
+        raise RuntimeError("La convocatoria desapareció durante la sincronización.")
+
+    if convocatoria.bonita_generar_lotes_intento_id != intento.id:
+        session.commit()
+        return convocatoria
+
+    convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.RESULTADO_DESCONOCIDO
+    convocatoria.bonita_generar_lotes_ultimo_error = (
+        "La ejecución de la tarea está en curso; si se interrumpe, debe reconciliarse."
+    )
+    convocatoria.bonita_generar_lotes_ultimo_intento_en = datetime.now(UTC)
+    session.commit()
+    return None
+
+
+def _persistir_resultado(
+    session: Session,
+    intento: _IntentoSincronizacion,
     estado: EstadoTareaBonita,
     mensaje: str | None,
 ) -> Convocatoria:
-    """Guarda el resultado de sincronización y el último error seguro."""
+    """Guarda el resultado sólo si ningún recuperador reemplazó el claim."""
+
+    convocatoria = session.scalar(
+        select(Convocatoria)
+        .where(Convocatoria.id == intento.convocatoria_id)
+        .with_for_update()
+    )
+    if convocatoria is None:
+        raise RuntimeError("La convocatoria desapareció durante la sincronización.")
+
+    if convocatoria.bonita_generar_lotes_intento_id != intento.id:
+        session.commit()
+        return convocatoria
 
     convocatoria.bonita_generar_lotes_estado = estado
     convocatoria.bonita_generar_lotes_ultimo_error = mensaje
     convocatoria.bonita_generar_lotes_ultimo_intento_en = datetime.now(UTC)
+    _liberar_claim(convocatoria)
     session.commit()
     session.refresh(convocatoria)
     return convocatoria
+
+
+def _duracion_claim(cliente: ClienteBonita) -> timedelta:
+    """Calcula una ventana mayor al peor recorrido HTTP normal del intento."""
+
+    configuracion = cliente.configuracion
+    presupuesto_http = timedelta(
+        seconds=(
+            configuracion.timeout_conexion_segundos
+            + configuracion.timeout_lectura_segundos
+        )
+        * _MARGEN_SOLICITUDES_HTTP
+    )
+    return max(_DURACION_CLAIM_MINIMA, presupuesto_http)
+
+
+def _liberar_claim(convocatoria: Convocatoria) -> None:
+    """Limpia en conjunto las dos columnas que representan el claim."""
+
+    convocatoria.bonita_generar_lotes_intento_id = None
+    convocatoria.bonita_generar_lotes_intento_expira_en = None

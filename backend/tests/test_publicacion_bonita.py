@@ -1,5 +1,6 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -147,6 +148,19 @@ def _identidad(router: respx.MockRouter) -> None:
     )
 
 
+def _respuesta_sin_transaccion(
+    session: Session,
+    response: httpx.Response,
+) -> Callable[[httpx.Request], httpx.Response]:
+    """Construye una respuesta HTTP que verifica que PostgreSQL esté liberado."""
+
+    def responder(_request: httpx.Request) -> httpx.Response:
+        assert not session.in_transaction()
+        return response
+
+    return responder
+
+
 def test_completa_la_tarea_y_marca_completada(
     db_session: Session,
     emergencia: Emergencia,
@@ -164,9 +178,7 @@ def test_completa_la_tarea_y_marca_completada(
             f"{BASE_URL}/API/bpm/userTask/{TAREA_ID}/execution"
         ).mock(return_value=httpx.Response(204))
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
     assert resultado.bonita_generar_lotes_ultimo_error is None
@@ -189,9 +201,7 @@ def test_marca_error_si_no_encuentra_la_tarea_lista_por_primera_vez(
         _login(router)
         _sin_tarea_lista(router)
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.ERROR
     assert resultado.bonita_generar_lotes_ultimo_error is not None
@@ -212,9 +222,7 @@ def test_reconcilia_como_completada_tras_un_intento_previo_incierto(
         _login(router)
         _sin_tarea_lista(router)
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
 
@@ -234,9 +242,7 @@ def test_marca_error_si_la_emergencia_no_esta_vinculada(
             return_value=httpx.Response(204)
         )
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.ERROR
     assert resultado.bonita_generar_lotes_ultimo_error is not None
@@ -260,9 +266,7 @@ def test_marca_error_ante_un_rechazo_definitivo_de_bonita(
             return_value=httpx.Response(400, json={"message": "Contrato inválido"})
         )
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.ERROR
     assert resultado.bonita_generar_lotes_ultimo_error is not None
@@ -285,9 +289,7 @@ def test_marca_resultado_desconocido_ante_una_ejecucion_incierta(
             side_effect=httpx.ReadTimeout("timeout")
         )
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert (
         resultado.bonita_generar_lotes_estado is EstadoTareaBonita.RESULTADO_DESCONOCIDO
@@ -309,9 +311,147 @@ def test_no_repite_nada_si_ya_estaba_completada(
             return_value=httpx.Response(204)
         )
 
-        resultado = completar_generacion_lotes(
-            db_session, emergencia, convocatoria, cliente
-        )
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
     assert acceso.call_count == 0
+
+
+def test_un_claim_vigente_evita_repetir_la_tarea(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """Un segundo pedido observa el intento activo sin volver a llamar a Bonita."""
+
+    intento_id = uuid4()
+    convocatoria.bonita_generar_lotes_intento_id = intento_id
+    convocatoria.bonita_generar_lotes_intento_expira_en = datetime.now(UTC) + timedelta(
+        minutes=5
+    )
+    db_session.commit()
+
+    with respx.mock(assert_all_called=False) as router:
+        acceso = router.post(f"{BASE_URL}/loginservice").mock(
+            return_value=httpx.Response(204)
+        )
+
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.PENDIENTE
+    assert resultado.bonita_generar_lotes_intento_id == intento_id
+    assert acceso.call_count == 0
+
+
+def test_recupera_un_claim_vencido_reconciliando_el_resultado(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """Un claim abandonado no impide reconciliar un resultado incierto."""
+
+    convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.RESULTADO_DESCONOCIDO
+    convocatoria.bonita_generar_lotes_intento_id = uuid4()
+    convocatoria.bonita_generar_lotes_intento_expira_en = datetime.now(UTC) - timedelta(
+        seconds=1
+    )
+    db_session.commit()
+
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        _sin_tarea_lista(router)
+
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
+    assert resultado.bonita_generar_lotes_intento_id is None
+    assert resultado.bonita_generar_lotes_intento_expira_en is None
+
+
+def test_persiste_resultado_desconocido_antes_de_una_interrupcion(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Una caída al ejecutar conserva información suficiente para reconciliar."""
+
+    def interrumpir_ejecucion(_tarea_id: int, _usuario_actor: str) -> None:
+        raise RuntimeError("interrupción simulada del proceso")
+
+    monkeypatch.setattr(cliente, "ejecutar_tarea", interrumpir_ejecucion)
+
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        _tarea_lista(router)
+
+        with pytest.raises(RuntimeError, match="interrupción simulada"):
+            completar_generacion_lotes(db_session, convocatoria, cliente)
+
+    db_session.expire_all()
+    guardada = db_session.get(Convocatoria, convocatoria.id)
+    assert guardada is not None
+    assert (
+        guardada.bonita_generar_lotes_estado is EstadoTareaBonita.RESULTADO_DESCONOCIDO
+    )
+    assert guardada.bonita_generar_lotes_intento_id is not None
+    assert guardada.bonita_generar_lotes_intento_expira_en is not None
+
+
+def test_no_mantiene_una_transaccion_abierta_durante_http(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """El claim se confirma antes de buscar, asignar y ejecutar la tarea."""
+
+    with respx.mock(assert_all_called=True) as router:
+        router.post(f"{BASE_URL}/loginservice").mock(
+            side_effect=_respuesta_sin_transaccion(
+                db_session,
+                httpx.Response(
+                    204,
+                    headers={"set-cookie": "X-Bonita-API-Token=csrf-sin-transaccion"},
+                ),
+            )
+        )
+        router.get(f"{BASE_URL}/API/bpm/humanTask").mock(
+            side_effect=_respuesta_sin_transaccion(
+                db_session,
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            "id": str(TAREA_ID),
+                            "name": TAREA_GENERAR_LOTES,
+                            "state": "ready",
+                            "caseId": str(CASE_ID),
+                        }
+                    ],
+                ),
+            )
+        )
+        router.get(f"{BASE_URL}/API/identity/user").mock(
+            side_effect=_respuesta_sin_transaccion(
+                db_session,
+                httpx.Response(
+                    200,
+                    json=[{"id": "9", "userName": USUARIO_ACTOR_COORDINADOR}],
+                ),
+            )
+        )
+        router.put(f"{BASE_URL}/API/bpm/humanTask/{TAREA_ID}").mock(
+            side_effect=_respuesta_sin_transaccion(db_session, httpx.Response(200))
+        )
+        router.post(f"{BASE_URL}/API/bpm/userTask/{TAREA_ID}/execution").mock(
+            side_effect=_respuesta_sin_transaccion(db_session, httpx.Response(204))
+        )
+
+        resultado = completar_generacion_lotes(db_session, convocatoria, cliente)
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
+    assert resultado.bonita_generar_lotes_intento_id is None

@@ -64,7 +64,13 @@ queda en `Convocatoria.bonita_generar_lotes_estado`
 `bonita_generar_lotes_ultimo_error`. Si la sincronización falla, volver a
 llamar al mismo endpoint reintenta solo ese paso: no crea una convocatoria
 nueva mientras la anterior siga `ABIERTA`, y antes de reejecutar la tarea
-vuelve a preguntarle a Bonita si sigue lista.
+vuelve a preguntarle a Bonita si sigue lista. Cada intento toma primero un
+claim persistido y lo confirma en una transacción corta. Las llamadas HTTP a
+Bonita ocurren sin una transacción PostgreSQL abierta; al terminar, otra
+transacción guarda el resultado solamente si el intento todavía conserva el
+claim. Un reintento concurrente observa el claim vigente y no duplica la
+ejecución de la tarea. Los claims abandonados vencen después de una ventana
+superior a los timeouts HTTP configurados y pueden ser reconciliados.
 
 `Validar Oferta` no tiene conector en esta versión. La validación, el bloqueo y
 la liberación de recursos del Sistema Nacional quedan fuera de la Entrega 2.
