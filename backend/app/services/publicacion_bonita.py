@@ -5,14 +5,19 @@ función: acá solo se sincroniza con Bonita. Ninguna transacción de escritura
 queda abierta durante la llamada HTTP (ver `docs/modelo-base-datos-
 rescuesync.md`, sección 7.1): primero se reclama el intento en una
 transacción corta, después se llama a Bonita sin ningún lock, y por último
-se vuelve a bloquear la fila para persistir el resultado. El reclamo
-(`EN_PROGRESO`) es lo que evita que dos intentos concurrentes ejecuten la
-misma tarea dos veces.
+se intenta persistir el resultado.
+
+El reclamo (`EN_PROGRESO` + un `claim_id` propio de este intento) evita que
+dos intentos concurrentes ejecuten la misma tarea dos veces, y la
+persistencia final solo se aplica si ese `claim_id` sigue vigente: si otro
+intento ya retomó el reclamo (por ejemplo porque este se pasó de la ventana
+de 60s) y ya escribió su propio resultado, este intento no lo pisa.
 """
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import Convocatoria, Emergencia, EstadoSincronizacionBonita
@@ -33,7 +38,8 @@ RECLAMO_VIGENTE_DURANTE = timedelta(seconds=60)
 Tiene que cubrir con margen el peor caso de `ClienteBonita` (login +
 búsqueda + asignación + ejecución, con un reintento de sesión incluido).
 Pasado ese tiempo, un reclamo sin resolver se considera abandonado y un
-nuevo intento puede tomarlo.
+nuevo intento puede tomarlo — el `claim_id` evita que el intento original,
+si igual llega a terminar más tarde, pise el resultado del nuevo dueño.
 """
 
 
@@ -50,12 +56,13 @@ def completar_generacion_lotes(
     convocatoria tal cual, sin tocar Bonita.
 
     Si Bonita no encuentra la tarea lista, solo se interpreta como éxito
-    (reconciliación) cuando el intento que se está resolviendo venía de un
-    resultado incierto (`RESULTADO_DESCONOCIDO`) o de un reclamo abandonado
-    (`EN_PROGRESO` vencido) — mismo criterio que
-    `vinculacion_bonita.py::_adoptar_caso_si_existe`. Si nunca se había
-    intentado o el intento previo falló de forma definitiva, no encontrar la
-    tarea se trata como error.
+    cuando el intento que se está resolviendo venía de un resultado incierto
+    (`RESULTADO_DESCONOCIDO`) o de un reclamo abandonado (`EN_PROGRESO`
+    vencido) **y** el archivo de Bonita confirma que la tarea llegó a
+    `completed` — no alcanza con que ya no esté `ready`, porque asignarla
+    (sin ejecutarla) también la saca de ese estado. Si nunca se había
+    intentado, el intento previo falló de forma definitiva, o el archivo no
+    confirma la ejecución, se trata como error.
 
     Args:
         session: Sesión SQLAlchemy con la que se persiste el resultado.
@@ -74,7 +81,7 @@ def completar_generacion_lotes(
         return session.scalar(
             select(Convocatoria).where(Convocatoria.id == convocatoria.id)
         )
-    convocatoria, reconciliando_resultado_incierto = reclamo
+    convocatoria, claim_id, reconciliando_resultado_incierto = reclamo
 
     if (
         emergencia.bonita_sync is not EstadoSincronizacionBonita.VINCULADA
@@ -83,51 +90,62 @@ def completar_generacion_lotes(
         return _persistir(
             session,
             convocatoria.id,
+            claim_id,
             EstadoTareaBonita.ERROR,
             "La emergencia no está vinculada a un caso de Bonita.",
         )
 
+    case_id = emergencia.bonita_process_instance_id
     try:
-        tarea = cliente.buscar_tarea_lista(
-            emergencia.bonita_process_instance_id, TAREA_GENERAR_LOTES
-        )
+        tarea = cliente.buscar_tarea_lista(case_id, TAREA_GENERAR_LOTES)
         if tarea is not None:
             cliente.ejecutar_tarea(tarea.id, USUARIO_ACTOR_COORDINADOR)
-        elif not reconciliando_resultado_incierto:
+        elif not (
+            reconciliando_resultado_incierto
+            and cliente.tarea_completada(case_id, TAREA_GENERAR_LOTES)
+        ):
             return _persistir(
                 session,
                 convocatoria.id,
+                claim_id,
                 EstadoTareaBonita.ERROR,
                 "No se encontró la tarea 'Generar lotes de necesidades' lista "
-                "en el caso; puede que el proceso todavía no haya llegado a "
-                "ese paso o se haya resuelto de otra forma.",
+                "ni confirmada como completada en el caso; puede que el "
+                "proceso todavía no haya llegado a ese paso o se haya "
+                "resuelto de otra forma.",
             )
     except BonitaResultadoDesconocidoError as error:
         return _persistir(
             session,
             convocatoria.id,
+            claim_id,
             EstadoTareaBonita.RESULTADO_DESCONOCIDO,
             str(error),
         )
     except ErrorBonita as error:
-        return _persistir(session, convocatoria.id, EstadoTareaBonita.ERROR, str(error))
+        return _persistir(
+            session, convocatoria.id, claim_id, EstadoTareaBonita.ERROR, str(error)
+        )
 
-    return _persistir(session, convocatoria.id, EstadoTareaBonita.COMPLETADA, None)
+    return _persistir(
+        session, convocatoria.id, claim_id, EstadoTareaBonita.COMPLETADA, None
+    )
 
 
 def _reclamar_intento(
     session: Session, convocatoria_id: int
-) -> tuple[Convocatoria, bool] | None:
+) -> tuple[Convocatoria, str, bool] | None:
     """Reclama, bajo un lock breve, el intento de sincronización.
 
     No llama a Bonita: solo decide si este intento puede proceder y, si
-    puede, marca `EN_PROGRESO` y libera el lock enseguida.
+    puede, marca `EN_PROGRESO` con un `claim_id` propio y libera el lock.
 
     Returns:
         `None` si no hay nada para hacer (ya completada) o si otro intento
         tiene un reclamo vigente. Si puede proceder, una tupla con la
-        convocatoria reclamada y si corresponde reconciliar un resultado
-        previo incierto (resultado desconocido o reclamo abandonado).
+        convocatoria reclamada, el `claim_id` de este intento, y si
+        corresponde reconciliar un resultado previo incierto (resultado
+        desconocido o reclamo abandonado).
     """
 
     convocatoria = session.scalar(
@@ -154,27 +172,42 @@ def _reclamar_intento(
         EstadoTareaBonita.RESULTADO_DESCONOCIDO,
         EstadoTareaBonita.EN_PROGRESO,
     )
+    claim_id = uuid4().hex
     convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.EN_PROGRESO
     convocatoria.bonita_generar_lotes_ultimo_intento_en = ahora
+    convocatoria.bonita_generar_lotes_claim_id = claim_id
     session.commit()
     session.refresh(convocatoria)
-    return convocatoria, reconciliando
+    return convocatoria, claim_id, reconciliando
 
 
 def _persistir(
     session: Session,
     convocatoria_id: int,
+    claim_id: str,
     estado: EstadoTareaBonita,
     mensaje: str | None,
 ) -> Convocatoria:
-    """Vuelve a bloquear la fila y guarda el resultado final de la sincronización."""
+    """Guarda el resultado solo si este intento sigue siendo dueño del reclamo.
 
-    convocatoria = session.scalar(
-        select(Convocatoria).where(Convocatoria.id == convocatoria_id).with_for_update()
+    Si otro intento ya retomó el reclamo (y probablemente ya escribió su
+    propio resultado), esta escritura no afecta ninguna fila: se devuelve el
+    estado vigente tal cual, sin pisarlo.
+    """
+
+    session.execute(
+        update(Convocatoria)
+        .where(
+            Convocatoria.id == convocatoria_id,
+            Convocatoria.bonita_generar_lotes_claim_id == claim_id,
+        )
+        .values(
+            bonita_generar_lotes_estado=estado,
+            bonita_generar_lotes_ultimo_error=mensaje,
+            bonita_generar_lotes_ultimo_intento_en=datetime.now(UTC),
+        )
     )
-    convocatoria.bonita_generar_lotes_estado = estado
-    convocatoria.bonita_generar_lotes_ultimo_error = mensaje
-    convocatoria.bonita_generar_lotes_ultimo_intento_en = datetime.now(UTC)
     session.commit()
-    session.refresh(convocatoria)
-    return convocatoria
+    return session.scalar(
+        select(Convocatoria).where(Convocatoria.id == convocatoria_id)
+    )

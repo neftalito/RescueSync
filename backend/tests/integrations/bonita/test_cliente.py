@@ -450,6 +450,59 @@ def test_rechaza_una_tarea_que_no_coincide_con_el_filtro(
             cliente.buscar_tarea_lista(4, "Generar lotes de necesidades")
 
 
+def test_confirma_una_tarea_completada_en_el_archivo(cliente: ClienteBonita) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/archivedHumanTask").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "17",
+                        "name": "Generar lotes de necesidades",
+                        "state": "completed",
+                        "caseId": "4",
+                    }
+                ],
+            )
+        )
+
+        assert cliente.tarea_completada(4, "Generar lotes de necesidades") is True
+
+
+def test_no_confirma_una_tarea_sin_archivo(cliente: ClienteBonita) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/archivedHumanTask").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+
+        assert cliente.tarea_completada(4, "Generar lotes de necesidades") is False
+
+
+def test_rechaza_una_tarea_archivada_que_no_coincide_con_el_filtro(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/archivedHumanTask").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "17",
+                        "name": "Otra tarea",
+                        "state": "completed",
+                        "caseId": "4",
+                    }
+                ],
+            )
+        )
+
+        with pytest.raises(BonitaRespuestaInvalidaError, match="no coincide"):
+            cliente.tarea_completada(4, "Generar lotes de necesidades")
+
+
 @pytest.mark.parametrize("gravedad", list(GravedadEmergencia))
 def test_el_contrato_admite_las_gravedades_del_dominio(
     gravedad: GravedadEmergencia,

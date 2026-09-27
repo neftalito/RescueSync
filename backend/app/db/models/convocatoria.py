@@ -97,6 +97,10 @@ class Convocatoria(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    bonita_generar_lotes_claim_id: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
 
     emergencia: Mapped[Emergencia] = relationship(back_populates="convocatorias")
     lotes: Mapped[list[ConvocatoriaLote]] = relationship(back_populates="convocatoria")

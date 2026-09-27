@@ -28,6 +28,8 @@ from app.schemas.emergencia import EmergenciaCreate
 from app.services import emergencias as servicio_emergencias
 from app.services.publicacion_bonita import (
     RECLAMO_VIGENTE_DURANTE,
+    _persistir,
+    _reclamar_intento,
     completar_generacion_lotes,
 )
 
@@ -150,6 +152,30 @@ def _identidad(router: respx.MockRouter) -> None:
     )
 
 
+def _tarea_archivada_completada(
+    router: respx.MockRouter, case_id: int = CASE_ID
+) -> None:
+    router.get(f"{BASE_URL}/API/bpm/archivedHumanTask").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": str(TAREA_ID),
+                    "name": TAREA_GENERAR_LOTES,
+                    "state": "completed",
+                    "caseId": str(case_id),
+                }
+            ],
+        )
+    )
+
+
+def _tarea_archivada_no_encontrada(router: respx.MockRouter) -> None:
+    router.get(f"{BASE_URL}/API/bpm/archivedHumanTask").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+
 def test_completa_la_tarea_y_marca_completada(
     db_session: Session,
     emergencia: Emergencia,
@@ -206,7 +232,7 @@ def test_reconcilia_como_completada_tras_un_intento_previo_incierto(
     convocatoria: Convocatoria,
     cliente: ClienteBonita,
 ) -> None:
-    """Si el intento anterior quedó incierto, no encontrar la tarea sí confirma éxito."""
+    """Si el archivo confirma la ejecución, un resultado incierto se reconcilia."""
 
     convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.RESULTADO_DESCONOCIDO
     db_session.commit()
@@ -214,12 +240,41 @@ def test_reconcilia_como_completada_tras_un_intento_previo_incierto(
     with respx.mock(assert_all_called=True) as router:
         _login(router)
         _sin_tarea_lista(router)
+        _tarea_archivada_completada(router)
 
         resultado = completar_generacion_lotes(
             db_session, emergencia, convocatoria, cliente
         )
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
+
+
+def test_marca_error_si_el_archivo_no_confirma_la_ejecucion(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """No basta con que la tarea deje de estar lista: hace falta confirmar el archivo.
+
+    Puede haber dejado de estar `ready` solo por haberse asignado, sin
+    haberse ejecutado nunca.
+    """
+
+    convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.RESULTADO_DESCONOCIDO
+    db_session.commit()
+
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        _sin_tarea_lista(router)
+        _tarea_archivada_no_encontrada(router)
+
+        resultado = completar_generacion_lotes(
+            db_session, emergencia, convocatoria, cliente
+        )
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.ERROR
+    assert resultado.bonita_generar_lotes_ultimo_error is not None
 
 
 def test_marca_error_si_la_emergencia_no_esta_vinculada(
@@ -362,9 +417,52 @@ def test_reclama_un_intento_en_progreso_vencido_y_reconcilia(
     with respx.mock(assert_all_called=True) as router:
         _login(router)
         _sin_tarea_lista(router)
+        _tarea_archivada_completada(router)
 
         resultado = completar_generacion_lotes(
             db_session, emergencia, convocatoria, cliente
         )
 
     assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
+
+
+def test_no_pisa_el_resultado_si_perdio_el_reclamo(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+) -> None:
+    """Un intento viejo que termina tarde no debe sobrescribir al que ya ganó.
+
+    Ejercita directamente `_reclamar_intento`/`_persistir` (no la función
+    pública) porque es la única forma de forzar, de manera determinística,
+    que dos "intentos" con `claim_id` distintos compitan por la misma fila.
+    """
+
+    primero = _reclamar_intento(db_session, convocatoria.id)
+    assert primero is not None
+    _, claim_id_viejo, _ = primero
+
+    # Simula que el intento viejo se colgó: su reclamo ya venció.
+    convocatoria.bonita_generar_lotes_ultimo_intento_en = (
+        datetime.now(UTC) - RECLAMO_VIGENTE_DURANTE - timedelta(seconds=1)
+    )
+    db_session.commit()
+
+    # Otro intento retoma el reclamo y termina antes: persiste su resultado.
+    segundo = _reclamar_intento(db_session, convocatoria.id)
+    assert segundo is not None
+    _, claim_id_nuevo, _ = segundo
+    assert claim_id_nuevo != claim_id_viejo
+    ganador = _persistir(
+        db_session, convocatoria.id, claim_id_nuevo, EstadoTareaBonita.COMPLETADA, None
+    )
+    assert ganador.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
+
+    # El intento viejo recién ahora "termina" e intenta persistir con un
+    # claim_id que ya no es el vigente.
+    resultado_tardio = _persistir(
+        db_session, convocatoria.id, claim_id_viejo, EstadoTareaBonita.ERROR, "tarde"
+    )
+
+    assert resultado_tardio.bonita_generar_lotes_estado is EstadoTareaBonita.COMPLETADA
+    assert resultado_tardio.bonita_generar_lotes_ultimo_error is None
