@@ -109,5 +109,7 @@ def publicar_convocatoria(
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
-    convocatoria = completar_generacion_lotes(session, convocatoria, cliente)
+    convocatoria = completar_generacion_lotes(
+        session, convocatoria.emergencia, convocatoria, cliente
+    )
     return _respuesta(convocatoria)

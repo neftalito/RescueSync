@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
@@ -18,7 +17,6 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
-    Uuid,
     func,
     text,
 )
@@ -43,11 +41,6 @@ class Convocatoria(Base):
         CheckConstraint(
             "estado <> 'CERRADA' OR cerrada_en IS NOT NULL",
             name="cerrada_con_fecha",
-        ),
-        CheckConstraint(
-            "(bonita_generar_lotes_intento_id IS NULL) = "
-            "(bonita_generar_lotes_intento_expira_en IS NULL)",
-            name="bonita_generar_lotes_intento_completo",
         ),
         UniqueConstraint(
             "emergencia_id",
@@ -101,14 +94,6 @@ class Convocatoria(Base):
         nullable=True,
     )
     bonita_generar_lotes_ultimo_intento_en: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-    bonita_generar_lotes_intento_id: Mapped[UUID | None] = mapped_column(
-        Uuid,
-        nullable=True,
-    )
-    bonita_generar_lotes_intento_expira_en: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
     )
