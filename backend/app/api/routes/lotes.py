@@ -1,4 +1,4 @@
-"""Creación y edición de lotes de necesidades en borrador."""
+"""Consulta, creación, edición y eliminación de lotes de necesidades en borrador."""
 
 from typing import Annotated
 
@@ -21,6 +21,7 @@ UsuarioCoordinador = Annotated[
     Depends(requerir_operacion(OperacionProtegida.GESTIONAR_LOTES)),
 ]
 EmergenciaId = Annotated[int, Path(gt=0)]
+LoteId = Annotated[int, Path(gt=0)]
 
 
 def exigir_coordinador_con_csrf(
@@ -51,6 +52,7 @@ _CODIGOS_ERROR: dict[type[servicio.LoteError], int] = {
     servicio.CentroNoAutorizadoError: status.HTTP_403_FORBIDDEN,
     servicio.LoteNoEncontradoError: status.HTTP_404_NOT_FOUND,
     servicio.LoteNoEditableError: status.HTTP_409_CONFLICT,
+    servicio.LoteDesactualizadoError: status.HTTP_409_CONFLICT,
     servicio.DatosLoteInvalidosError: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
 
@@ -64,9 +66,9 @@ _CODIGOS_ERROR: dict[type[servicio.LoteError], int] = {
     description=(
         "Registra uno o más lotes con tipo y cantidad positiva para la "
         "emergencia. Los ítems sin `id` se crean y los que traen `id` deben "
-        "pertenecer a la emergencia y seguir en borrador. Guardar nunca "
-        "publica la convocatoria. Solo el centro coordinador con token CSRF "
-        "vigente."
+        "incluir su `version`, pertenecer a la emergencia y seguir en borrador. "
+        "Una versión obsoleta responde 409. Guardar nunca publica la "
+        "convocatoria. Solo el centro coordinador con token CSRF vigente."
     ),
 )
 def guardar_lotes(
@@ -84,3 +86,78 @@ def guardar_lotes(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
     return [LoteResponse.model_validate(lote) for lote in lotes]
+
+
+@router.get(
+    "/{emergencia_id}/lotes",
+    response_model=list[LoteResponse],
+    status_code=status.HTTP_200_OK,
+    responses={
+        codigo: RESPUESTAS_ERROR[codigo]
+        for codigo in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+        )
+    },
+    summary="Listar los lotes de una emergencia",
+    description=(
+        "Devuelve todos los lotes de la emergencia, en borrador o publicados, "
+        "ordenados por alta, para que el coordinador retome su edición. El "
+        "campo `estado` indica cuáles siguen siendo editables. Solo el centro "
+        "coordinador asignado a la emergencia; si aún no tiene centro, la "
+        "lista está vacía y la consulta no la reclama."
+    ),
+)
+def listar_lotes(
+    emergencia_id: EmergenciaId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioCoordinador,
+) -> list[LoteResponse]:
+    """Consulta los lotes del centro autenticado sin modificar la emergencia."""
+
+    try:
+        lotes = servicio.listar_lotes(session, usuario, emergencia_id)
+    except servicio.LoteError as error:
+        raise _error_http(error) from error
+    return [LoteResponse.model_validate(lote) for lote in lotes]
+
+
+@router.delete(
+    "/{emergencia_id}/lotes/{lote_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        codigo: RESPUESTAS_ERROR[codigo]
+        for codigo in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_404_NOT_FOUND,
+            status.HTTP_409_CONFLICT,
+        )
+    },
+    summary="Eliminar un lote en borrador",
+    description=(
+        "Quita definitivamente un lote que sigue en borrador. Un lote "
+        "publicado, cerrado o cancelado responde 409 y se conserva. Repetir "
+        "la eliminación responde 404. Solo el centro coordinador asignado con "
+        "token CSRF vigente."
+    ),
+)
+def eliminar_lote(
+    emergencia_id: EmergenciaId,
+    lote_id: LoteId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioGestionaLotes,
+) -> None:
+    """Elimina el borrador en una transacción propia."""
+
+    try:
+        servicio.eliminar_lote(session, usuario, emergencia_id, lote_id)
+    except servicio.LoteError as error:
+        raise _error_http(error) from error
+
+
+def _error_http(error: servicio.LoteError) -> HTTPException:
+    """Traduce un error de dominio de lotes a su respuesta HTTP."""
+
+    return HTTPException(status_code=_CODIGOS_ERROR[type(error)], detail=str(error))

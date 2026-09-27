@@ -1,8 +1,16 @@
 """Esquemas HTTP para crear y editar lotes de necesidades en borrador."""
 
 from decimal import Decimal
+from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.db.models.enums import EstadoLote
 
@@ -11,6 +19,7 @@ class LoteItem(BaseModel):
     """Un lote a crear (sin `id`) o editar (con `id`) dentro de una emergencia."""
 
     id: int | None = Field(default=None, gt=0)
+    version: int | None = Field(default=None, gt=0)
     tipo_necesidad: str = Field(min_length=1, max_length=120)
     descripcion: str | None = Field(default=None, max_length=2000)
     cantidad_requerida: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
@@ -29,6 +38,16 @@ class LoteItem(BaseModel):
         """Normaliza la descripción opcional sin convertir vacíos en nulos."""
 
         return valor.strip() if isinstance(valor, str) else valor
+
+    @model_validator(mode="after")
+    def exigir_version_al_editar(self) -> Self:
+        """Vincula la versión optimista con la identidad de un lote existente."""
+
+        if (self.id is None) != (self.version is None):
+            raise ValueError(
+                "Los lotes existentes requieren id y versión; los nuevos no los usan."
+            )
+        return self
 
 
 class LotesRequest(BaseModel):
