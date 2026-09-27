@@ -190,7 +190,11 @@ def _convocatoria_abierta(session: Session, emergencia_id: int) -> Convocatoria 
 
 
 def _siguiente_numero(session: Session, emergencia_id: int) -> int:
-    """Calcula el próximo número de convocatoria de la emergencia(pueden abrirse mas de una convocatoria por emergencia)"""
+    """Calcula el próximo número de convocatoria de la emergencia.
+
+    Puede haber más de una convocatoria por emergencia a lo largo del
+    tiempo (reapertura de una ronda), aunque esa lógica no es parte de T12.
+    """
 
     ultimo = session.scalar(
         select(func.max(Convocatoria.numero)).where(

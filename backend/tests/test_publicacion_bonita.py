@@ -175,12 +175,39 @@ def test_completa_la_tarea_y_marca_completada(
     assert ejecucion.call_count == 1
 
 
-def test_no_ejecuta_nada_si_la_tarea_ya_no_esta_lista(
+def test_marca_error_si_no_encuentra_la_tarea_lista_por_primera_vez(
     db_session: Session,
     emergencia: Emergencia,
     convocatoria: Convocatoria,
     cliente: ClienteBonita,
 ) -> None:
+    """Sin un intento previo incierto, no encontrar la tarea no es éxito."""
+
+    assert convocatoria.bonita_generar_lotes_estado is EstadoTareaBonita.PENDIENTE
+
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        _sin_tarea_lista(router)
+
+        resultado = completar_generacion_lotes(
+            db_session, emergencia, convocatoria, cliente
+        )
+
+    assert resultado.bonita_generar_lotes_estado is EstadoTareaBonita.ERROR
+    assert resultado.bonita_generar_lotes_ultimo_error is not None
+
+
+def test_reconcilia_como_completada_tras_un_intento_previo_incierto(
+    db_session: Session,
+    emergencia: Emergencia,
+    convocatoria: Convocatoria,
+    cliente: ClienteBonita,
+) -> None:
+    """Si el intento anterior quedó incierto, no encontrar la tarea sí confirma éxito."""
+
+    convocatoria.bonita_generar_lotes_estado = EstadoTareaBonita.RESULTADO_DESCONOCIDO
+    db_session.commit()
+
     with respx.mock(assert_all_called=True) as router:
         _login(router)
         _sin_tarea_lista(router)
