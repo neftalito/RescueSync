@@ -49,6 +49,16 @@ class EstadoSincronizacionBonita(StrEnum):
     RESULTADO_DESCONOCIDO = "RESULTADO_DESCONOCIDO"
 
 
+class EstadoTareaBonita(StrEnum):
+    """Resultado conocido de completar una tarea humana de Bonita al publicar."""
+
+    PENDIENTE = "PENDIENTE"
+    EN_PROGRESO = "EN_PROGRESO"
+    COMPLETADA = "COMPLETADA"
+    ERROR = "ERROR"
+    RESULTADO_DESCONOCIDO = "RESULTADO_DESCONOCIDO"
+
+
 class EstadoLote(StrEnum):
     """Controla si un lote todavía puede editarse o ya fue publicado."""
 
