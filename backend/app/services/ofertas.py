@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.models import (
     Convocatoria,
@@ -130,6 +130,33 @@ def registrar_oferta(
     )
     assert recargada is not None
     return recargada
+
+
+def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
+    """Devuelve las ofertas de la ONG activa del usuario, sin importar quién las creó.
+
+    Nunca incluye ofertas de otra organización: la consulta filtra siempre
+    por `ong_creadora_id` de la ONG vigente del usuario autenticado.
+
+    Raises:
+        OngNoAutorizadaError: Si el usuario no representa una ONG activa.
+    """
+
+    ong = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.ONG)
+    if ong is None:
+        raise OngNoAutorizadaError("Solo una ONG activa consulta sus ofertas.")
+
+    return list(
+        session.scalars(
+            select(Oferta)
+            .where(Oferta.ong_creadora_id == ong.id)
+            .options(
+                joinedload(Oferta.convocatoria).joinedload(Convocatoria.emergencia),
+                selectinload(Oferta.versiones).selectinload(OfertaVersion.items),
+            )
+            .order_by(Oferta.creada_en.desc())
+        ).all()
+    )
 
 
 def _publicaciones_bloqueadas(

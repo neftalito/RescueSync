@@ -4,9 +4,12 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
+import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
+import { MisOfertasPage } from "./pages/MisOfertasPage";
 import { UsersPage } from "./pages/UsersPage";
 
 function LoadingScreen(): ReactElement {
@@ -86,6 +89,28 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
             <LotesPage session={session.data} />
+          ) : session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <LotesPublicadosPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/convocatorias"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <ConvocatoriasAbiertasPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-ofertas"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <MisOfertasPage />
           ) : (
             <Navigate to="/" replace />
           )
