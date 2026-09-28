@@ -28,10 +28,6 @@ def clave_convocatoria_publicada(convocatoria_id: int) -> str:
     return f"convocatoria:{convocatoria_id}:publicada"
 
 
-def clave_convocatoria_actualizada(convocatoria_id: int) -> str:
-    return f"convocatoria:{convocatoria_id}:actualizada"
-
-
 def clave_convocatoria_cerrada(convocatoria_id: int) -> str:
     return f"convocatoria:{convocatoria_id}:cerrada"
 
@@ -87,25 +83,6 @@ def notificar_convocatoria_publicada(
         titulo="Emergencia publicada",
         mensaje="El centro coordinador publicó la convocatoria de la emergencia.",
         ruta="/",
-    )
-
-
-def notificar_convocatoria_actualizada(
-    session: Session,
-    *,
-    convocatoria_id: int,
-    zona: str,
-) -> None:
-    """Informa a las ONGs que Bonita confirmó la ventana de ofertas."""
-
-    _crear_para_rol(
-        session,
-        rol=RolUsuario.REPRESENTANTE_ONG,
-        clave_evento=clave_convocatoria_actualizada(convocatoria_id),
-        tipo=TipoNotificacion.CONVOCATORIA_ACTUALIZADA,
-        titulo="Convocatoria actualizada",
-        mensaje=f"Se confirmó el horario de cierre de la convocatoria de {zona}.",
-        ruta="/convocatorias",
     )
 
 

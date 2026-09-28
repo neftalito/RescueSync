@@ -26,10 +26,7 @@ from app.schemas.bonita import (
     OfertasConsolidadasResponse,
 )
 from app.services import callbacks_bonita as servicio
-from app.services.notificaciones import (
-    clave_convocatoria_actualizada,
-    clave_convocatoria_cerrada,
-)
+from app.services.notificaciones import clave_convocatoria_cerrada
 from app.services.tiempo_real import programar_evento_confirmado
 
 router = APIRouter(dependencies=[Depends(validar_callback_bonita)])
@@ -101,7 +98,6 @@ def notificar_apertura(
     case_id: CasoBonitaId,
     datos: NotificacionAperturaRequest,
     session: Annotated[Session, Depends(get_db)],
-    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> ConvocatoriaBonitaResponse:
     _verificar_emergencia_del_cuerpo(emergencia_id, datos.id_emergencia)
     convocatoria = _ejecutar(
@@ -112,11 +108,6 @@ def notificar_apertura(
             numero=datos.intento_convocatoria,
             cierra_en=datos.fecha_cierre_ofertas,
         )
-    )
-    programar_evento_confirmado(
-        gestor_tiempo_real,
-        session,
-        clave_convocatoria_actualizada(convocatoria.id),
     )
     return _respuesta_convocatoria(convocatoria)
 

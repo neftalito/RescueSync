@@ -267,7 +267,7 @@ def test_responde_503_si_el_token_no_esta_configurado(
     assert response.status_code == 503
 
 
-def test_notificacion_alinea_el_cierre_con_bonita_y_es_idempotente(
+def test_confirmacion_alinea_el_cierre_sin_notificar_a_la_ong_y_es_idempotente(
     client: TestClient,
     escenario: Escenario,
     db_session: Session,
@@ -288,7 +288,7 @@ def test_notificacion_alinea_el_cierre_con_bonita_y_es_idempotente(
             Notificacion.tipo == TipoNotificacion.CONVOCATORIA_ACTUALIZADA,
         )
     ).all()
-    assert len(avisos) == 1
+    assert avisos == []
 
 
 @pytest.mark.parametrize(

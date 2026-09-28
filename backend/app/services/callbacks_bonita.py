@@ -22,10 +22,7 @@ from app.db.models import (
     Oferta,
     OfertaVersion,
 )
-from app.services.notificaciones import (
-    notificar_convocatoria_actualizada,
-    notificar_convocatoria_cerrada,
-)
+from app.services.notificaciones import notificar_convocatoria_cerrada
 
 ESTADOS_OFERTA_NO_CONSOLIDABLES = frozenset(
     {EstadoOferta.BORRADOR, EstadoOferta.RETIRADA}
@@ -124,10 +121,10 @@ def registrar_apertura(
 ) -> Convocatoria:
     """Alinea el cierre local con la fecha del timer de Bonita.
 
-    Es idempotente: repetir la notificación con los mismos datos no cambia nada.
+    Es idempotente: repetir el callback con los mismos datos no cambia nada.
     """
 
-    emergencia = _verificar_caso(session, emergencia_id, case_id)
+    _verificar_caso(session, emergencia_id, case_id)
     convocatoria = _convocatoria_bloqueada(session, emergencia_id, numero)
     if convocatoria.estado is not EstadoConvocatoria.ABIERTA:
         raise EstadoConvocatoriaInvalidoError(
@@ -140,11 +137,6 @@ def registrar_apertura(
         )
 
     convocatoria.cierra_en = cierre_utc
-    notificar_convocatoria_actualizada(
-        session,
-        convocatoria_id=convocatoria.id,
-        zona=emergencia.zona,
-    )
     session.commit()
     return convocatoria
 

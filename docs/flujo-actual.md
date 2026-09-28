@@ -206,9 +206,9 @@ Los callbacks viven en `backend/app/api/routes/bonita.py` y sus casos de uso en
 
 Son idempotentes porque los conectores de Bonita pueden reintentar.
 
-La confirmación del horario crea una notificación durable para las ONGs. El
-WebSocket avisa a los navegadores conectados y estos vuelven a consultar las
-convocatorias mediante REST.
+La confirmación del horario no crea una notificación para las ONGs: la novedad
+relevante ya fue emitida al publicar la convocatoria. La fecha de cierre
+confirmada queda disponible cuando el navegador consulta las convocatorias.
 
 ### 6. La ONG consulta la convocatoria y registra ofertas
 
@@ -298,7 +298,7 @@ Estas etapas no deben interpretarse como funcionalidad completa. Actualmente:
 | Apertura BPM | `POST /emergencias/{id}/notificar-apertura` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Cierre BPM | `POST /emergencias/{id}/cerrar-convocatoria` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Consolidación BPM | `GET /emergencias/{id}/ofertas-consolidadas` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
-| Buzón | `GET /notificaciones` y `PATCH /notificaciones/{id}/leida` | `backend/app/api/routes/notificaciones.py` | `services/notificaciones.py` | `NotificationCenter.tsx` |
+| Buzón | `GET /notificaciones`, `PATCH /notificaciones/{id}/leida` y `PATCH /notificaciones/leidas` | `backend/app/api/routes/notificaciones.py` | `services/notificaciones.py` | `NotificationCenter.tsx` |
 | Tiempo real | `WS /notificaciones/ws` | `backend/app/api/routes/notificaciones.py` | `services/tiempo_real.py` | `useNotificacionesTiempoReal.ts` |
 
 El prefijo se configura en `backend/app/main.py`, el montaje de routers en
