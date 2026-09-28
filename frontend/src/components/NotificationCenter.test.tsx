@@ -73,6 +73,41 @@ describe("NotificationCenter", () => {
     await waitFor(() => expect(csrf).toBe("csrf-firmado"));
   });
 
+  it("marca todas las novedades como vistas desde el botón de doble tick", async () => {
+    let csrf: string | null = null;
+    server.use(
+      http.get(`${API_URL}/notificaciones`, () =>
+        HttpResponse.json([
+          notificacion,
+          { ...notificacion, id: 42, titulo: "Otra novedad" },
+        ]),
+      ),
+      http.patch(`${API_URL}/notificaciones/leidas`, ({ request }) => {
+        csrf = request.headers.get("X-CSRF-Token");
+        return HttpResponse.json({
+          cantidad_actualizada: 2,
+          leida_en: "2026-09-28T18:22:00Z",
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderCenter();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Notificaciones/ }),
+    );
+    const marcarTodas = await screen.findByRole("button", {
+      name: "Marcar todas como vistas",
+    });
+    expect(screen.getByText("2 sin leer")).toBeInTheDocument();
+
+    await user.click(marcarTodas);
+
+    await waitFor(() => expect(csrf).toBe("csrf-firmado"));
+    expect(screen.getByText("0 sin leer")).toBeInTheDocument();
+    expect(marcarTodas).toBeDisabled();
+  });
+
   it("contempla los estados vacío y de error", async () => {
     server.use(
       http.get(`${API_URL}/notificaciones`, () => HttpResponse.json([])),

@@ -23,7 +23,7 @@ from app.core.security import verificar_token_csrf
 from app.db.models import Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.notificacion import NotificacionResponse
+from app.schemas.notificacion import NotificacionesLeidasResponse, NotificacionResponse
 from app.services import notificaciones as servicio
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -77,6 +77,32 @@ def listar_notificaciones(
         NotificacionResponse.model_validate(notificacion)
         for notificacion in servicio.listar_notificaciones(session, usuario)
     ]
+
+
+@router.patch(
+    "/leidas",
+    response_model=NotificacionesLeidasResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    },
+    summary="Marcar todas las notificaciones propias como leídas",
+    description=(
+        "Actualiza de forma atómica todas las notificaciones pendientes cuyo "
+        "destinatario sea el usuario autenticado. Requiere token CSRF."
+    ),
+)
+def marcar_todas_las_notificaciones_leidas(
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioActualizaNotificacion,
+) -> NotificacionesLeidasResponse:
+    """Marca todo el buzón propio sin afectar notificaciones de otros usuarios."""
+
+    cantidad, leida_en = servicio.marcar_todas_como_leidas(session, usuario)
+    return NotificacionesLeidasResponse(
+        cantidad_actualizada=cantidad,
+        leida_en=leida_en,
+    )
 
 
 @router.patch(

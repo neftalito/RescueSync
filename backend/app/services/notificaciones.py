@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -213,6 +213,25 @@ def marcar_como_leida(
         session.commit()
         session.refresh(notificacion)
     return notificacion
+
+
+def marcar_todas_como_leidas(
+    session: Session, usuario: Usuario
+) -> tuple[int, datetime]:
+    """Marca en una sola operación todas las novedades pendientes del usuario."""
+
+    leida_en = datetime.now(UTC)
+    ids_actualizados = session.scalars(
+        update(Notificacion)
+        .where(
+            Notificacion.usuario_id == usuario.id,
+            Notificacion.leida_en.is_(None),
+        )
+        .values(leida_en=leida_en)
+        .returning(Notificacion.id)
+    ).all()
+    session.commit()
+    return len(ids_actualizados), leida_en
 
 
 def _crear_para_rol(

@@ -22,10 +22,16 @@ export const notificacionSchema = z.object({
 
 export const notificacionesSchema = z.array(notificacionSchema);
 
+export const notificacionesLeidasSchema = z.object({
+  cantidad_actualizada: z.number().int().nonnegative(),
+  leida_en: z.string().datetime({ offset: true }),
+});
+
 export const eventoNotificacionSchema = z.object({
   evento: z.literal("notificacion.creada"),
   notificacion: notificacionSchema,
 });
 
 export type Notificacion = z.infer<typeof notificacionSchema>;
+export type NotificacionesLeidas = z.infer<typeof notificacionesLeidasSchema>;
 export type TipoNotificacion = Notificacion["tipo"];

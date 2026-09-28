@@ -2,7 +2,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
 
-import { marcarNotificacionLeida } from "../api/notificaciones";
+import {
+  marcarNotificacionLeida,
+  marcarTodasLasNotificacionesLeidas,
+} from "../api/notificaciones";
 import { ApiError } from "../api/client";
 import {
   notificacionesQueryKey,
@@ -40,11 +43,26 @@ export function NotificationCenter({
       );
     },
   });
+  const marcarTodasLeidas = useMutation({
+    mutationFn: () => marcarTodasLasNotificacionesLeidas(csrfToken),
+    onSuccess: (resultado) => {
+      queryClient.setQueryData<Notificacion[]>(
+        notificacionesQueryKey,
+        (anteriores = []) =>
+          anteriores.map((notificacion) =>
+            notificacion.leida_en === null
+              ? { ...notificacion, leida_en: resultado.leida_en }
+              : notificacion,
+          ),
+      );
+    },
+  });
   const noLeidas = query.data?.filter((item) => item.leida_en === null).length ?? 0;
+  const error = marcarLeida.error ?? marcarTodasLeidas.error;
   const errorMutacion =
-    marcarLeida.error instanceof ApiError
-      ? marcarLeida.error.message
-      : marcarLeida.isError
+    error instanceof ApiError
+      ? error.message
+      : error !== null
         ? "No pudimos actualizar la notificación."
         : null;
 
@@ -75,9 +93,33 @@ export function NotificationCenter({
           aria-label="Notificaciones"
           className="absolute right-0 z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"
         >
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <h2 className="font-semibold text-slate-950">Novedades</h2>
-            <span className="text-xs text-slate-500">{noLeidas} sin leer</span>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-slate-500">{noLeidas} sin leer</span>
+              <button
+                type="button"
+                aria-label="Marcar todas como vistas"
+                title="Marcar todas como vistas"
+                disabled={noLeidas === 0 || marcarTodasLeidas.isPending}
+                onClick={() => marcarTodasLeidas.mutate()}
+                className="inline-flex size-8 items-center justify-center rounded-lg text-cyan-800 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="size-5"
+                >
+                  <path d="m1 12 5 5L16 7" />
+                  <path d="m8 12 5 5L23 7" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {query.isPending ? (

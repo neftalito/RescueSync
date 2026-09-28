@@ -173,6 +173,49 @@ def test_buzon_no_expone_notificaciones_de_otro_usuario_y_exige_csrf(
     assert marcada.json()["leida_en"] is not None
 
 
+def test_marca_todas_las_notificaciones_propias_sin_afectar_otro_buzon(
+    client: TestClient,
+    db_session: Session,
+    usuarios: dict[str, Usuario],
+) -> None:
+    primera = _crear_notificacion(
+        db_session,
+        usuarios["coordinador"],
+        "evento:primero-pendiente",
+    )
+    segunda = _crear_notificacion(
+        db_session,
+        usuarios["coordinador"],
+        "evento:segundo-pendiente",
+    )
+    ajena = _crear_notificacion(db_session, usuarios["ong"], "evento:ajeno-pendiente")
+    csrf = _autenticar(client, usuarios["coordinador"])
+
+    sin_csrf = client.patch("/api/v1/notificaciones/leidas")
+    respuesta = client.patch(
+        "/api/v1/notificaciones/leidas",
+        headers={"X-CSRF-Token": csrf},
+    )
+    db_session.refresh(primera)
+    db_session.refresh(segunda)
+    db_session.refresh(ajena)
+
+    assert sin_csrf.status_code == 403
+    assert respuesta.status_code == 200
+    assert respuesta.json()["cantidad_actualizada"] == 2
+    assert primera.leida_en is not None
+    assert segunda.leida_en == primera.leida_en
+    assert ajena.leida_en is None
+
+    repetida = client.patch(
+        "/api/v1/notificaciones/leidas",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert repetida.status_code == 200
+    assert repetida.json()["cantidad_actualizada"] == 0
+
+
 def test_websocket_entrega_solo_al_usuario_autenticado(
     client: TestClient,
     db_session: Session,

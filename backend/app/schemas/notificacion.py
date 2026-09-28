@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from app.db.models import TipoNotificacion
 
@@ -18,6 +18,13 @@ class NotificacionResponse(BaseModel):
     ruta: str | None
     leida_en: datetime | None
     creada_en: datetime
+
+
+class NotificacionesLeidasResponse(BaseModel):
+    """Resultado de marcar todas las novedades pendientes del usuario."""
+
+    cantidad_actualizada: int = Field(ge=0)
+    leida_en: AwareDatetime
 
 
 class EventoNotificacion(BaseModel):

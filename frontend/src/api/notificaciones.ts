@@ -1,8 +1,10 @@
 import { apiRequest } from "./client";
 import {
   notificacionSchema,
+  notificacionesLeidasSchema,
   notificacionesSchema,
   type Notificacion,
+  type NotificacionesLeidas,
 } from "../schemas/notificacion";
 
 export function listarNotificaciones(): Promise<Notificacion[]> {
@@ -21,4 +23,13 @@ export function marcarNotificacionLeida(
       headers: { "X-CSRF-Token": csrfToken },
     },
   );
+}
+
+export function marcarTodasLasNotificacionesLeidas(
+  csrfToken: string,
+): Promise<NotificacionesLeidas> {
+  return apiRequest("/notificaciones/leidas", notificacionesLeidasSchema, {
+    method: "PATCH",
+    headers: { "X-CSRF-Token": csrfToken },
+  });
 }
