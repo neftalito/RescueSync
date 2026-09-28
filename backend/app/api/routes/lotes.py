@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Usuario
+from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.lote import LoteResponse, LotesRequest
+from app.schemas.lote import LotePublicadoPublicoResponse, LoteResponse, LotesRequest
 from app.services import lotes as servicio
 
 router = APIRouter()
@@ -95,7 +95,7 @@ def guardar_lotes(
 
 @router.get(
     "/{emergencia_id}/lotes",
-    response_model=list[LoteResponse],
+    response_model=list[LoteResponse | LotePublicadoPublicoResponse],
     status_code=status.HTTP_200_OK,
     responses={
         codigo: RESPUESTAS_ERROR[codigo]
@@ -119,13 +119,15 @@ def listar_lotes(
     emergencia_id: EmergenciaId,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaLotes,
-) -> list[LoteResponse]:
+) -> list[LoteResponse | LotePublicadoPublicoResponse]:
     """Consulta los lotes del centro autenticado sin modificar la emergencia."""
 
     try:
         lotes = servicio.listar_lotes(session, usuario, emergencia_id)
     except servicio.LoteError as error:
         raise _error_http(error) from error
+    if usuario.rol is RolUsuario.REPRESENTANTE_ONG:
+        return [LotePublicadoPublicoResponse.model_validate(lote) for lote in lotes]
     return [LoteResponse.model_validate(lote) for lote in lotes]
 
 

@@ -147,7 +147,18 @@ def listar_convocatorias_abiertas(
     convocatorias = servicio.listar_convocatorias_abiertas(session)
     return [
         ConvocatoriaAbiertaResponse(
-            **_respuesta(convocatoria).model_dump(),
+            id=convocatoria.id,
+            emergencia_id=convocatoria.emergencia_id,
+            numero=convocatoria.numero,
+            estado=convocatoria.estado,
+            publicada_en=convocatoria.publicada_en,
+            cierra_en=convocatoria.cierra_en,
+            lotes=[
+                LotePublicadoResponse.model_validate(publicacion)
+                for publicacion in sorted(
+                    convocatoria.lotes, key=lambda publicacion: publicacion.lote_id
+                )
+            ],
             emergencia=EmergenciaResumenResponse.model_validate(
                 convocatoria.emergencia
             ),

@@ -2,8 +2,11 @@ import { type ReactElement } from "react";
 import { Link, useParams } from "react-router";
 
 import { ApiError } from "../api/client";
-import { useLotes } from "../hooks/useLotes";
-import { estadoLoteLabels, type Lote } from "../schemas/lote";
+import { useLotesPublicados } from "../hooks/useLotes";
+import {
+  estadoLoteLabels,
+  type LotePublicadoPublico,
+} from "../schemas/lote";
 
 function parsearId(valor: string | undefined): number | null {
   if (valor === undefined || !/^\d+$/.test(valor)) return null;
@@ -11,7 +14,7 @@ function parsearId(valor: string | undefined): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-function TarjetaLote({ lote }: { lote: Lote }): ReactElement {
+function TarjetaLote({ lote }: { lote: LotePublicadoPublico }): ReactElement {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-4">
@@ -50,7 +53,7 @@ function Contenido({ emergenciaId }: { emergenciaId: number | null }): ReactElem
 }
 
 function ListadoLotes({ emergenciaId }: { emergenciaId: number }): ReactElement {
-  const query = useLotes(emergenciaId);
+  const query = useLotesPublicados(emergenciaId);
 
   if (query.isPending) {
     return (

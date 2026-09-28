@@ -173,7 +173,10 @@ def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
     return list(
         session.scalars(
             select(Convocatoria)
-            .where(Convocatoria.estado == EstadoConvocatoria.ABIERTA)
+            .where(
+                Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+                Convocatoria.cierra_en > datetime.now(UTC),
+            )
             .options(
                 selectinload(Convocatoria.lotes),
                 joinedload(Convocatoria.emergencia),

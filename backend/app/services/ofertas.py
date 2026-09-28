@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -149,7 +149,18 @@ def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
     return list(
         session.scalars(
             select(Oferta)
-            .where(Oferta.ong_creadora_id == ong.id)
+            .join(
+                OfertaVersion,
+                and_(
+                    OfertaVersion.oferta_id == Oferta.id,
+                    OfertaVersion.numero == Oferta.version_actual,
+                ),
+            )
+            .where(
+                Oferta.ong_creadora_id == ong.id,
+                Oferta.estado != EstadoOferta.BORRADOR,
+                OfertaVersion.presentada_en.is_not(None),
+            )
             .options(
                 joinedload(Oferta.convocatoria).joinedload(Convocatoria.emergencia),
                 selectinload(Oferta.versiones).selectinload(OfertaVersion.items),

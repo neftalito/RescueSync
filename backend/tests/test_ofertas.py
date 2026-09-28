@@ -15,9 +15,12 @@ from app.db.models import (
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
+    Oferta,
+    OfertaVersion,
     Organizacion,
     RolUsuario,
     TipoAporte,
@@ -464,6 +467,37 @@ def test_lista_solo_las_ofertas_de_la_ong_propia(
 def test_lista_vacia_sin_ofertas_presentadas(
     client: TestClient, escenario: Escenario
 ) -> None:
+    _autenticar_con_cookie(client, escenario.representante)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_lista_omite_borrador_persistido_sin_fecha_de_presentacion(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    borrador = Oferta(
+        convocatoria_id=escenario.convocatoria.id,
+        ong_creadora_id=escenario.ong.id,
+        creada_por_usuario_id=escenario.representante.id,
+        estado=EstadoOferta.BORRADOR,
+        version_actual=1,
+        version_bloqueo=1,
+    )
+    db_session.add(borrador)
+    db_session.flush()
+    db_session.add(
+        OfertaVersion(
+            oferta_id=borrador.id,
+            creada_por_usuario_id=escenario.representante.id,
+            numero=1,
+            observaciones="Todavía en preparación",
+            presentada_en=None,
+        )
+    )
+    db_session.flush()
     _autenticar_con_cookie(client, escenario.representante)
 
     response = client.get("/api/v1/ofertas")

@@ -48,7 +48,16 @@ class EmergenciaResumenResponse(BaseModel):
     descripcion: str
 
 
-class ConvocatoriaAbiertaResponse(ConvocatoriaResponse):
+class ConvocatoriaAbiertaResponse(BaseModel):
     """Convocatoria abierta con el contexto de la emergencia para la ONG."""
 
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    emergencia_id: int
+    numero: int
+    estado: EstadoConvocatoria
+    publicada_en: AwareDatetime
+    cierra_en: AwareDatetime
+    lotes: list[LotePublicadoResponse]
     emergencia: EmergenciaResumenResponse

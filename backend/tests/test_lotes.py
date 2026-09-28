@@ -1018,6 +1018,10 @@ def test_listar_ong_ve_solo_lotes_publicados(
     cuerpo = response.json()
     assert [lote["id"] for lote in cuerpo] == [publicado.id]
     assert "Sin publicar" not in response.text
+    assert "creado_por_usuario_id" not in cuerpo[0]
+    assert "version" not in cuerpo[0]
+    assert "creado_en" not in cuerpo[0]
+    assert "actualizado_en" not in cuerpo[0]
 
 
 def test_servicio_listar_rechaza_ong_sin_organizacion(

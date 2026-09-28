@@ -729,6 +729,31 @@ def test_listar_convocatorias_devuelve_solo_abiertas_con_sus_lotes(
         "gravedad": emergencia.gravedad.value,
         "descripcion": emergencia.descripcion,
     }
+    assert "bonita_generar_lotes_estado" not in cuerpo[0]
+    assert "bonita_generar_lotes_ultimo_error" not in cuerpo[0]
+    assert "bonita_generar_lotes_ultimo_intento_en" not in cuerpo[0]
+
+
+def test_listar_convocatorias_excluye_abierta_fuera_de_ventana(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    lote = _lote(db_session, emergencia, coordinador, tipo="Agua vencida")
+    convocatoria = _convocatoria(db_session, emergencia, [lote])
+    ahora = datetime.now(UTC)
+    convocatoria.publicada_en = ahora - timedelta(hours=2)
+    convocatoria.cierra_en = ahora - timedelta(minutes=1)
+    db_session.flush()
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_listar_convocatorias_vacio_sin_convocatorias_abiertas(
