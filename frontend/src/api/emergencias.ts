@@ -20,3 +20,17 @@ export function registrarEmergencia(
 export function listarEmergencias(): Promise<Emergencia[]> {
   return apiRequest("/emergencias", emergenciasSchema);
 }
+
+export function reintentarVinculacionBonita(
+  emergenciaId: number,
+  csrfToken: string,
+): Promise<Emergencia> {
+  return apiRequest(
+    `/emergencias/${emergenciaId}/reintentar-bonita`,
+    emergenciaSchema,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    },
+  );
+}

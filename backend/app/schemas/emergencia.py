@@ -39,5 +39,7 @@ class EmergenciaResponse(BaseModel):
     estado: EstadoEmergencia
     bonita_sync: EstadoSincronizacionBonita
     bonita_process_instance_id: int | None
+    bonita_ultimo_error: str | None
+    bonita_ultimo_intento_en: AwareDatetime | None
     creada_en: AwareDatetime
     actualizada_en: AwareDatetime

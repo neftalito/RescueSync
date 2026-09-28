@@ -3,6 +3,13 @@ import { z } from "zod";
 import { gravedades } from "./emergencia";
 
 export const estadosConvocatoria = ["ABIERTA", "CERRADA", "CANCELADA"] as const;
+export const estadosTareaBonita = [
+  "PENDIENTE",
+  "EN_PROGRESO",
+  "COMPLETADA",
+  "ERROR",
+  "RESULTADO_DESCONOCIDO",
+] as const;
 
 export type EstadoConvocatoria = (typeof estadosConvocatoria)[number];
 
@@ -36,8 +43,22 @@ export const convocatoriaSchema = z.object({
   emergencia: emergenciaResumenSchema,
 });
 
+export const convocatoriaPublicadaSchema = z.object({
+  id: z.number().int().positive(),
+  emergencia_id: z.number().int().positive(),
+  numero: z.number().int().positive(),
+  estado: z.enum(estadosConvocatoria),
+  publicada_en: z.string().min(1),
+  cierra_en: z.string().min(1),
+  lotes: z.array(lotePublicadoSchema),
+  bonita_generar_lotes_estado: z.enum(estadosTareaBonita),
+  bonita_generar_lotes_ultimo_error: z.string().nullable(),
+  bonita_generar_lotes_ultimo_intento_en: z.string().min(1).nullable(),
+});
+
 export const convocatoriasSchema = z.array(convocatoriaSchema);
 
 export type LotePublicado = z.infer<typeof lotePublicadoSchema>;
 export type EmergenciaResumen = z.infer<typeof emergenciaResumenSchema>;
 export type Convocatoria = z.infer<typeof convocatoriaSchema>;
+export type ConvocatoriaPublicada = z.infer<typeof convocatoriaPublicadaSchema>;

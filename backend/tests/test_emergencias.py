@@ -293,6 +293,7 @@ def test_registra_emergencia_rechaza_datos_invalidos_sin_persistir(
     )
 
     assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
     assert _contar_emergencias(db_session) == iniciales
 
 

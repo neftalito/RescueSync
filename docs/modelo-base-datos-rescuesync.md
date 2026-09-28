@@ -752,6 +752,7 @@ Cerrar y seleccionar el snapshot dentro de la misma transacción evita que una
 |---|---|---|
 | `POST /api/v1/emergencias` | `emergencia` | Crea una emergencia `REGISTRADA` y prepara su vinculación con Bonita. |
 | `GET /api/v1/emergencias` | `emergencia`, `organizacion` | Filtra por organización, rol y estado. |
+| `POST /api/v1/emergencias/{id}/reintentar-bonita` | `emergencia` | Reintenta o reconcilia la vinculación sin duplicar un caso cuyo resultado era incierto. |
 | `POST /api/v1/emergencias/{id}/lotes` | `lote` | Crea o edita lotes en `BORRADOR`. |
 | `GET /api/v1/emergencias/{id}/lotes` | `lote`, `convocatoria_lote` | Lista lotes y distingue borradores de publicados. |
 | `POST /api/v1/emergencias/{id}/publicar` | `emergencia`, `convocatoria`, `convocatoria_lote`, `lote` | Publica al menos un lote de forma atómica. |

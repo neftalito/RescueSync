@@ -14,6 +14,7 @@ from app.db.models import (
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoLote,
     EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
@@ -119,6 +120,7 @@ def escenario(db_session: Session) -> Escenario:
             tipo_necesidad=tipo,
             cantidad_requerida=cantidad,
             unidad=unidad,
+            estado=EstadoLote.PUBLICADO,
         )
         db_session.add(lote)
         lotes.append(lote)

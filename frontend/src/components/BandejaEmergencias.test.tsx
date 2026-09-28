@@ -36,14 +36,17 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderBandeja(rol: "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL"): void {
+function renderBandeja(
+  rol: "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL",
+  csrfToken?: string,
+): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <BandejaEmergencias rol={rol} />
+        <BandejaEmergencias rol={rol} csrfToken={csrfToken} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -137,6 +140,55 @@ describe("BandejaEmergencias", () => {
     expect(
       screen.getByText("Inundación con familias evacuadas y acceso restringido."),
     ).toBeVisible();
+  });
+
+  it("muestra el error de Bonita y permite reintentar la vinculación", async () => {
+    let csrfHeader: string | null = null;
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json(
+          [
+            {
+              ...emergenciaBase,
+              bonita_sync: "ERROR",
+              bonita_ultimo_error: "Bonita no está disponible.",
+              bonita_ultimo_intento_en: "2026-09-28T16:00:00Z",
+            },
+          ],
+          { status: 200 },
+        ),
+      ),
+      http.post(
+        `${API_URL}/emergencias/31/reintentar-bonita`,
+        ({ request }) => {
+          csrfHeader = request.headers.get("X-CSRF-Token");
+          return HttpResponse.json(
+            {
+              ...emergenciaBase,
+              bonita_sync: "VINCULADA",
+              bonita_process_instance_id: 4242,
+              bonita_ultimo_error: null,
+              bonita_ultimo_intento_en: "2026-09-28T16:01:00Z",
+            },
+            { status: 200 },
+          );
+        },
+      ),
+    );
+    const user = userEvent.setup();
+    renderBandeja("OPERADOR_MUNICIPAL", "csrf-firmado");
+
+    await user.click(await screen.findByText("Alta · Ribera norte"));
+    expect(screen.getByText("Error de vinculación")).toBeVisible();
+    expect(screen.getByText("Bonita no está disponible.")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: "Reintentar vinculación" }),
+    );
+
+    expect(
+      await screen.findByText("Vinculada con Bonita"),
+    ).toBeInTheDocument();
+    expect(csrfHeader).toBe("csrf-firmado");
   });
 
   it("ofrece generar lotes solo al centro coordinador", async () => {

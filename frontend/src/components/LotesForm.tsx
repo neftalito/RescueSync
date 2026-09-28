@@ -5,6 +5,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { ApiError } from "../api/client";
 import { useEliminarLote } from "../hooks/useEliminarLote";
 import { useGuardarLotes } from "../hooks/useGuardarLotes";
+import { usePublicarConvocatoria } from "../hooks/usePublicarConvocatoria";
 import {
   estadoLoteLabels,
   lotesFormSchema,
@@ -72,12 +73,14 @@ export function LotesForm({
   });
   const mutation = useGuardarLotes(emergenciaId);
   const eliminacion = useEliminarLote(emergenciaId);
+  const publicacion = usePublicarConvocatoria(emergenciaId);
   // Borrador cuya eliminación espera confirmación: es estado de la interfaz,
   // no un valor del formulario.
   const [confirmando, setConfirmando] = useState<number | null>(null);
 
   const submit = (datos: LotesFormData): void => {
     eliminacion.reset();
+    publicacion.reset();
     mutation.mutate(
       { ...datos, csrfToken },
       {
@@ -90,6 +93,7 @@ export function LotesForm({
   };
   const eliminarGuardado = (loteId: number): void => {
     mutation.reset();
+    publicacion.reset();
     eliminacion.mutate(
       { loteId, csrfToken },
       {
@@ -108,7 +112,9 @@ export function LotesForm({
       },
     );
   };
-  const ocupado = mutation.isPending || eliminacion.isPending;
+  const ocupado =
+    mutation.isPending || eliminacion.isPending || publicacion.isPending;
+  const bloqueado = ocupado || publicacion.isSuccess;
   const requestError =
     mutation.error instanceof ApiError
       ? mutation.error.message
@@ -117,11 +123,21 @@ export function LotesForm({
         : null;
   const guardados = mutation.isSuccess ? mutation.data : [];
   const sinCambios = !isDirty && fields.every((field) => field.id !== null);
+  const puedePublicar =
+    !isDirty &&
+    fields.length > 0 &&
+    fields.every((field) => field.id !== null);
   const eliminacionError =
     eliminacion.error instanceof ApiError
       ? eliminacion.error.message
       : eliminacion.isError
         ? "No pudimos eliminar el lote. Intentá nuevamente."
+        : null;
+  const publicacionError =
+    publicacion.error instanceof ApiError
+      ? publicacion.error.message
+      : publicacion.isError
+        ? "No pudimos publicar la convocatoria. Intentá nuevamente."
         : null;
 
   return (
@@ -187,7 +203,7 @@ export function LotesForm({
             return (
               <li key={field.clave}>
                 <fieldset
-                  disabled={ocupado}
+                  disabled={bloqueado}
                   className="rounded-2xl border border-slate-200 p-5 disabled:cursor-wait disabled:opacity-70"
                 >
                   <legend className="px-2 text-sm font-semibold text-slate-900">
@@ -405,7 +421,7 @@ export function LotesForm({
 
         <button
           type="button"
-          disabled={ocupado}
+          disabled={bloqueado}
           onClick={() => append(loteVacio)}
           className="w-full rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70 sm:w-auto"
         >
@@ -449,7 +465,7 @@ export function LotesForm({
 
         <button
           type="submit"
-          disabled={ocupado || sinCambios}
+          disabled={bloqueado || sinCambios}
           className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-70 aria-busy:cursor-wait"
           aria-busy={mutation.isPending}
         >
@@ -459,6 +475,61 @@ export function LotesForm({
               ? "Sin cambios para guardar"
               : "Guardar borrador"}
         </button>
+
+        <div className="border-t border-slate-200 pt-6">
+          <h3 className="text-base font-semibold text-slate-950">
+            Publicación
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Publicar abre la convocatoria con todos los lotes guardados y ya
+            no permite editarlos. Guardá primero cualquier cambio pendiente.
+          </p>
+
+          {publicacion.isSuccess && (
+            <div
+              role="status"
+              className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm leading-6 text-green-900"
+            >
+              <p className="font-semibold">Convocatoria publicada.</p>
+              <p className="mt-1">
+                Se incluyeron {publicacion.data.lotes.length} lote
+                {publicacion.data.lotes.length === 1 ? "" : "s"}.
+              </p>
+              {publicacion.data.bonita_generar_lotes_estado !== "COMPLETADA" && (
+                <p className="mt-1 text-amber-900">
+                  La publicación local quedó confirmada, pero Bonita requiere
+                  un reintento.
+                  {publicacion.data.bonita_generar_lotes_ultimo_error
+                    ? ` ${publicacion.data.bonita_generar_lotes_ultimo_error}`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
+
+          {publicacionError && (
+            <p
+              role="alert"
+              className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-6 text-red-800"
+            >
+              {publicacionError}
+            </p>
+          )}
+
+          <button
+            type="button"
+            disabled={ocupado || !puedePublicar || publicacion.isSuccess}
+            onClick={() => publicacion.mutate(csrfToken)}
+            className="mt-4 flex w-full items-center justify-center rounded-xl bg-amber-600 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-amber-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
+            aria-busy={publicacion.isPending}
+          >
+            {publicacion.isPending
+              ? "Publicando…"
+              : publicacion.isSuccess
+                ? "Convocatoria publicada"
+                : "Publicar convocatoria"}
+          </button>
+        </div>
       </form>
     </article>
   );

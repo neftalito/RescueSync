@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -297,6 +298,24 @@ def test_no_repite_el_post_si_ya_esta_vinculada(
     assert acceso.call_count == 0
 
 
+def test_no_duplica_el_intento_si_hay_un_reclamo_vigente(
+    db_session: Session, emergencia: Emergencia, cliente: ClienteBonita
+) -> None:
+    emergencia.bonita_claim_id = "reclamo-en-curso"
+    emergencia.bonita_ultimo_intento_en = datetime.now(UTC)
+    db_session.commit()
+
+    with respx.mock(assert_all_called=False) as router:
+        acceso = router.post(f"{BASE_URL}/loginservice").mock(
+            return_value=httpx.Response(204)
+        )
+        pendiente = vincular_emergencia_con_bonita(db_session, emergencia, cliente)
+
+    assert pendiente.bonita_sync is EstadoSincronizacionBonita.PENDIENTE
+    assert pendiente.bonita_claim_id == "reclamo-en-curso"
+    assert acceso.call_count == 0
+
+
 def test_alta_inicia_instancia_y_devuelve_vinculada(
     client: TestClient, usuario_municipal: Usuario
 ) -> None:
@@ -364,3 +383,44 @@ def test_alta_con_bonita_rechazada_devuelve_201_con_error_trazable(
     assert emergencia.bonita_sync is EstadoSincronizacionBonita.ERROR
     assert emergencia.bonita_ultimo_error is not None
     assert SECRETO_BONITA not in emergencia.bonita_ultimo_error
+
+
+def test_municipio_reintenta_vinculacion_fallida_desde_la_api(
+    client: TestClient,
+    db_session: Session,
+    usuario_municipal: Usuario,
+    emergencia: Emergencia,
+) -> None:
+    emergencia.bonita_sync = EstadoSincronizacionBonita.ERROR
+    emergencia.bonita_ultimo_error = "Bonita no estaba disponible."
+    db_session.commit()
+    csrf = _autenticar(client, usuario_municipal)
+
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        _proceso(router)
+        router.post(f"{BASE_URL}/API/bpm/process/{DEFINICION_ID}/instantiation").mock(
+            return_value=httpx.Response(201, json={"caseId": CASE_ID})
+        )
+        response = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/reintentar-bonita",
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["bonita_sync"] == "VINCULADA"
+    assert response.json()["bonita_ultimo_error"] is None
+    assert response.json()["bonita_ultimo_intento_en"] is not None
+
+
+def test_reintento_exige_csrf_vigente(
+    client: TestClient,
+    usuario_municipal: Usuario,
+    emergencia: Emergencia,
+) -> None:
+    _autenticar(client, usuario_municipal)
+
+    response = client.post(f"/api/v1/emergencias/{emergencia.id}/reintentar-bonita")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "El token CSRF no es válido."}
