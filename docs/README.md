@@ -15,6 +15,8 @@ referencia.
 - [Flujo actual](./flujo-actual.md): recorrido operativo, notificaciones y mapa
   de endpoints implementados.
 - [Imágenes de producción](./despliegue.md): targets Docker disponibles.
+- [Demo local y con Cloudflare Tunnel](./demo-cloudflare.md): publicación del
+  frontend de producción, configuración de orígenes y WebSocket.
 
 Las reglas obligatorias de ramas, arquitectura, código y definición de terminado
 están en [`AGENTS.md`](../AGENTS.md). No se duplican aquí para mantener una sola

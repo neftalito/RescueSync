@@ -170,6 +170,7 @@ principales son:
 - [Modelos y migraciones](docs/desarrollo/migraciones.md).
 - [Modelo de base de datos](docs/modelo-base-datos-rescuesync.md).
 - [Imágenes de producción](docs/despliegue.md).
+- [Demo local y con Cloudflare Tunnel](docs/demo-cloudflare.md).
 
 Las fuentes funcionales de la entrega y el único `.bar` versionado también están
 catalogados en ese índice.
