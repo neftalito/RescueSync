@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import ClienteBonitaDep, requerir_operacion
@@ -38,6 +38,7 @@ def exigir_municipio_con_csrf(
 
 
 UsuarioRegistraEmergencia = Annotated[Usuario, Depends(exigir_municipio_con_csrf)]
+EmergenciaId = Annotated[int, Path(gt=0)]
 
 
 @router.post(
@@ -76,6 +77,53 @@ def crear_emergencia(
     except servicio.DatosEmergenciaInvalidosError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+    emergencia = vincular_emergencia_con_bonita(session, emergencia, cliente)
+    return EmergenciaResponse.model_validate(emergencia)
+
+
+@router.post(
+    "/{emergencia_id}/reintentar-bonita",
+    response_model=EmergenciaResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
+    },
+    summary="Reintentar la vinculación de una emergencia con Bonita",
+    description=(
+        "Reanuda de forma idempotente una vinculación fallida. Si un POST "
+        "anterior tuvo resultado incierto, busca primero el caso existente "
+        "para no duplicarlo. Los reclamos concurrentes se serializan. Solo "
+        "el municipio dueño, con token CSRF vigente."
+    ),
+)
+def reintentar_vinculacion_bonita(
+    emergencia_id: EmergenciaId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioRegistraEmergencia,
+    cliente: ClienteBonitaDep,
+) -> EmergenciaResponse:
+    """Autoriza el reintento y devuelve el estado de sincronización resultante."""
+
+    try:
+        emergencia = servicio.obtener_emergencia_para_reintento(
+            session, usuario, emergencia_id
+        )
+    except servicio.EmergenciaNoEncontradaError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+    except (
+        servicio.MunicipioInvalidoError,
+        servicio.EmergenciaNoAutorizadaError,
+    ) as error:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=str(error),
         ) from error
     emergencia = vincular_emergencia_con_bonita(session, emergencia, cliente)

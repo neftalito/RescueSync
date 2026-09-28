@@ -10,7 +10,9 @@ from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
     EstadoConvocatoria,
+    EstadoLote,
     EstadoOferta,
+    Lote,
     Oferta,
     OfertaItem,
     OfertaVersion,
@@ -175,9 +177,11 @@ def _publicaciones_bloqueadas(
 ) -> dict[int, ConvocatoriaLote]:
     filas = session.scalars(
         select(ConvocatoriaLote)
+        .join(Lote, Lote.id == ConvocatoriaLote.lote_id)
         .where(
             ConvocatoriaLote.convocatoria_id == convocatoria_id,
             ConvocatoriaLote.lote_id.in_(lote_ids),
+            Lote.estado == EstadoLote.PUBLICADO,
         )
         .with_for_update()
     ).all()

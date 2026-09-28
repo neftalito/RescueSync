@@ -15,6 +15,7 @@ from app.db.models import (
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoLote,
     EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
@@ -131,6 +132,7 @@ def escenario(db_session: Session) -> Escenario:
         tipo_necesidad="Agua",
         cantidad_requerida=Decimal(1000),
         unidad="litros",
+        estado=EstadoLote.PUBLICADO,
     )
     lote_kits = Lote(
         emergencia_id=emergencia.id,
@@ -138,6 +140,7 @@ def escenario(db_session: Session) -> Escenario:
         tipo_necesidad="Kits",
         cantidad_requerida=Decimal(10),
         unidad="kits",
+        estado=EstadoLote.PUBLICADO,
     )
     lote_sin_publicar = Lote(
         emergencia_id=emergencia.id,
@@ -335,6 +338,25 @@ def test_rechaza_lote_no_publicado_en_la_convocatoria(
     response = _crear(client, body)
 
     assert response.status_code == 404
+
+
+def test_rechaza_lote_asociado_que_ya_no_esta_publicado(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    escenario.lote_agua.estado = EstadoLote.CANCELADO
+    db_session.commit()
+    _autenticar_sin_csrf(client, escenario.representante)
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, unidad="litros")],
+        ),
+    )
+
+    assert response.status_code == 404
+    assert "no está publicado" in response.json()["detail"]
 
 
 def test_rechaza_unidad_que_no_coincide_con_la_publicada(

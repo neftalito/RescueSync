@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     Emergencia,
+    EstadoEmergencia,
     EstadoLote,
     Lote,
     Organizacion,
@@ -39,6 +40,10 @@ class LoteNoEncontradoError(LoteError):
 
 class LoteNoEditableError(LoteError):
     """Solo un lote en borrador admite edición destructiva."""
+
+
+class EstadoEmergenciaInvalidoError(LoteError):
+    """La emergencia ya no admite crear ni modificar borradores."""
 
 
 class LoteDesactualizadoError(LoteError):
@@ -76,6 +81,7 @@ def guardar_lotes(
         EmergenciaNoEncontradaError: Si la emergencia no existe.
         LoteNoEncontradoError: Si un lote a editar no es de la emergencia.
         LoteNoEditableError: Si un lote a editar ya salió del borrador.
+        EstadoEmergenciaInvalidoError: Si la emergencia ya fue publicada o cerrada.
         LoteDesactualizadoError: Si otro usuario modificó antes un lote.
         DatosLoteInvalidosError: Si la base rechaza la operación.
     """
@@ -86,12 +92,19 @@ def guardar_lotes(
     )
     if emergencia is None:
         raise EmergenciaNoEncontradaError("La emergencia no existe.")
-    if emergencia.centro_coordinador_id is None:
-        emergencia.centro_coordinador_id = centro.id
-    elif emergencia.centro_coordinador_id != centro.id:
+    if emergencia.centro_coordinador_id not in (None, centro.id):
         raise CentroNoAutorizadoError(
             "Solo el centro coordinador asignado gestiona estos lotes."
         )
+    if emergencia.estado not in {
+        EstadoEmergencia.REGISTRADA,
+        EstadoEmergencia.EN_COORDINACION,
+    }:
+        raise EstadoEmergenciaInvalidoError(
+            "La emergencia ya no admite guardar lotes en borrador."
+        )
+    if emergencia.centro_coordinador_id is None:
+        emergencia.centro_coordinador_id = centro.id
 
     editables = _lotes_bloqueados(session, [item.id for item in items if item.id])
     resultado = [

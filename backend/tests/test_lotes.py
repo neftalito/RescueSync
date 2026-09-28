@@ -241,6 +241,50 @@ def test_crea_uno_o_mas_lotes_en_borrador_sin_publicar(
     assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
+@pytest.mark.parametrize(
+    "estado",
+    [
+        EstadoEmergencia.PUBLICADA,
+        EstadoEmergencia.EN_EVALUACION,
+        EstadoEmergencia.RESUELTA,
+        EstadoEmergencia.CANCELADA,
+    ],
+)
+def test_no_guarda_borradores_si_la_emergencia_ya_no_es_editable(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    estado: EstadoEmergencia,
+) -> None:
+    emergencia.estado = estado
+    db_session.commit()
+    csrf = _autenticar(client, coordinador)
+    iniciales = _contar_lotes(db_session)
+
+    response = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/lotes",
+        json={
+            "lotes": [
+                {
+                    "tipo_necesidad": "Agua",
+                    "cantidad_requerida": 10,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "La emergencia ya no admite guardar lotes en borrador."
+    }
+    assert _contar_lotes(db_session) == iniciales
+    db_session.refresh(emergencia)
+    assert emergencia.centro_coordinador_id is None
+
+
 def test_edita_lote_en_borrador_sin_crear_filas(
     client: TestClient,
     db_session: Session,
@@ -356,6 +400,8 @@ def test_rechaza_edicion_sin_version(
     )
 
     assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
+    assert "versión" in response.json()["detail"]
     db_session.expire_all()
     guardado = db_session.get(Lote, lote.id)
     assert guardado is not None

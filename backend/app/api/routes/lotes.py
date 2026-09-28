@@ -57,6 +57,7 @@ _CODIGOS_ERROR: dict[type[servicio.LoteError], int] = {
     servicio.OngNoAutorizadaError: status.HTTP_403_FORBIDDEN,
     servicio.LoteNoEncontradoError: status.HTTP_404_NOT_FOUND,
     servicio.LoteNoEditableError: status.HTTP_409_CONFLICT,
+    servicio.EstadoEmergenciaInvalidoError: status.HTTP_409_CONFLICT,
     servicio.LoteDesactualizadoError: status.HTTP_409_CONFLICT,
     servicio.DatosLoteInvalidosError: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }

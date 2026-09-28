@@ -116,6 +116,7 @@ class Emergencia(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    bonita_claim_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     version: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

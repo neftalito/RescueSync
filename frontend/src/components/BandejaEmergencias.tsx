@@ -3,7 +3,9 @@ import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
 import { useEmergencias } from "../hooks/useEmergencias";
+import { useReintentarVinculacionBonita } from "../hooks/useReintentarVinculacionBonita";
 import {
+  estadoSincronizacionBonitaLabels,
   estadoLabels,
   gravedadLabels,
   type Emergencia,
@@ -17,6 +19,7 @@ type RolConBandeja = Extract<
 
 interface BandejaEmergenciasProps {
   rol: RolConBandeja;
+  csrfToken?: string;
 }
 
 const copyPorRol: Record<RolConBandeja, { titulo: string; vacio: string }> = {
@@ -40,10 +43,20 @@ function formatearFecha(iso: string): string {
 function TarjetaEmergencia({
   emergencia,
   rol,
+  csrfToken,
 }: {
   emergencia: Emergencia;
   rol: RolConBandeja;
+  csrfToken?: string;
 }): ReactElement {
+  const reintento = useReintentarVinculacionBonita();
+  const reintentoError =
+    reintento.error instanceof ApiError
+      ? reintento.error.message
+      : reintento.isError
+        ? "No pudimos reintentar la vinculación. Intentá nuevamente."
+        : null;
+
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
@@ -61,6 +74,37 @@ function TarjetaEmergencia({
       </summary>
       <div className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-600">
         <p>{emergencia.descripcion}</p>
+        {rol === "OPERADOR_MUNICIPAL" && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="font-semibold text-slate-800">
+              {estadoSincronizacionBonitaLabels[emergencia.bonita_sync]}
+            </p>
+            {emergencia.bonita_ultimo_error && (
+              <p className="mt-1 text-red-800">
+                {emergencia.bonita_ultimo_error}
+              </p>
+            )}
+            {reintentoError && (
+              <p role="alert" className="mt-2 text-red-800">
+                {reintentoError}
+              </p>
+            )}
+            {emergencia.bonita_sync !== "VINCULADA" && csrfToken && (
+              <button
+                type="button"
+                disabled={reintento.isPending}
+                onClick={() =>
+                  reintento.mutate({ emergenciaId: emergencia.id, csrfToken })
+                }
+                className="mt-3 rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+              >
+                {reintento.isPending
+                  ? "Reintentando…"
+                  : "Reintentar vinculación"}
+              </button>
+            )}
+          </div>
+        )}
         {rol === "COORDINADOR_REGIONAL" && (
           <Link
             to={`/emergencias/${emergencia.id}/lotes`}
@@ -74,7 +118,10 @@ function TarjetaEmergencia({
   );
 }
 
-export function BandejaEmergencias({ rol }: BandejaEmergenciasProps): ReactElement {
+export function BandejaEmergencias({
+  rol,
+  csrfToken,
+}: BandejaEmergenciasProps): ReactElement {
   const query = useEmergencias();
   const copy = copyPorRol[rol];
 
@@ -134,6 +181,7 @@ export function BandejaEmergencias({ rol }: BandejaEmergenciasProps): ReactEleme
               key={emergencia.id}
               emergencia={emergencia}
               rol={rol}
+              csrfToken={csrfToken}
             />
           ))}
         </div>
