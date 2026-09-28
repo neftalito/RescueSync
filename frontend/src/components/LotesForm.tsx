@@ -17,6 +17,7 @@ import {
 interface LotesFormProps {
   emergenciaId: number;
   csrfToken: string;
+  convocatoriaPublicada: boolean;
   /** Lotes persistidos: los borradores se editan y el resto se muestra fijo. */
   lotes: Lote[];
 }
@@ -47,6 +48,7 @@ function aFormulario(lote: Lote): LoteItemFormData {
 export function LotesForm({
   emergenciaId,
   csrfToken,
+  convocatoriaPublicada,
   lotes,
 }: LotesFormProps): ReactElement {
   // El backend rechaza con 409 editar un lote que ya salió del borrador.
@@ -518,14 +520,19 @@ export function LotesForm({
 
           <button
             type="button"
-            disabled={ocupado || !puedePublicar || publicacion.isSuccess}
+            disabled={
+              ocupado ||
+              !puedePublicar ||
+              convocatoriaPublicada ||
+              publicacion.isSuccess
+            }
             onClick={() => publicacion.mutate(csrfToken)}
             className="mt-4 flex w-full items-center justify-center rounded-xl bg-amber-600 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-amber-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
             aria-busy={publicacion.isPending}
           >
             {publicacion.isPending
               ? "Publicando…"
-              : publicacion.isSuccess
+              : convocatoriaPublicada || publicacion.isSuccess
                 ? "Convocatoria publicada"
                 : "Publicar convocatoria"}
           </button>

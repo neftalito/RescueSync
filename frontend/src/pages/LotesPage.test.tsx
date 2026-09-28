@@ -117,6 +117,36 @@ describe("LotesPage", () => {
     );
   });
 
+  it("deshabilita publicar si la emergencia ya tiene una convocatoria", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias`, () =>
+        HttpResponse.json([{ ...emergencia, estado: "PUBLICADA" }]),
+      ),
+      http.get(`${API_URL}/emergencias/31/lotes`, () =>
+        HttpResponse.json([
+          {
+            id: 7,
+            emergencia_id: 31,
+            creado_por_usuario_id: 2,
+            tipo_necesidad: "Agua potable",
+            descripcion: null,
+            cantidad_requerida: "500.000",
+            unidad: "litros",
+            estado: "BORRADOR",
+            version: 1,
+            creado_en: "2026-09-19T18:20:39.102766Z",
+            actualizado_en: "2026-09-19T18:20:39.102766Z",
+          },
+        ]),
+      ),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    expect(
+      await screen.findByRole("button", { name: "Convocatoria publicada" }),
+    ).toBeDisabled();
+  });
+
   it("conserva las ediciones si falla una actualización en segundo plano", async () => {
     let fallarRefresco = false;
     const lote = {

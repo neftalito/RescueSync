@@ -97,9 +97,11 @@ function AvisoRefresco({
 function SeccionLotes({
   emergenciaId,
   csrfToken,
+  convocatoriaPublicada,
 }: {
   emergenciaId: number;
   csrfToken: string;
+  convocatoriaPublicada: boolean;
 }): ReactElement {
   const query = useLotes(emergenciaId);
 
@@ -132,6 +134,7 @@ function SeccionLotes({
       <LotesForm
         emergenciaId={emergenciaId}
         csrfToken={csrfToken}
+        convocatoriaPublicada={convocatoriaPublicada}
         lotes={query.data}
       />
     </div>
@@ -229,7 +232,11 @@ function Contenido({
           </dl>
         </aside>
 
-        <SeccionLotes emergenciaId={emergencia.id} csrfToken={csrfToken} />
+        <SeccionLotes
+          emergenciaId={emergencia.id}
+          csrfToken={csrfToken}
+          convocatoriaPublicada={emergencia.estado === "PUBLICADA"}
+        />
       </div>
     </div>
   );

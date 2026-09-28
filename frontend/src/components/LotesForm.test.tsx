@@ -46,13 +46,21 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderForm(lotes: Lote[] = []): void {
+function renderForm(
+  lotes: Lote[] = [],
+  convocatoriaPublicada = false,
+): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <LotesForm emergenciaId={31} csrfToken={CSRF_TOKEN} lotes={lotes} />
+      <LotesForm
+        emergenciaId={31}
+        csrfToken={CSRF_TOKEN}
+        convocatoriaPublicada={convocatoriaPublicada}
+        lotes={lotes}
+      />
     </QueryClientProvider>,
   );
 }
@@ -212,6 +220,30 @@ describe("LotesForm", () => {
     expect(
       screen.getByRole("button", { name: "Convocatoria publicada" }),
     ).toBeDisabled();
+  });
+
+  it("no vuelve a publicar una convocatoria ya publicada", async () => {
+    let publicaciones = 0;
+    server.use(
+      http.post(URL_PUBLICAR, () => {
+        publicaciones += 1;
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm(
+      [loteGuardado(7, "Agua potable", "500.000", "litros")],
+      true,
+    );
+
+    const boton = screen.getByRole("button", {
+      name: "Convocatoria publicada",
+    });
+    expect(boton).toBeDisabled();
+
+    await user.click(boton);
+
+    expect(publicaciones).toBe(0);
   });
 
   it("explica el rechazo al publicar sin perder los borradores", async () => {
