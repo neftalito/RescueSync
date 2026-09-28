@@ -1,7 +1,7 @@
 # Base de datos de RescueSync
 
 Este documento describe el esquema PostgreSQL vigente luego de aplicar todas las
-migraciones Alembic hasta `20260928_0005`. Las fuentes ejecutables son
+migraciones Alembic hasta `20260928_0006`. Las fuentes ejecutables son
 `backend/alembic/versions/` y los modelos SQLAlchemy de
 `backend/app/db/models/`.
 
@@ -18,6 +18,7 @@ caso.
   -> 20260927_0003
   -> 20260927_0004
   -> 20260928_0005
+  -> 20260928_0006
 ```
 
 ### `20260915_0001_crear_esquema_inicial.py`
@@ -107,10 +108,19 @@ Refuerza dos invariantes:
 El `downgrade()` restaura la versión anterior del trigger y elimina
 `bonita_claim_id`.
 
+### `20260928_0006_notificaciones_tiempo_real.py`
+
+Crea el enum `tipo_notificacion` y la tabla `notificacion`. Cada fila pertenece
+a un usuario concreto, conserva la novedad aunque no estuviera conectado y usa
+la pareja `(usuario_id, clave_evento)` para tolerar reintentos de callbacks sin
+duplicar avisos. Los índices por usuario/fecha y usuario/lectura sostienen el
+buzón y su contador.
+
 ## Esquema final
 
-Todas las claves foráneas usan `ON DELETE RESTRICT`: la trazabilidad histórica
-impide borrar una entidad que ya es referenciada. Los campos `timestamptz`
+Las claves foráneas operativas usan `ON DELETE RESTRICT`: la trazabilidad
+histórica impide borrar una entidad que ya es referenciada. La única excepción
+es el buzón personal, que usa `ON DELETE CASCADE` al eliminar una cuenta. Los campos `timestamptz`
 almacenan instantes con zona horaria y la aplicación trabaja en UTC.
 
 ### `organizacion`
@@ -148,6 +158,25 @@ Guarda la identidad, credenciales y autorización local.
 
 `uq_usuario_email_normalizado` aplica unicidad sobre `lower(email)`. El trigger
 `trg_usuario_organizacion` valida la correspondencia entre rol y organización.
+
+### `notificacion`
+
+Guarda el buzón durable que complementa la entrega por WebSocket.
+
+| Columna | Tipo / nulabilidad | Uso |
+| --- | --- | --- |
+| `id` | `bigint`, PK | Identificador de la novedad. |
+| `usuario_id` | `bigint`, FK, no nulo | Destinatario autorizado. |
+| `clave_evento` | `varchar(180)`, no nulo | Clave idempotente del evento de dominio. |
+| `tipo` | `tipo_notificacion`, no nulo | Define qué consulta debe refrescar el frontend. |
+| `titulo` | `varchar(140)`, no nulo | Resumen visible. |
+| `mensaje` | `text`, no nulo | Explicación segura para el usuario. |
+| `ruta` | `varchar(255)`, nullable | Navegación interna relativa. |
+| `leida_en` | `timestamptz`, nullable | Momento en que el destinatario leyó la novedad. |
+| `creada_en` | `timestamptz`, no nulo | Momento de creación. |
+
+La unicidad por usuario y clave hace idempotentes los avisos generados por
+conectores reintentables de Bonita.
 
 ### `emergencia`
 
@@ -342,4 +371,3 @@ erDiagram
 - Sesión PostgreSQL: `backend/app/db/session.py`.
 - Casos de uso: `backend/app/services/`.
 - Pruebas del esquema: `backend/tests/test_database_models.py`.
-

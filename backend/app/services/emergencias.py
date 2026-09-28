@@ -14,6 +14,7 @@ from app.db.models import (
 )
 from app.schemas.emergencia import EmergenciaCreate
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.notificaciones import notificar_emergencia_registrada
 
 
 class EmergenciaError(Exception):
@@ -77,6 +78,12 @@ def registrar_emergencia(
     )
     session.add(emergencia)
     try:
+        session.flush()
+        notificar_emergencia_registrada(
+            session,
+            emergencia_id=emergencia.id,
+            zona=emergencia.zona,
+        )
         session.commit()
     except IntegrityError as error:
         session.rollback()

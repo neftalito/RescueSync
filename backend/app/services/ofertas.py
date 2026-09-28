@@ -21,6 +21,7 @@ from app.db.models import (
 )
 from app.schemas.oferta import OfertaCreateRequest, OfertaItemRequest
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.notificaciones import notificar_oferta_recibida
 
 
 class OfertaError(Exception):
@@ -115,6 +116,13 @@ def registrar_oferta(
         )
 
     try:
+        emergencia = convocatoria.emergencia
+        notificar_oferta_recibida(
+            session,
+            oferta_id=oferta.id,
+            centro_coordinador_id=emergencia.centro_coordinador_id,
+            zona=emergencia.zona,
+        )
         session.commit()
     except IntegrityError as error:
         session.rollback()

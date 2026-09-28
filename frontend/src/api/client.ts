@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
+export const API_URL =
+  import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v1";
 
 const errorResponseSchema = z.object({
   detail: z.string(),
@@ -63,4 +64,13 @@ export async function apiRequestVoid(
   init?: RequestInit,
 ): Promise<void> {
   await request(path, init);
+}
+
+export function notificacionesWebSocketUrl(): string {
+  const url = new URL(API_URL, window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/notificaciones/ws`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }

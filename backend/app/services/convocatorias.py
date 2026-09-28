@@ -26,6 +26,7 @@ from app.db.models import (
     Usuario,
 )
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.notificaciones import notificar_convocatoria_publicada
 
 VENTANA_CIERRE_PROVISORIA = timedelta(hours=2)
 """Marcador temporal de `cierra_en` hasta que Bonita confirme la fecha real."""
@@ -152,6 +153,12 @@ def publicar_convocatoria(
     emergencia.estado = EstadoEmergencia.PUBLICADA
 
     try:
+        notificar_convocatoria_publicada(
+            session,
+            convocatoria_id=convocatoria.id,
+            municipio_id=emergencia.municipio_id,
+            zona=emergencia.zona,
+        )
         session.commit()
     except IntegrityError as error:
         session.rollback()

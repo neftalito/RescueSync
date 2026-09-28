@@ -7,6 +7,7 @@ from app.api.routes import (
     emergencias,
     health,
     lotes,
+    notificaciones,
     ofertas,
     usuarios,
 )
@@ -49,4 +50,9 @@ api_router.include_router(
     ofertas.router,
     prefix="/ofertas",
     tags=["ofertas"],
+)
+api_router.include_router(
+    notificaciones.router,
+    prefix="/notificaciones",
+    tags=["notificaciones"],
 )

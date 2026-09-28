@@ -11,7 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import validar_callback_bonita
+from app.api.dependencies import GestorTiempoRealDep, validar_callback_bonita
 from app.db.models import Convocatoria
 from app.db.session import get_db
 from app.integrations.bonita.contratos import CABECERA_CASO_RAIZ
@@ -26,6 +26,11 @@ from app.schemas.bonita import (
     OfertasConsolidadasResponse,
 )
 from app.services import callbacks_bonita as servicio
+from app.services.notificaciones import (
+    clave_convocatoria_actualizada,
+    clave_convocatoria_cerrada,
+)
+from app.services.tiempo_real import programar_evento_confirmado
 
 router = APIRouter(dependencies=[Depends(validar_callback_bonita)])
 
@@ -96,6 +101,7 @@ def notificar_apertura(
     case_id: CasoBonitaId,
     datos: NotificacionAperturaRequest,
     session: Annotated[Session, Depends(get_db)],
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> ConvocatoriaBonitaResponse:
     _verificar_emergencia_del_cuerpo(emergencia_id, datos.id_emergencia)
     convocatoria = _ejecutar(
@@ -106,6 +112,11 @@ def notificar_apertura(
             numero=datos.intento_convocatoria,
             cierra_en=datos.fecha_cierre_ofertas,
         )
+    )
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_convocatoria_actualizada(convocatoria.id),
     )
     return _respuesta_convocatoria(convocatoria)
 
@@ -125,6 +136,7 @@ def cerrar_convocatoria(
     case_id: CasoBonitaId,
     datos: CierreConvocatoriaRequest,
     session: Annotated[Session, Depends(get_db)],
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> ConvocatoriaBonitaResponse:
     _verificar_emergencia_del_cuerpo(emergencia_id, datos.id_emergencia)
     convocatoria = _ejecutar(
@@ -135,6 +147,11 @@ def cerrar_convocatoria(
             numero=datos.intento_convocatoria,
             ahora=datetime.now(UTC),
         )
+    )
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_convocatoria_cerrada(convocatoria.id),
     )
     return _respuesta_convocatoria(convocatoria)
 

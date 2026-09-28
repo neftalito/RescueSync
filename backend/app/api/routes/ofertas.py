@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_operacion
+from app.api.dependencies import GestorTiempoRealDep, requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Oferta, Usuario
@@ -19,6 +19,8 @@ from app.schemas.oferta import (
     OfertaResponse,
 )
 from app.services import ofertas as servicio
+from app.services.notificaciones import clave_oferta_recibida
+from app.services.tiempo_real import programar_evento_confirmado
 
 router = APIRouter()
 
@@ -100,6 +102,7 @@ def crear_oferta(
     datos: OfertaCreateRequest,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPresentaOferta,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> OfertaResponse:
     try:
         oferta = servicio.registrar_oferta(session, usuario, datos)
@@ -108,6 +111,11 @@ def crear_oferta(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
 
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_oferta_recibida(oferta.id),
+    )
     return _respuesta(oferta)
 
 

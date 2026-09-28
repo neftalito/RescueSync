@@ -6,6 +6,7 @@ import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { EmergenciaForm } from "../components/EmergenciaForm";
+import { NotificationCenter } from "../components/NotificationCenter";
 import { roleLabels, type Session } from "../schemas/auth";
 
 interface DashboardPageProps {
@@ -65,6 +66,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 Usuarios
               </Link>
             )}
+            <NotificationCenter csrfToken={session.csrf_token} />
             <Link
               to="/cambiar-password"
               className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"

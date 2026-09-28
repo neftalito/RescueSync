@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
+import { useNotificacionesTiempoReal } from "./hooks/useNotificacionesTiempoReal";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -28,6 +29,9 @@ function LoadingScreen(): ReactElement {
 function ProtectedApp(): ReactElement {
   const session = useSession();
   const location = useLocation();
+  const tiempoRealHabilitado =
+    session.isSuccess && !session.data.usuario.requiere_cambio_password;
+  useNotificacionesTiempoReal(tiempoRealHabilitado);
 
   if (session.isPending) return <LoadingScreen />;
 

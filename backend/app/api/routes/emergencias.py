@@ -5,7 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import ClienteBonitaDep, requerir_operacion
+from app.api.dependencies import (
+    ClienteBonitaDep,
+    GestorTiempoRealDep,
+    requerir_operacion,
+)
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Usuario
@@ -13,6 +17,8 @@ from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas.emergencia import EmergenciaCreate, EmergenciaResponse
 from app.services import emergencias as servicio
+from app.services.notificaciones import clave_emergencia_registrada
+from app.services.tiempo_real import programar_evento_confirmado
 from app.services.vinculacion_bonita import vincular_emergencia_con_bonita
 
 router = APIRouter()
@@ -64,6 +70,7 @@ def crear_emergencia(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioRegistraEmergencia,
     cliente: ClienteBonitaDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> EmergenciaResponse:
     """Confirma el alta local y vincula su instancia de Bonita de forma trazable."""
 
@@ -80,6 +87,11 @@ def crear_emergencia(
             detail=str(error),
         ) from error
     emergencia = vincular_emergencia_con_bonita(session, emergencia, cliente)
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_emergencia_registrada(emergencia.id),
+    )
     return EmergenciaResponse.model_validate(emergencia)
 
 

@@ -11,21 +11,28 @@ from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.services.bootstrap import asegurar_admin_inicial
+from app.services.tiempo_real import GestorTiempoReal
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Comparte un único cliente de Bonita y cierra su pool al apagar la API."""
+    """Comparte clientes y cierra recursos externos al apagar la API."""
 
     if settings.app_env.casefold() in {"development", "production"}:
         with SessionLocal.begin() as session:
             asegurar_admin_inicial(session, settings)
 
-    with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
-        app.state.cliente_bonita = cliente
-        yield
+    gestor_tiempo_real = GestorTiempoReal()
+    gestor_tiempo_real.iniciar()
+    app.state.gestor_tiempo_real = gestor_tiempo_real
+    try:
+        with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
+            app.state.cliente_bonita = cliente
+            yield
+    finally:
+        await gestor_tiempo_real.detener()
 
 
 app = FastAPI(

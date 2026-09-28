@@ -12,6 +12,8 @@ referencia.
   trabajo con Alembic.
 - [Calidad y pruebas](./desarrollo/calidad-y-pruebas.md): comandos, hooks,
   verificaciones de CI y pruebas frontend.
+- [Flujo actual](./flujo-actual.md): recorrido operativo, notificaciones y mapa
+  de endpoints implementados.
 - [Imágenes de producción](./despliegue.md): targets Docker disponibles.
 
 Las reglas obligatorias de ramas, arquitectura, código y definición de terminado

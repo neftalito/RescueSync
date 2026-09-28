@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -14,17 +15,20 @@ from app.db.models import (
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoEmergencia,
     EstadoLote,
     EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
+    Notificacion,
     Oferta,
     OfertaItem,
     OfertaVersion,
     Organizacion,
     RolUsuario,
     TipoAporte,
+    TipoNotificacion,
     TipoOrganizacion,
     Usuario,
 )
@@ -59,7 +63,8 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
     try:
-        yield TestClient(app)
+        with TestClient(app) as test_client:
+            yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -277,6 +282,13 @@ def test_notificacion_alinea_el_cierre_con_bonita_y_es_idempotente(
     assert primera.json()["convocatoriaId"] == escenario.convocatoria.id
     db_session.refresh(escenario.convocatoria)
     assert escenario.convocatoria.cierra_en == cierre
+    avisos = db_session.scalars(
+        select(Notificacion).where(
+            Notificacion.usuario_id == escenario.representante.id,
+            Notificacion.tipo == TipoNotificacion.CONVOCATORIA_ACTUALIZADA,
+        )
+    ).all()
+    assert len(avisos) == 1
 
 
 @pytest.mark.parametrize(
@@ -352,7 +364,16 @@ def test_cierre_es_idempotente_y_bloquea_nuevas_notificaciones(
     assert primera.json()["estado"] == "CERRADA"
     assert primera.json()["cerradaEn"] == segunda.json()["cerradaEn"]
     db_session.refresh(escenario.convocatoria)
+    db_session.refresh(escenario.emergencia)
     assert escenario.convocatoria.estado is EstadoConvocatoria.CERRADA
+    assert escenario.emergencia.estado is EstadoEmergencia.EN_EVALUACION
+    aviso_municipal = db_session.scalar(
+        select(Notificacion).where(
+            Notificacion.usuario_id == escenario.emergencia.creada_por_usuario_id,
+            Notificacion.tipo == TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
+        )
+    )
+    assert aviso_municipal is not None
     reapertura = _notificar(
         client, escenario, cierre=datetime.now(UTC) + timedelta(hours=1)
     )

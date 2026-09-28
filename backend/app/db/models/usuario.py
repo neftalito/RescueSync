@@ -24,6 +24,7 @@ from app.db.models.enums import RolUsuario
 if TYPE_CHECKING:
     from app.db.models.emergencia import Emergencia
     from app.db.models.lote import Lote
+    from app.db.models.notificacion import Notificacion
     from app.db.models.oferta import Oferta, OfertaVersion
     from app.db.models.organizacion import Organizacion
 
@@ -90,6 +91,10 @@ class Usuario(Base):
     ofertas_creadas: Mapped[list[Oferta]] = relationship(back_populates="creada_por")
     versiones_oferta_creadas: Mapped[list[OfertaVersion]] = relationship(
         back_populates="creada_por"
+    )
+    notificaciones: Mapped[list[Notificacion]] = relationship(
+        back_populates="usuario",
+        cascade="all, delete-orphan",
     )
 
 

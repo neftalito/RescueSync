@@ -2,7 +2,16 @@ from collections.abc import Callable
 from secrets import compare_digest
 from typing import Annotated
 
-from fastapi import Cookie, Depends, Header, HTTPException, Request, status
+from fastapi import (
+    Cookie,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketException,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -12,6 +21,7 @@ from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.integrations.bonita.cliente import ClienteBonita
 from app.services.auth import obtener_usuario_vigente
+from app.services.tiempo_real import GestorTiempoReal
 
 settings = get_settings()
 
@@ -44,6 +54,30 @@ def obtener_usuario_actual(
 
 
 UsuarioActual = Annotated[Usuario, Depends(obtener_usuario_actual)]
+
+
+def autenticar_websocket(
+    websocket: WebSocket,
+    session: Annotated[Session, Depends(get_db)],
+    valor_sesion: Annotated[
+        str | None,
+        Cookie(alias=settings.session_cookie_name),
+    ] = None,
+) -> Usuario:
+    """Reautentica el socket con cookie y rechaza orígenes no permitidos."""
+
+    if websocket.headers.get("origin") not in settings.cors_origins:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    try:
+        usuario = obtener_usuario_actual(session, valor_sesion)
+    except HTTPException as error:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION) from error
+    if usuario.requiere_cambio_password:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION)
+    return usuario
+
+
+UsuarioWebSocket = Annotated[Usuario, Depends(autenticar_websocket)]
 
 
 def requerir_roles(
@@ -131,6 +165,21 @@ def obtener_cliente_bonita(request: Request) -> ClienteBonita:
 
 
 ClienteBonitaDep = Annotated[ClienteBonita, Depends(obtener_cliente_bonita)]
+
+
+def obtener_gestor_tiempo_real(request: Request) -> GestorTiempoReal:
+    """Entrega el distribuidor WebSocket creado durante el arranque."""
+
+    gestor = getattr(request.app.state, "gestor_tiempo_real", None)
+    if isinstance(gestor, GestorTiempoReal):
+        return gestor
+    raise RuntimeError("El gestor de tiempo real no fue inicializado.")
+
+
+GestorTiempoRealDep = Annotated[
+    GestorTiempoReal,
+    Depends(obtener_gestor_tiempo_real),
+]
 
 
 def validar_callback_bonita(

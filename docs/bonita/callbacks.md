@@ -5,8 +5,8 @@ frontend no consume estas rutas.
 
 | Tarea de Bonita | Endpoint | Efecto local |
 | --- | --- | --- |
-| `Enviar notificacion a ONGs de convocatoria` | `POST /api/v1/emergencias/{id}/notificar-apertura` | Alinea `convocatoria.cierra_en` con la fecha del timer. |
-| `Cerrar convocatoria local` | `POST /api/v1/emergencias/{id}/cerrar-convocatoria` | Pasa la convocatoria a `CERRADA` de forma idempotente. |
+| `Enviar notificacion a ONGs de convocatoria` | `POST /api/v1/emergencias/{id}/notificar-apertura` | Alinea `convocatoria.cierra_en` con la fecha del timer y notifica a las ONGs. |
+| `Cerrar convocatoria local` | `POST /api/v1/emergencias/{id}/cerrar-convocatoria` | Pasa la convocatoria a `CERRADA`, la emergencia a `EN_EVALUACION` y publica las novedades. |
 | `Solicitar ofertas consolidadas` | `GET /api/v1/emergencias/{id}/ofertas-consolidadas` | Devuelve el indicador `lotesCubiertos`. |
 
 `POST /api/v1/emergencias/{id}/resolver` pertenece al cierre del proyecto de la
@@ -51,6 +51,10 @@ Los callbacks de escritura son idempotentes porque los conectores pueden
 reintentarlos. La consolidación se realiza solamente sobre la última convocatoria
 cerrada y utiliza la versión vigente de las ofertas presentadas. Excluye
 borradores y ofertas retiradas.
+
+Las notificaciones se insertan en la misma transacción que el cambio local. Una
+vez confirmado el commit, FastAPI las entrega por WebSocket a las sesiones
+conectadas. Un reintento reutiliza la misma `clave_evento` y no crea duplicados.
 
 Un aporte cuenta para la cobertura cuando utiliza la unidad publicada por el
 lote. El detalle de emergencias, lotes y ofertas permanece en PostgreSQL local;

@@ -12,11 +12,11 @@ recursos y el cierre completo pertenecen a etapas posteriores.
 
 ## Responsabilidad de cada componente
 
-- **React** presenta las pantallas según el rol y consume únicamente FastAPI.
+- **React** presenta las pantallas según el rol y consume REST y WebSocket de FastAPI.
 - **FastAPI** autentica, autoriza, valida CSRF, ejecuta los casos de uso y adapta
   todas las llamadas hacia o desde Bonita.
 - **PostgreSQL** es la fuente de verdad local para usuarios, emergencias, lotes,
-  convocatorias y ofertas.
+  convocatorias, ofertas y notificaciones.
 - **Bonita** orquesta el recorrido BPM y es dueño del temporizador de la ventana
   de ofertas.
 - **API Nacional** está fuera del alcance actual. No recibe borradores ni
@@ -93,6 +93,9 @@ con:
 - `estado = REGISTRADA`;
 - `bonita_sync = PENDIENTE`.
 
+En la misma transacción se crean las notificaciones para los coordinadores
+activos. Después del commit, el WebSocket actualiza sus bandejas de emergencias.
+
 Si la inserción local es válida, no se revierte aunque Bonita esté caído. La
 bandeja del municipio se consulta con `GET /emergencias` y se muestra mediante
 `frontend/src/components/BandejaEmergencias.tsx`.
@@ -167,6 +170,9 @@ ejecuta una única transacción local:
 5. cambia los lotes a `PUBLICADO`;
 6. cambia la emergencia a `PUBLICADA`.
 
+La misma transacción crea la novedad de convocatoria para las ONGs y el cambio
+de estado para los operadores del municipio dueño.
+
 Inicialmente `cierra_en` recibe una fecha provisoria de dos horas. Bonita la
 reemplaza luego por la fecha real de su timer.
 
@@ -200,6 +206,10 @@ Los callbacks viven en `backend/app/api/routes/bonita.py` y sus casos de uso en
 
 Son idempotentes porque los conectores de Bonita pueden reintentar.
 
+La confirmación del horario crea una notificación durable para las ONGs. El
+WebSocket avisa a los navegadores conectados y estos vuelven a consultar las
+convocatorias mediante REST.
+
 ### 6. La ONG consulta la convocatoria y registra ofertas
 
 Una ONG activa dispone de:
@@ -218,6 +228,9 @@ que la convocatoria esté abierta y dentro de plazo, que cada lote pertenezca a
 esa convocatoria, continúe publicado, tenga cantidad positiva y use la unidad
 publicada.
 
+Cuando se presenta la oferta, los usuarios activos del centro coordinador
+asignado reciben una notificación en tiempo real.
+
 **Estado real del frontend:** todavía no existe el formulario de alta de oferta.
 El tablero de la ONG muestra “Presentar oferta” como `Próximamente`. Por lo
 tanto, el flujo puede completarse hoy por API, pero no de punta a punta desde la
@@ -228,8 +241,9 @@ están implementadas.
 
 Cuando vence `EsperarOfertas`, Bonita ejecuta dos callbacks:
 
-1. `POST /emergencias/{id}/cerrar-convocatoria` cambia la ronda a `CERRADA` y
-   registra `cerrada_en`. Desde ese momento la API rechaza nuevas ofertas.
+1. `POST /emergencias/{id}/cerrar-convocatoria` cambia la ronda a `CERRADA`,
+   registra `cerrada_en` y pasa la emergencia a `EN_EVALUACION`. Desde ese
+   momento la API rechaza nuevas ofertas y avisa al municipio y a las ONGs.
 2. `GET /emergencias/{id}/ofertas-consolidadas` toma la última convocatoria
    cerrada, excluye borradores y ofertas retiradas, usa la versión vigente de
    cada oferta y suma por lote únicamente cantidades con la unidad publicada.
@@ -284,6 +298,8 @@ Estas etapas no deben interpretarse como funcionalidad completa. Actualmente:
 | Apertura BPM | `POST /emergencias/{id}/notificar-apertura` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Cierre BPM | `POST /emergencias/{id}/cerrar-convocatoria` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Consolidación BPM | `GET /emergencias/{id}/ofertas-consolidadas` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
+| Buzón | `GET /notificaciones` y `PATCH /notificaciones/{id}/leida` | `backend/app/api/routes/notificaciones.py` | `services/notificaciones.py` | `NotificationCenter.tsx` |
+| Tiempo real | `WS /notificaciones/ws` | `backend/app/api/routes/notificaciones.py` | `services/tiempo_real.py` | `useNotificacionesTiempoReal.ts` |
 
 El prefijo se configura en `backend/app/main.py`, el montaje de routers en
 `backend/app/api/router.py`, el contrato Bonita en
@@ -298,9 +314,8 @@ El prefijo se configura en `backend/app/main.py`, el montaje de routers en
 | Generación de lotes | `REGISTRADA` | `BORRADOR` | — | — |
 | Publicación | `PUBLICADA` | `PUBLICADO` | `ABIERTA` | — |
 | Presentación ONG | `PUBLICADA` | `PUBLICADO` | `ABIERTA` | `PRESENTADA` |
-| Vencimiento del timer | `PUBLICADA` | `PUBLICADO` | `CERRADA` | `PRESENTADA` |
+| Vencimiento del timer | `EN_EVALUACION` | `PUBLICADO` | `CERRADA` | `PRESENTADA` |
 
 Los enums contemplan estados posteriores, pero el flujo implementado todavía no
-transiciona automáticamente la emergencia a `EN_EVALUACION`, `EN_EJECUCION` o
-`RESUELTA`, ni las ofertas a validada o adjudicada.
-
+transiciona automáticamente la emergencia a `EN_EJECUCION` o `RESUELTA`, ni las
+ofertas a validada o adjudicada.

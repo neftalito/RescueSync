@@ -27,6 +27,7 @@ El modelo busca cubrir:
 - Historial inmutable de versiones de ofertas.
 - Vinculación y reconciliación con una instancia de Bonita.
 - Restricciones y transacciones que eviten inconsistencias concurrentes.
+- Buzones durables para las novedades entregadas en tiempo real.
 
 No se incluyen inventario nacional, certificaciones, JWT del Sistema Nacional
 ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
@@ -52,6 +53,7 @@ ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
 ```mermaid
 erDiagram
     ORGANIZACION ||--o{ USUARIO : agrupa
+    USUARIO ||--o{ NOTIFICACION : recibe
     ORGANIZACION ||--o{ EMERGENCIA : registra_como_municipio
     ORGANIZACION o|--o{ EMERGENCIA : coordina
     USUARIO ||--o{ EMERGENCIA : crea
@@ -95,6 +97,18 @@ erDiagram
         integer version_sesion
         timestamptz creado_en
         timestamptz actualizado_en
+    }
+
+    NOTIFICACION {
+        bigint id PK
+        bigint usuario_id FK
+        varchar clave_evento
+        tipo_notificacion tipo
+        varchar titulo
+        text mensaje
+        varchar ruta
+        timestamptz leida_en
+        timestamptz creada_en
     }
 
     EMERGENCIA {

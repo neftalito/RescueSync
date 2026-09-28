@@ -5,7 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import ClienteBonitaDep, requerir_operacion
+from app.api.dependencies import (
+    ClienteBonitaDep,
+    GestorTiempoRealDep,
+    requerir_operacion,
+)
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Convocatoria, Usuario
@@ -18,7 +22,9 @@ from app.schemas.convocatoria import (
     LotePublicadoResponse,
 )
 from app.services import convocatorias as servicio
+from app.services.notificaciones import clave_convocatoria_publicada
 from app.services.publicacion_bonita import completar_generacion_lotes
+from app.services.tiempo_real import programar_evento_confirmado
 
 router = APIRouter()
 router_publico = APIRouter()
@@ -110,6 +116,7 @@ def publicar_convocatoria(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPublicaConvocatoria,
     cliente: ClienteBonitaDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> ConvocatoriaResponse:
     """Valida el estado en base de datos, publica y sincroniza con Bonita."""
 
@@ -121,6 +128,11 @@ def publicar_convocatoria(
         ) from error
     convocatoria = completar_generacion_lotes(
         session, convocatoria.emergencia, convocatoria, cliente
+    )
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_convocatoria_publicada(convocatoria.id),
     )
     return _respuesta(convocatoria)
 

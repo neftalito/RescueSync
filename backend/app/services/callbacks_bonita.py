@@ -16,10 +16,15 @@ from app.db.models import (
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoEmergencia,
     EstadoOferta,
     Lote,
     Oferta,
     OfertaVersion,
+)
+from app.services.notificaciones import (
+    notificar_convocatoria_actualizada,
+    notificar_convocatoria_cerrada,
 )
 
 ESTADOS_OFERTA_NO_CONSOLIDABLES = frozenset(
@@ -78,7 +83,7 @@ class OfertasConsolidadas:
         return bool(self.lotes) and all(lote.cubierto for lote in self.lotes)
 
 
-def _verificar_caso(session: Session, emergencia_id: int, case_id: int) -> None:
+def _verificar_caso(session: Session, emergencia_id: int, case_id: int) -> Emergencia:
     """Impide que un caso actúe sobre una emergencia que no le pertenece."""
 
     emergencia = session.get(Emergencia, emergencia_id)
@@ -88,6 +93,7 @@ def _verificar_caso(session: Session, emergencia_id: int, case_id: int) -> None:
         raise CasoBonitaNoCorrespondeError(
             "El caso de Bonita no está vinculado a esta emergencia."
         )
+    return emergencia
 
 
 def _convocatoria_bloqueada(
@@ -121,7 +127,7 @@ def registrar_apertura(
     Es idempotente: repetir la notificación con los mismos datos no cambia nada.
     """
 
-    _verificar_caso(session, emergencia_id, case_id)
+    emergencia = _verificar_caso(session, emergencia_id, case_id)
     convocatoria = _convocatoria_bloqueada(session, emergencia_id, numero)
     if convocatoria.estado is not EstadoConvocatoria.ABIERTA:
         raise EstadoConvocatoriaInvalidoError(
@@ -134,6 +140,11 @@ def registrar_apertura(
         )
 
     convocatoria.cierra_en = cierre_utc
+    notificar_convocatoria_actualizada(
+        session,
+        convocatoria_id=convocatoria.id,
+        zona=emergencia.zona,
+    )
     session.commit()
     return convocatoria
 
@@ -151,7 +162,7 @@ def cerrar_convocatoria(
     Es idempotente para tolerar reintentos del conector.
     """
 
-    _verificar_caso(session, emergencia_id, case_id)
+    emergencia = _verificar_caso(session, emergencia_id, case_id)
     convocatoria = _convocatoria_bloqueada(session, emergencia_id, numero)
     if convocatoria.estado is EstadoConvocatoria.CERRADA:
         return convocatoria
@@ -162,6 +173,13 @@ def cerrar_convocatoria(
 
     convocatoria.estado = EstadoConvocatoria.CERRADA
     convocatoria.cerrada_en = ahora
+    emergencia.estado = EstadoEmergencia.EN_EVALUACION
+    notificar_convocatoria_cerrada(
+        session,
+        convocatoria_id=convocatoria.id,
+        municipio_id=emergencia.municipio_id,
+        zona=emergencia.zona,
+    )
     session.commit()
     return convocatoria
 
