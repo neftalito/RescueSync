@@ -8,6 +8,8 @@ import { setupServer } from "msw/node";
 import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { emergenciasQueryKey } from "../hooks/useEmergencias";
+import type { Emergencia } from "../schemas/emergencia";
 import { BandejaEmergencias } from "./BandejaEmergencias";
 
 const API_URL = "http://localhost:8000/api/v1";
@@ -23,9 +25,11 @@ const emergenciaBase = {
   estado: "REGISTRADA",
   bonita_sync: "PENDIENTE",
   bonita_process_instance_id: null,
+  bonita_ultimo_error: null,
+  bonita_ultimo_intento_en: null,
   creada_en: "2026-09-19T18:20:39.102766Z",
   actualizada_en: "2026-09-19T18:20:39.102766Z",
-};
+} satisfies Emergencia;
 
 const server = setupServer();
 
@@ -39,10 +43,14 @@ afterAll(() => server.close());
 function renderBandeja(
   rol: "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL",
   csrfToken?: string,
+  emergenciasEnCache?: Emergencia[],
 ): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  if (emergenciasEnCache !== undefined) {
+    queryClient.setQueryData(emergenciasQueryKey, emergenciasEnCache);
+  }
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -97,6 +105,20 @@ describe("BandejaEmergencias", () => {
     expect(
       await screen.findByText("No hay emergencias registradas pendientes."),
     ).toBeInTheDocument();
+  });
+
+  it("retira una emergencia publicada de la bandeja en caché del coordinador", async () => {
+    renderBandeja("COORDINADOR_REGIONAL", undefined, [
+      { ...emergenciaBase, estado: "PUBLICADA" },
+    ]);
+
+    expect(
+      await screen.findByText("No hay emergencias registradas pendientes."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Generar lotes" }),
+    ).not.toBeInTheDocument();
   });
 
   it("lista las emergencias devueltas con su estado y gravedad", async () => {

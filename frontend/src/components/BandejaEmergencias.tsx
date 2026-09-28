@@ -158,6 +158,15 @@ export function BandejaEmergencias({
     );
   }
 
+  // Al publicar, la mutación actualiza la emergencia en caché a PUBLICADA para
+  // conservar la confirmación en la pantalla de lotes. La bandeja del
+  // coordinador debe aplicar también sobre ese caché el contrato del backend:
+  // únicamente emergencias REGISTRADA pendientes de revisión.
+  const emergencias =
+    rol === "COORDINADOR_REGIONAL"
+      ? query.data.filter((emergencia) => emergencia.estado === "REGISTRADA")
+      : query.data;
+
   return (
     <section aria-labelledby="bandeja-emergencias-titulo">
       <h3
@@ -167,7 +176,7 @@ export function BandejaEmergencias({
         {copy.titulo}
       </h3>
 
-      {query.data.length === 0 ? (
+      {emergencias.length === 0 ? (
         <p
           role="status"
           className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm"
@@ -176,7 +185,7 @@ export function BandejaEmergencias({
         </p>
       ) : (
         <div className="mt-4 space-y-3">
-          {query.data.map((emergencia) => (
+          {emergencias.map((emergencia) => (
             <TarjetaEmergencia
               key={emergencia.id}
               emergencia={emergencia}
