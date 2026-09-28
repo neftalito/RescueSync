@@ -1,7 +1,7 @@
 """Pruebas del endpoint de publicación de convocatorias."""
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import httpx
@@ -9,7 +9,7 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from app.core.security import (
 )
 from app.db.models import (
     Convocatoria,
+    ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
     EstadoEmergencia,
@@ -641,5 +642,171 @@ def test_openapi_documenta_publicar_convocatoria(client: TestClient) -> None:
         "/api/v1/emergencias/{emergencia_id}/publicar"
     ]["post"]
     assert operacion["responses"]["201"]["description"]
+    assert operacion["summary"]
+    assert operacion["description"]
+
+
+def _convocatoria(
+    db_session: Session,
+    emergencia: Emergencia,
+    lotes: list[Lote],
+    numero: int = 1,
+    estado: EstadoConvocatoria = EstadoConvocatoria.ABIERTA,
+) -> Convocatoria:
+    ahora = datetime.now(UTC)
+    convocatoria = Convocatoria(
+        emergencia_id=emergencia.id,
+        numero=numero,
+        estado=estado,
+        cierra_en=ahora.replace(microsecond=0) + timedelta(hours=2),
+        cerrada_en=ahora if estado is EstadoConvocatoria.CERRADA else None,
+    )
+    db_session.add(convocatoria)
+    db_session.flush()
+    for lote in lotes:
+        db_session.add(
+            ConvocatoriaLote(
+                convocatoria_id=convocatoria.id,
+                lote_id=lote.id,
+                cantidad_publicada=lote.cantidad_requerida,
+                unidad_publicada=lote.unidad,
+            )
+        )
+        lote.estado = EstadoLote.PUBLICADO
+    db_session.flush()
+    db_session.refresh(convocatoria)
+    return convocatoria
+
+
+def _neutralizar_convocatorias_abiertas(db_session: Session) -> None:
+    """Cierra, solo dentro de esta transacción de prueba, cualquier convocatoria
+
+    `ABIERTA` que ya exista en la base (por ejemplo, datos de un seed de
+    desarrollo). El listado de T14 es global y sin este ajuste el resultado
+    dependería de qué más haya en la base al correr la prueba.
+    """
+    db_session.execute(
+        update(Convocatoria)
+        .where(Convocatoria.estado == EstadoConvocatoria.ABIERTA)
+        .values(estado=EstadoConvocatoria.CANCELADA)
+    )
+    db_session.flush()
+
+
+def test_listar_convocatorias_devuelve_solo_abiertas_con_sus_lotes(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    lote_abierta = _lote(db_session, emergencia, coordinador, tipo="Agua potable")
+    abierta = _convocatoria(db_session, emergencia, [lote_abierta], numero=1)
+
+    lote_cerrada = _lote(db_session, emergencia, coordinador, tipo="Abrigo")
+    _convocatoria(
+        db_session,
+        emergencia,
+        [lote_cerrada],
+        numero=2,
+        estado=EstadoConvocatoria.CERRADA,
+    )
+
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    cuerpo = response.json()
+    assert [c["id"] for c in cuerpo] == [abierta.id]
+    (item_lote,) = cuerpo[0]["lotes"]
+    assert item_lote["lote_id"] == lote_abierta.id
+    assert Decimal(item_lote["cantidad_publicada"]) == Decimal(1000)
+    assert item_lote["unidad_publicada"] == "litros"
+    assert cuerpo[0]["emergencia"] == {
+        "zona": emergencia.zona,
+        "gravedad": emergencia.gravedad.value,
+        "descripcion": emergencia.descripcion,
+    }
+    assert "bonita_generar_lotes_estado" not in cuerpo[0]
+    assert "bonita_generar_lotes_ultimo_error" not in cuerpo[0]
+    assert "bonita_generar_lotes_ultimo_intento_en" not in cuerpo[0]
+
+
+def test_listar_convocatorias_excluye_abierta_fuera_de_ventana(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    lote = _lote(db_session, emergencia, coordinador, tipo="Agua vencida")
+    convocatoria = _convocatoria(db_session, emergencia, [lote])
+    ahora = datetime.now(UTC)
+    convocatoria.publicada_en = ahora - timedelta(hours=2)
+    convocatoria.cierra_en = ahora - timedelta(minutes=1)
+    db_session.flush()
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_listar_convocatorias_vacio_sin_convocatorias_abiertas(
+    client: TestClient,
+    db_session: Session,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_listar_convocatorias_exige_sesion(client: TestClient) -> None:
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "rol",
+    [
+        RolUsuario.OPERADOR_MUNICIPAL,
+        RolUsuario.COORDINADOR_REGIONAL,
+        RolUsuario.AUDITOR_DIRECTIVO,
+    ],
+)
+def test_listar_convocatorias_deniega_roles_no_ong(
+    client: TestClient,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+    rol: RolUsuario,
+) -> None:
+    usuario = (
+        coordinador
+        if rol is RolUsuario.COORDINADOR_REGIONAL
+        else usuarios_denegados[rol]
+    )
+    _autenticar(client, usuario)
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 403
+
+
+def test_openapi_documenta_listar_convocatorias(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operacion = response.json()["paths"]["/api/v1/convocatorias"]["get"]
+    assert operacion["responses"]["200"]["description"]
     assert operacion["summary"]
     assert operacion["description"]

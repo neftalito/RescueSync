@@ -11,15 +11,25 @@ from app.core.security import verificar_token_csrf
 from app.db.models import Convocatoria, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.convocatoria import ConvocatoriaResponse, LotePublicadoResponse
+from app.schemas.convocatoria import (
+    ConvocatoriaAbiertaResponse,
+    ConvocatoriaResponse,
+    EmergenciaResumenResponse,
+    LotePublicadoResponse,
+)
 from app.services import convocatorias as servicio
 from app.services.publicacion_bonita import completar_generacion_lotes
 
 router = APIRouter()
+router_publico = APIRouter()
 
 UsuarioCoordinador = Annotated[
     Usuario,
     Depends(requerir_operacion(OperacionProtegida.PUBLICAR_CONVOCATORIA)),
+]
+UsuarioConsultaConvocatorias = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CONSULTAR_CONVOCATORIAS)),
 ]
 EmergenciaId = Annotated[int, Path(gt=0)]
 
@@ -113,3 +123,45 @@ def publicar_convocatoria(
         session, convocatoria.emergencia, convocatoria, cliente
     )
     return _respuesta(convocatoria)
+
+
+@router_publico.get(
+    "",
+    response_model=list[ConvocatoriaAbiertaResponse],
+    status_code=status.HTTP_200_OK,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
+    summary="Listar convocatorias abiertas",
+    description=(
+        "Devuelve las convocatorias actualmente abiertas con sus lotes "
+        "publicados y el contexto mínimo de la emergencia (zona, gravedad y "
+        "descripción), para que cualquier ONG activa identifique dónde "
+        "ofertar. Solo REPRESENTANTE_ONG."
+    ),
+)
+def listar_convocatorias_abiertas(
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioConsultaConvocatorias,
+) -> list[ConvocatoriaAbiertaResponse]:
+    """Consulta las convocatorias abiertas sin reclamar ni modificar nada."""
+
+    convocatorias = servicio.listar_convocatorias_abiertas(session)
+    return [
+        ConvocatoriaAbiertaResponse(
+            id=convocatoria.id,
+            emergencia_id=convocatoria.emergencia_id,
+            numero=convocatoria.numero,
+            estado=convocatoria.estado,
+            publicada_en=convocatoria.publicada_en,
+            cierra_en=convocatoria.cierra_en,
+            lotes=[
+                LotePublicadoResponse.model_validate(publicacion)
+                for publicacion in sorted(
+                    convocatoria.lotes, key=lambda publicacion: publicacion.lote_id
+                )
+            ],
+            emergencia=EmergenciaResumenResponse.model_validate(
+                convocatoria.emergencia
+            ),
+        )
+        for convocatoria in convocatorias
+    ]

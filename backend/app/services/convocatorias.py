@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.models import (
     Convocatoria,
@@ -160,6 +160,30 @@ def publicar_convocatoria(
         ) from error
     session.refresh(convocatoria)
     return convocatoria
+
+
+def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
+    """Devuelve las convocatorias abiertas visibles para cualquier ONG activa.
+
+    No filtra por organización: una convocatoria abierta es pública por
+    definición y no expone datos de ninguna ONG. Incluye el detalle de sus
+    lotes publicados en una sola consulta.
+    """
+
+    return list(
+        session.scalars(
+            select(Convocatoria)
+            .where(
+                Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+                Convocatoria.cierra_en > datetime.now(UTC),
+            )
+            .options(
+                selectinload(Convocatoria.lotes),
+                joinedload(Convocatoria.emergencia),
+            )
+            .order_by(Convocatoria.publicada_en.desc())
+        ).all()
+    )
 
 
 def _obtener_centro(usuario: Usuario) -> Organizacion:

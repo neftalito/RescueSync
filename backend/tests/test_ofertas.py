@@ -9,14 +9,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.routes import ofertas as ofertas_route
+from app.core.security import crear_token_csrf, crear_valor_sesion
 from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
+    Oferta,
+    OfertaVersion,
     Organizacion,
     RolUsuario,
     TipoAporte,
@@ -66,6 +70,12 @@ def _autenticar_solo_rol(client: TestClient, usuario: Usuario) -> None:
     """Bypasea solo la resolución de usuario/rol; el CSRF corre real."""
     usuario_ong_depends = get_args(ofertas_route.UsuarioOng)[1]
     app.dependency_overrides[usuario_ong_depends.dependency] = lambda: usuario
+
+
+def _autenticar_con_cookie(client: TestClient, usuario: Usuario) -> str:
+    """Autentica con una sesión real (cookie + CSRF), sin overrides de dependencia."""
+    client.cookies.set("rescuesync_session", crear_valor_sesion(usuario.id))
+    return crear_token_csrf(usuario.id)
 
 
 def _organizacion(
@@ -408,3 +418,115 @@ def test_rechaza_sin_header_csrf(client: TestClient, escenario: Escenario) -> No
     response = client.post("/api/v1/ofertas", json=body)
 
     assert response.status_code == 403
+
+
+# --- Listado "Mis ofertas" ---------------------------------------------------
+
+
+def _crear_con_csrf(client: TestClient, body: dict[str, object], csrf: str) -> object:
+    return client.post("/api/v1/ofertas", json=body, headers={"X-CSRF-Token": csrf})
+
+
+def test_lista_solo_las_ofertas_de_la_ong_propia(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    csrf_propio = _autenticar_con_cookie(client, escenario.representante)
+    propia = _crear_con_csrf(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+        csrf_propio,
+    )
+    assert propia.status_code == 201
+
+    otra_representante = _usuario(
+        db_session, escenario.otra_ong, RolUsuario.REPRESENTANTE_ONG, "otra@cb.org"
+    )
+    csrf_otra = _autenticar_con_cookie(client, otra_representante)
+    ajena = _crear_con_csrf(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_kits.id, cantidad=2, unidad="kits")],
+        ),
+        csrf_otra,
+    )
+    assert ajena.status_code == 201
+
+    _autenticar_con_cookie(client, escenario.representante)
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    cuerpo = response.json()
+    assert [oferta["id"] for oferta in cuerpo] == [propia.json()["id"]]
+    assert all(oferta["ong_creadora_id"] == escenario.ong.id for oferta in cuerpo)
+
+
+def test_lista_vacia_sin_ofertas_presentadas(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_con_cookie(client, escenario.representante)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_lista_omite_borrador_persistido_sin_fecha_de_presentacion(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    borrador = Oferta(
+        convocatoria_id=escenario.convocatoria.id,
+        ong_creadora_id=escenario.ong.id,
+        creada_por_usuario_id=escenario.representante.id,
+        estado=EstadoOferta.BORRADOR,
+        version_actual=1,
+        version_bloqueo=1,
+    )
+    db_session.add(borrador)
+    db_session.flush()
+    db_session.add(
+        OfertaVersion(
+            oferta_id=borrador.id,
+            creada_por_usuario_id=escenario.representante.id,
+            numero=1,
+            observaciones="Todavía en preparación",
+            presentada_en=None,
+        )
+    )
+    db_session.flush()
+    _autenticar_con_cookie(client, escenario.representante)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_listar_ofertas_exige_sesion(client: TestClient) -> None:
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 401
+
+
+def test_listar_ofertas_deniega_a_quien_no_representa_una_ong(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_con_cookie(client, escenario.operador_municipal)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 403
+
+
+def test_openapi_documenta_listar_mis_ofertas(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operacion = response.json()["paths"]["/api/v1/ofertas"]["get"]
+    assert operacion["responses"]["200"]["description"]
+    assert operacion["summary"]
+    assert operacion["description"]

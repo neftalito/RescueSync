@@ -9,6 +9,7 @@ from app.db.models import (
     EstadoLote,
     Lote,
     Organizacion,
+    RolUsuario,
     TipoOrganizacion,
     Usuario,
 )
@@ -26,6 +27,10 @@ class EmergenciaNoEncontradaError(LoteError):
 
 class CentroNoAutorizadoError(LoteError):
     """El coordinador no pertenece al centro asignado a la emergencia."""
+
+
+class OngNoAutorizadaError(LoteError):
+    """La ONG no está activa y no puede consultar lotes publicados."""
 
 
 class LoteNoEncontradoError(LoteError):
@@ -108,23 +113,39 @@ def guardar_lotes(
 
 
 def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list[Lote]:
-    """Devuelve todos los lotes de la emergencia para que el coordinador los edite.
+    """Devuelve los lotes de la emergencia según quién consulta.
 
-    Incluye borradores y lotes ya publicados, ordenados por alta; el estado
-    indica cuáles admiten edición. Consultar no reclama la emergencia: una
-    emergencia sin centro asignado todavía no tiene lotes y devuelve una lista
-    vacía.
+    El centro coordinador asignado ve todos los lotes, en borrador o
+    publicados, para retomar su edición; una ONG activa solo ve los lotes ya
+    publicados, sin importar qué centro los gestiona. Consultar no reclama la
+    emergencia: una emergencia sin centro asignado todavía no tiene lotes y
+    el coordinador recibe una lista vacía.
 
     Raises:
-        CentroNoAutorizadoError: Si el usuario no conserva un centro activo
-            o la emergencia está asignada a otro centro.
+        CentroNoAutorizadoError: Si el coordinador no conserva un centro
+            activo o la emergencia está asignada a otro centro.
+        OngNoAutorizadaError: Si la ONG no conserva una organización activa.
         EmergenciaNoEncontradaError: Si la emergencia no existe.
     """
 
-    centro = _obtener_centro(usuario)
     emergencia = session.get(Emergencia, emergencia_id)
     if emergencia is None:
         raise EmergenciaNoEncontradaError("La emergencia no existe.")
+
+    if usuario.rol is RolUsuario.REPRESENTANTE_ONG:
+        _obtener_ong(usuario)
+        return list(
+            session.scalars(
+                select(Lote)
+                .where(
+                    Lote.emergencia_id == emergencia.id,
+                    Lote.estado == EstadoLote.PUBLICADO,
+                )
+                .order_by(Lote.id)
+            ).all()
+        )
+
+    centro = _obtener_centro(usuario)
     if emergencia.centro_coordinador_id is None:
         return []
     if emergencia.centro_coordinador_id != centro.id:
@@ -203,6 +224,15 @@ def _obtener_centro(usuario: Usuario) -> Organizacion:
             "Solo un centro coordinador activo gestiona lotes."
         )
     return centro
+
+
+def _obtener_ong(usuario: Usuario) -> Organizacion:
+    """Devuelve la ONG activa del representante o rechaza la operación."""
+
+    ong = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.ONG)
+    if ong is None:
+        raise OngNoAutorizadaError("Solo una ONG activa consulta lotes publicados.")
+    return ong
 
 
 def _lotes_bloqueados(session: Session, ids: list[int]) -> dict[int, Lote]:

@@ -12,6 +12,7 @@ from pydantic import (
 )
 
 from app.db.models.enums import EstadoOferta, TipoAporte
+from app.schemas.convocatoria import EmergenciaResumenResponse
 
 
 class OfertaItemRequest(BaseModel):
@@ -74,3 +75,9 @@ class OfertaResponse(BaseModel):
     presentada_en: AwareDatetime
     creada_en: AwareDatetime
     items: list[OfertaItemResponse]
+
+
+class OfertaPropiaResponse(OfertaResponse):
+    """Oferta propia con el contexto de la emergencia para mostrarla sin IDs."""
+
+    emergencia: EmergenciaResumenResponse
