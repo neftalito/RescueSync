@@ -185,7 +185,7 @@ def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
                 Convocatoria.cierra_en > datetime.now(UTC),
             )
             .options(
-                selectinload(Convocatoria.lotes),
+                selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
                 joinedload(Convocatoria.emergencia),
             )
             .order_by(Convocatoria.publicada_en.desc())

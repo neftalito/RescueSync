@@ -6,6 +6,8 @@ from typing import get_args
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.routes import ofertas as ofertas_route
@@ -54,7 +56,8 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
     try:
-        yield TestClient(app)
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(ofertas_route.exigir_ong_con_csrf, None)
@@ -371,6 +374,68 @@ def test_rechaza_unidad_que_no_coincide_con_la_publicada(
     response = _crear(client, body)
 
     assert response.status_code == 422
+
+
+def test_rechazo_de_un_item_no_deja_una_oferta_parcial(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+    versiones_antes = (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion)) or 0
+    )
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [
+                _item(escenario.lote_agua.id, cantidad=100, unidad="litros"),
+                _item(999_999_999, cantidad=2, unidad="kits"),
+            ],
+        ),
+    )
+
+    assert response.status_code == 404
+    assert db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes
+    assert (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion))
+        == versiones_antes
+    )
+
+
+def test_hace_rollback_ante_fallo_de_persistencia(
+    client: TestClient,
+    escenario: Escenario,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    db_session.commit()
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+    versiones_antes = (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion)) or 0
+    )
+
+    def commit_fallido() -> None:
+        raise IntegrityError("INSERT", {}, Exception("restricción simulada"))
+
+    monkeypatch.setattr(db_session, "commit", commit_fallido)
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes
+    assert (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion))
+        == versiones_antes
+    )
 
 
 # --- Validación de schema (Pydantic) ----------------------------------------

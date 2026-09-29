@@ -204,13 +204,12 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 <p className="mt-3 leading-7 text-slate-600">
                   Recursos y personal para uno o más lotes publicados.
                 </p>
-                <button
-                  type="button"
-                  disabled
-                  className="mt-6 w-full cursor-not-allowed rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400"
+                <Link
+                  to="/ofertas/nueva"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
                 >
-                  Próximamente
-                </button>
+                  Crear oferta
+                </Link>
               </article>
             </div>
           ) : (

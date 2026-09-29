@@ -11,6 +11,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
 import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
 import { MisOfertasPage } from "./pages/MisOfertasPage";
+import { NuevaOfertaPage } from "./pages/NuevaOfertaPage";
 import { UsersPage } from "./pages/UsersPage";
 
 function LoadingScreen(): ReactElement {
@@ -115,6 +116,16 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
             <MisOfertasPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/ofertas/nueva"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <NuevaOfertaPage csrfToken={session.data.csrf_token} />
           ) : (
             <Navigate to="/" replace />
           )

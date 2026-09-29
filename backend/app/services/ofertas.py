@@ -79,6 +79,9 @@ def registrar_oferta(
     publicaciones = _publicaciones_bloqueadas(
         session, convocatoria.id, [item.lote_id for item in datos.items]
     )
+    publicaciones_validadas = [
+        _publicacion_de(publicaciones, item) for item in datos.items
+    ]
     ahora = datetime.now(UTC)
     oferta = Oferta(
         convocatoria_id=convocatoria.id,
@@ -101,8 +104,11 @@ def registrar_oferta(
     session.add(version)
     session.flush()
 
-    for item in datos.items:
-        publicacion = _publicacion_de(publicaciones, item)
+    for item, publicacion in zip(
+        datos.items,
+        publicaciones_validadas,
+        strict=True,
+    ):
         session.add(
             OfertaItem(
                 oferta_version_id=version.id,

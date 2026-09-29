@@ -12,7 +12,7 @@ from app.api.dependencies import (
 )
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Convocatoria, Usuario
+from app.db.models import Convocatoria, ConvocatoriaLote, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas.convocatoria import (
@@ -83,7 +83,7 @@ def _respuesta(convocatoria: Convocatoria) -> ConvocatoriaResponse:
         publicada_en=convocatoria.publicada_en,
         cierra_en=convocatoria.cierra_en,
         lotes=[
-            LotePublicadoResponse.model_validate(publicacion)
+            _respuesta_lote(publicacion)
             for publicacion in sorted(convocatoria.lotes, key=lambda p: p.lote_id)
         ],
         bonita_generar_lotes_estado=convocatoria.bonita_generar_lotes_estado,
@@ -91,6 +91,18 @@ def _respuesta(convocatoria: Convocatoria) -> ConvocatoriaResponse:
         bonita_generar_lotes_ultimo_intento_en=(
             convocatoria.bonita_generar_lotes_ultimo_intento_en
         ),
+    )
+
+
+def _respuesta_lote(publicacion: ConvocatoriaLote) -> LotePublicadoResponse:
+    """Expone el snapshot cuantitativo junto con el detalle legible del lote."""
+
+    return LotePublicadoResponse(
+        lote_id=publicacion.lote_id,
+        tipo_necesidad=publicacion.lote.tipo_necesidad,
+        descripcion=publicacion.lote.descripcion,
+        cantidad_publicada=publicacion.cantidad_publicada,
+        unidad_publicada=publicacion.unidad_publicada,
     )
 
 
@@ -166,7 +178,7 @@ def listar_convocatorias_abiertas(
             publicada_en=convocatoria.publicada_en,
             cierra_en=convocatoria.cierra_en,
             lotes=[
-                LotePublicadoResponse.model_validate(publicacion)
+                _respuesta_lote(publicacion)
                 for publicacion in sorted(
                     convocatoria.lotes, key=lambda publicacion: publicacion.lote_id
                 )

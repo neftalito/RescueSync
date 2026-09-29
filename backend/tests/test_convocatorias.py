@@ -299,6 +299,7 @@ def test_publica_convocatoria_con_lotes_en_borrador_y_pasa_a_publicada(
     assert all(
         Decimal(item["cantidad_publicada"]) == Decimal(1000)
         and item["unidad_publicada"] == "litros"
+        and item["tipo_necesidad"]
         for item in payload["lotes"]
     )
 
@@ -722,6 +723,8 @@ def test_listar_convocatorias_devuelve_solo_abiertas_con_sus_lotes(
     assert [c["id"] for c in cuerpo] == [abierta.id]
     (item_lote,) = cuerpo[0]["lotes"]
     assert item_lote["lote_id"] == lote_abierta.id
+    assert item_lote["tipo_necesidad"] == "Agua potable"
+    assert item_lote["descripcion"] == "Necesidad prioritaria"
     assert Decimal(item_lote["cantidad_publicada"]) == Decimal(1000)
     assert item_lote["unidad_publicada"] == "litros"
     assert cuerpo[0]["emergencia"] == {

@@ -34,6 +34,39 @@ export const tipoAporteLabels: Record<TipoAporte, string> = {
   MIXTO: "Mixto",
 };
 
+const cantidadOfrecidaPattern = /^\d{1,11}(?:[.,]\d{1,3})?$/;
+
+export const ofertaItemFormSchema = z.object({
+  lote_id: z.number().int().positive("Elegí un lote publicado."),
+  tipo: z.enum(tiposAporte, { message: "Elegí el tipo de aporte." }),
+  descripcion: z
+    .string()
+    .trim()
+    .min(1, "Describí el aporte.")
+    .max(2000, "La descripción no puede superar los 2000 caracteres."),
+  cantidad_ofrecida: z
+    .string()
+    .trim()
+    .regex(
+      cantidadOfrecidaPattern,
+      "Ingresá una cantidad con hasta 11 enteros y 3 decimales.",
+    )
+    .refine(
+      (valor) => Number(valor.replace(",", ".")) > 0,
+      "La cantidad ofrecida debe ser mayor que cero.",
+    ),
+  unidad: z.string().min(1, "El lote no tiene una unidad válida."),
+});
+
+export const ofertaFormSchema = z.object({
+  convocatoria_id: z.number().int().positive("Elegí una convocatoria."),
+  observaciones: z
+    .string()
+    .trim()
+    .max(4000, "Las observaciones no pueden superar los 4000 caracteres."),
+  items: z.array(ofertaItemFormSchema).min(1, "Agregá al menos un lote."),
+});
+
 export const ofertaItemSchema = z.object({
   id: z.number().int().positive(),
   lote_id: z.number().int().positive(),
@@ -59,7 +92,11 @@ export const ofertaSchema = z.object({
   emergencia: emergenciaResumenSchema,
 });
 
+export const ofertaCreadaSchema = ofertaSchema.omit({ emergencia: true });
+
 export const ofertasSchema = z.array(ofertaSchema);
 
 export type OfertaItem = z.infer<typeof ofertaItemSchema>;
 export type Oferta = z.infer<typeof ofertaSchema>;
+export type OfertaCreada = z.infer<typeof ofertaCreadaSchema>;
+export type OfertaFormData = z.infer<typeof ofertaFormSchema>;

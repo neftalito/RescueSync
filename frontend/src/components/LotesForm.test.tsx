@@ -193,6 +193,8 @@ describe("LotesForm", () => {
             lotes: [
               {
                 lote_id: 7,
+                tipo_necesidad: "Agua potable",
+                descripcion: "Bidones",
                 cantidad_publicada: "500.000",
                 unidad_publicada: "litros",
               },

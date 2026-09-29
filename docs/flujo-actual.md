@@ -30,7 +30,7 @@ Todas las rutas indicadas a continuación llevan el prefijo `/api/v1`.
 | --- | --- |
 | `OPERADOR_MUNICIPAL` | Registra emergencias, consulta las de su municipio y reintenta su vinculación con Bonita. |
 | `COORDINADOR_REGIONAL` | Ve emergencias registradas disponibles o asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
-| `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, puede registrar ofertas mediante la API y consulta las ofertas de su ONG. |
+| `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, registra ofertas parciales desde la aplicación y consulta las ofertas de su ONG. |
 | `AUDITOR_DIRECTIVO` | Tiene sesión local, pero todavía no posee operaciones funcionales de la Entrega 2. |
 | `ADMINISTRADOR` | Gestiona usuarios, roles, organizaciones y contraseñas; no interviene en el recorrido operativo de una emergencia. |
 | Bonita | Usa un token técnico y el `caseId` raíz para ejecutar callbacks internos; no usa una sesión de usuario. |
@@ -218,7 +218,7 @@ Una ONG activa dispone de:
 | --- | --- |
 | `GET /convocatorias` | `frontend/src/pages/ConvocatoriasAbiertasPage.tsx`; lista rondas abiertas y no vencidas. |
 | `GET /emergencias/{id}/lotes` | `frontend/src/pages/LotesPublicadosPage.tsx`; devuelve únicamente lotes `PUBLICADO`. |
-| `POST /ofertas` | Registra una oferta básica presentada sobre uno o más lotes publicados. |
+| `POST /ofertas` | `frontend/src/pages/NuevaOfertaPage.tsx`; registra una oferta básica presentada sobre uno o más lotes publicados. |
 | `GET /ofertas` | `frontend/src/pages/MisOfertasPage.tsx`; lista solo las ofertas de la ONG autenticada. |
 
 La creación está implementada en `backend/app/api/routes/ofertas.py` y
@@ -231,11 +231,11 @@ publicada.
 Cuando se presenta la oferta, los usuarios activos del centro coordinador
 asignado reciben una notificación en tiempo real.
 
-**Estado real del frontend:** todavía no existe el formulario de alta de oferta.
-El tablero de la ONG muestra “Presentar oferta” como `Próximamente`. Por lo
-tanto, el flujo puede completarse hoy por API, pero no de punta a punta desde la
-interfaz. Las pantallas de convocatorias, lotes publicados y “Mis ofertas” sí
-están implementadas.
+El tablero de la ONG enlaza el formulario “Presentar oferta”. La pantalla permite
+elegir una convocatoria, agregar uno o más lotes mediante `useFieldArray`,
+declarar recursos, personal o aportes mixtos y enviar cantidades parciales
+positivas. Zod valida el formulario y TanStack Query actualiza las consultas de
+convocatorias y ofertas luego del alta.
 
 ### 7. Bonita cierra y consolida las ofertas
 
@@ -293,7 +293,7 @@ Estas etapas no deben interpretarse como funcionalidad completa. Actualmente:
 | Borrar lote | `DELETE /emergencias/{id}/lotes/{lote_id}` | `backend/app/api/routes/lotes.py` | `services/lotes.py` | `LotesForm.tsx` |
 | Publicación | `POST /emergencias/{id}/publicar` | `backend/app/api/routes/convocatorias.py` | `services/convocatorias.py`, `services/publicacion_bonita.py` | `LotesForm.tsx` |
 | Convocatorias ONG | `GET /convocatorias` | `backend/app/api/routes/convocatorias.py` | `services/convocatorias.py` | `ConvocatoriasAbiertasPage.tsx` |
-| Oferta | `POST /ofertas` | `backend/app/api/routes/ofertas.py` | `services/ofertas.py` | Sin formulario actual |
+| Oferta | `POST /ofertas` | `backend/app/api/routes/ofertas.py` | `services/ofertas.py` | `NuevaOfertaPage.tsx`, `OfertaForm.tsx` |
 | Mis ofertas | `GET /ofertas` | `backend/app/api/routes/ofertas.py` | `services/ofertas.py` | `MisOfertasPage.tsx` |
 | Apertura BPM | `POST /emergencias/{id}/notificar-apertura` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Cierre BPM | `POST /emergencias/{id}/cerrar-convocatoria` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |

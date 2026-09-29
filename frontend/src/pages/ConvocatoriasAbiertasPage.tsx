@@ -45,7 +45,8 @@ function TarjetaConvocatoria({
       <ul className="mt-3 space-y-1 text-sm text-slate-700">
         {convocatoria.lotes.map((lote) => (
           <li key={lote.lote_id}>
-            {lote.cantidad_publicada} {lote.unidad_publicada}
+            {lote.tipo_necesidad}: {lote.cantidad_publicada}{" "}
+            {lote.unidad_publicada}
           </li>
         ))}
       </ul>

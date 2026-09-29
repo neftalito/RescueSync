@@ -20,7 +20,13 @@ const convocatoria = {
   publicada_en: "2026-09-19T18:20:39.102766Z",
   cierra_en: "2026-09-20T18:20:39.102766Z",
   lotes: [
-    { lote_id: 12, cantidad_publicada: "1000.000", unidad_publicada: "litros" },
+    {
+      lote_id: 12,
+      tipo_necesidad: "Agua potable",
+      descripcion: "Agua para familias evacuadas",
+      cantidad_publicada: "1000.000",
+      unidad_publicada: "litros",
+    },
   ],
   emergencia: {
     zona: "Ribera norte",

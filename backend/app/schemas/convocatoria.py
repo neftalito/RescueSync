@@ -17,6 +17,8 @@ class LotePublicadoResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     lote_id: int
+    tipo_necesidad: str
+    descripcion: str | None
     cantidad_publicada: Decimal
     unidad_publicada: str
 

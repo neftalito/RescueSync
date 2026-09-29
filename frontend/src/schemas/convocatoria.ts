@@ -21,6 +21,8 @@ export const estadoConvocatoriaLabels: Record<EstadoConvocatoria, string> = {
 
 export const lotePublicadoSchema = z.object({
   lote_id: z.number().int().positive(),
+  tipo_necesidad: z.string().min(1),
+  descripcion: z.string().nullable(),
   // Pydantic serializa `Decimal` como texto en JSON.
   cantidad_publicada: z.union([z.string(), z.number()]).transform(String),
   unidad_publicada: z.string(),
