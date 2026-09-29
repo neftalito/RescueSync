@@ -20,6 +20,8 @@ const oferta = {
   creada_por_usuario_id: 7,
   estado: "PRESENTADA",
   version_actual: 1,
+  version_bloqueo: 1,
+  editable: true,
   observaciones: "Donación inicial",
   presentada_en: "2026-09-19T18:20:39.102766Z",
   creada_en: "2026-09-19T18:20:39.102766Z",
@@ -108,6 +110,9 @@ describe("MisOfertasPage", () => {
       screen.getByText(/Bidones de agua potable — 500\.000 litros \(Recurso\)/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/lote N/)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Modificar oferta" }),
+    ).toHaveAttribute("href", "/ofertas/9/editar");
   });
 
   it("muestra el error accionable y permite reintentar", async () => {

@@ -40,6 +40,14 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
             </li>
           ))}
         </ul>
+        {oferta.editable && (
+          <Link
+            to={`/ofertas/${oferta.id}/editar`}
+            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+          >
+            Modificar oferta
+          </Link>
+        )}
       </div>
     </details>
   );

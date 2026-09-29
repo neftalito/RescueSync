@@ -225,6 +225,18 @@ def _crear(client: TestClient, body: dict[str, object]) -> object:
     )
 
 
+def _actualizar(
+    client: TestClient,
+    oferta_id: int,
+    body: dict[str, object],
+) -> object:
+    return client.put(
+        f"/api/v1/ofertas/{oferta_id}",
+        json=body,
+        headers={"X-CSRF-Token": "token-de-prueba"},
+    )
+
+
 # --- Camino feliz -----------------------------------------------------------
 
 
@@ -272,6 +284,263 @@ def test_crea_oferta_con_multiples_items_en_distintos_lotes(
 
     assert response.status_code == 201
     assert len(response.json()["items"]) == 2
+
+
+def test_acepta_cantidad_igual_a_la_publicada(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=1000, unidad="litros")],
+        ),
+    )
+
+    assert response.status_code == 201
+
+
+def test_rechaza_cantidad_mayor_que_la_publicada(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=1000.001, unidad="litros")],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert "no puede superar 1000.000 litros" in response.json()["detail"]
+    assert db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes
+
+
+def test_rechaza_segunda_oferta_de_la_misma_ong_para_la_convocatoria(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+    body = _payload(
+        escenario.convocatoria.id,
+        [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+    )
+
+    primera = _crear(client, body)
+    segunda = _crear(client, body)
+
+    assert primera.status_code == 201
+    assert segunda.status_code == 409
+    assert "ya presentó una oferta" in segunda.json()["detail"]
+    assert (
+        db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes + 1
+    )
+
+
+def test_distintas_ongs_pueden_ofertar_en_la_misma_convocatoria(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+    primera = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=600, unidad="litros")],
+        ),
+    )
+    otra_representante = _usuario(
+        db_session, escenario.otra_ong, RolUsuario.REPRESENTANTE_ONG, "otra@cb.org"
+    )
+    _autenticar_sin_csrf(client, otra_representante)
+    segunda = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=700, unidad="litros")],
+        ),
+    )
+
+    assert primera.status_code == 201
+    assert segunda.status_code == 201
+    assert (
+        db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes + 2
+    )
+
+
+# --- Edición versionada ------------------------------------------------------
+
+
+def test_modifica_oferta_creando_una_version_inmutable(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    creada = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+            observaciones="Primera versión",
+        ),
+    )
+    oferta_id = creada.json()["id"]
+
+    response = _actualizar(
+        client,
+        oferta_id,
+        {
+            "version_bloqueo": creada.json()["version_bloqueo"],
+            "observaciones": "Segunda versión",
+            "items": [
+                _item(
+                    escenario.lote_kits.id,
+                    cantidad=8,
+                    unidad="kits",
+                    descripcion="Kits completos",
+                )
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["version_actual"] == 2
+    assert payload["version_bloqueo"] == 2
+    assert payload["observaciones"] == "Segunda versión"
+    assert payload["items"][0]["lote_id"] == escenario.lote_kits.id
+    versiones = db_session.scalars(
+        select(OfertaVersion)
+        .where(OfertaVersion.oferta_id == oferta_id)
+        .order_by(OfertaVersion.numero)
+    ).all()
+    assert [version.numero for version in versiones] == [1, 2]
+    assert [version.observaciones for version in versiones] == [
+        "Primera versión",
+        "Segunda versión",
+    ]
+
+
+def test_rechaza_edicion_con_version_desactualizada(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    creada = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+
+    response = _actualizar(
+        client,
+        creada.json()["id"],
+        {
+            "version_bloqueo": 99,
+            "observaciones": None,
+            "items": [_item(escenario.lote_agua.id, cantidad=200, unidad="litros")],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "otra sesión" in response.json()["detail"]
+
+
+def test_rechaza_edicion_que_supera_la_cantidad_publicada_sin_crear_version(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    creada = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+    oferta_id = creada.json()["id"]
+
+    response = _actualizar(
+        client,
+        oferta_id,
+        {
+            "version_bloqueo": 1,
+            "observaciones": None,
+            "items": [_item(escenario.lote_agua.id, cantidad=1001, unidad="litros")],
+        },
+    )
+
+    assert response.status_code == 422
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(OfertaVersion)
+            .where(OfertaVersion.oferta_id == oferta_id)
+        )
+        == 1
+    )
+
+
+def test_rechaza_editar_oferta_de_otra_ong(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    creada = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+    otra_representante = _usuario(
+        db_session, escenario.otra_ong, RolUsuario.REPRESENTANTE_ONG, "otra@cb.org"
+    )
+    _autenticar_sin_csrf(client, otra_representante)
+
+    response = _actualizar(
+        client,
+        creada.json()["id"],
+        {
+            "version_bloqueo": 1,
+            "observaciones": None,
+            "items": [_item(escenario.lote_agua.id, cantidad=200, unidad="litros")],
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_rechaza_editar_oferta_despues_del_cierre(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    creada = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+    escenario.convocatoria.estado = EstadoConvocatoria.CERRADA
+    escenario.convocatoria.cerrada_en = datetime.now(UTC)
+    db_session.commit()
+
+    response = _actualizar(
+        client,
+        creada.json()["id"],
+        {
+            "version_bloqueo": 1,
+            "observaciones": None,
+            "items": [_item(escenario.lote_agua.id, cantidad=200, unidad="litros")],
+        },
+    )
+
+    assert response.status_code == 409
+    assert "ya no puede modificarse" in response.json()["detail"]
 
 
 # --- Reglas de negocio del servicio -----------------------------------------
@@ -560,6 +829,46 @@ def test_lista_vacia_sin_ofertas_presentadas(
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_lista_omite_duplicado_historico_fusionado(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    vigente = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+    historica = Oferta(
+        convocatoria_id=escenario.convocatoria.id,
+        ong_creadora_id=escenario.ong.id,
+        creada_por_usuario_id=escenario.representante.id,
+        fusionada_en_oferta_id=vigente.json()["id"],
+        estado=EstadoOferta.PRESENTADA,
+        version_actual=1,
+        version_bloqueo=1,
+    )
+    db_session.add(historica)
+    db_session.flush()
+    db_session.add(
+        OfertaVersion(
+            oferta_id=historica.id,
+            creada_por_usuario_id=escenario.representante.id,
+            numero=1,
+            observaciones="Duplicado preservado por la migración",
+            presentada_en=datetime.now(UTC),
+        )
+    )
+    db_session.commit()
+    _autenticar_con_cookie(client, escenario.representante)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    assert [oferta["id"] for oferta in response.json()] == [vigente.json()["id"]]
 
 
 def test_lista_omite_borrador_persistido_sin_fecha_de_presentacion(

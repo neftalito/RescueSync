@@ -116,6 +116,15 @@ la pareja `(usuario_id, clave_evento)` para tolerar reintentos de callbacks sin
 duplicar avisos. Los índices por usuario/fecha y usuario/lectura sostienen el
 buzón y su contador.
 
+### `20260929_0007_oferta_unica_y_cantidad_maxima.py`
+
+Agrega una unicidad parcial sobre `(convocatoria_id, ong_creadora_id)` para que
+cada ONG mantenga una sola oferta vigente por convocatoria. Si ya había
+duplicados, conserva todas las filas y marca las anteriores mediante
+`fusionada_en_oferta_id`, apuntándolas a la más reciente. También amplía el
+trigger de `oferta_item` para impedir que una escritura nueva supere
+`convocatoria_lote.cantidad_publicada`; los datos históricos quedan intactos.
+
 ## Esquema final
 
 Las claves foráneas operativas usan `ON DELETE RESTRICT`: la trazabilidad
@@ -277,13 +286,16 @@ Es la identidad estable de una propuesta presentada por una ONG.
 | `convocatoria_id` | `bigint`, FK, no nulo | Ronda a la que responde. |
 | `ong_creadora_id` | `bigint`, FK, no nulo | ONG propietaria de la propuesta. |
 | `creada_por_usuario_id` | `bigint`, FK, no nulo | Usuario que la registró. |
+| `fusionada_en_oferta_id` | `bigint`, FK propia, nullable | Oferta vigente que reemplaza un duplicado histórico previo a `0007`. |
 | `estado` | `estado_oferta`, no nulo, default `BORRADOR` | Ciclo de vida de la propuesta. |
 | `version_actual` | `integer`, no nulo, default `1` | Revisión vigente del contenido. |
 | `version_bloqueo` | `integer`, no nulo, default `1` | Control optimista para futuras modificaciones. |
 | `creada_en` | `timestamptz`, no nulo, default `now()` | Fecha de alta. |
 | `actualizada_en` | `timestamptz`, no nulo, default `now()` | Última modificación. |
 
-Ambas versiones deben ser positivas. Los índices por convocatoria/estado y
+Ambas versiones deben ser positivas. La pareja
+`(convocatoria_id, ong_creadora_id)` es única entre filas no fusionadas: las
+modificaciones generan versiones nuevas de la misma oferta. Los índices por convocatoria/estado y
 ONG/estado sostienen la consolidación y la vista “Mis ofertas”. El trigger
 `trg_oferta_ong` exige que `ong_creadora_id` corresponda a una ONG.
 
@@ -302,8 +314,8 @@ Conserva revisiones inmutables del contenido de una oferta.
 | `creada_en` | `timestamptz`, no nulo, default `now()` | Fecha de creación de la revisión. |
 
 `(oferta_id, numero)` es único y existe un índice descendente para localizar la
-versión más reciente. La API actual crea directamente la versión 1 presentada;
-el esquema ya soporta conservar versiones posteriores.
+versión más reciente. La API crea directamente la versión 1 presentada y cada
+edición agrega una revisión inmutable posterior.
 
 ### `oferta_item`
 
@@ -317,13 +329,13 @@ Detalla cuánto y qué tipo de ayuda se ofrece para un lote publicado.
 | `lote_id` | `bigint`, no nulo | Parte de la FK compuesta al lote publicado. |
 | `tipo` | `tipo_aporte`, no nulo | Recurso, personal o aporte mixto. |
 | `descripcion` | `text`, no nulo | Detalle concreto del aporte. |
-| `cantidad_ofrecida` | `numeric(14,3)`, no nulo | Cantidad positiva ofrecida. |
+| `cantidad_ofrecida` | `numeric(14,3)`, no nulo | Cantidad positiva que no supera la publicada. |
 | `unidad` | `varchar(40)`, no nulo | Debe coincidir con la unidad publicada. |
 
 La FK `(convocatoria_id, lote_id)` apunta a `convocatoria_lote`; una versión no
 puede repetir el mismo lote. El trigger reforzado por `0005` también comprueba
-que la versión corresponda a una oferta de esa convocatoria y que el lote siga
-`PUBLICADO`.
+que la versión corresponda a una oferta de esa convocatoria, que el lote siga
+`PUBLICADO` y que la cantidad no exceda el snapshot publicado.
 
 ### `oferta_participante`
 

@@ -131,6 +131,16 @@ function ProtectedApp(): ReactElement {
           )
         }
       />
+      <Route
+        path="/ofertas/:ofertaId/editar"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <NuevaOfertaPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

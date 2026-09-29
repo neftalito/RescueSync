@@ -157,11 +157,26 @@ def _oferta(
     estado: EstadoOferta,
     versiones: list[list[tuple[Lote, Decimal, str]]],
     presentada: bool = True,
+    identificador_ong: str | None = None,
 ) -> Oferta:
+    ong = escenario.ong
+    representante = escenario.representante
+    if identificador_ong is not None:
+        ong = _organizacion(
+            session,
+            TipoOrganizacion.ONG,
+            f"ONG CB {identificador_ong}",
+        )
+        representante = _usuario(
+            session,
+            ong,
+            RolUsuario.REPRESENTANTE_ONG,
+            f"ong-{identificador_ong}@cb.org",
+        )
     oferta = Oferta(
         convocatoria_id=escenario.convocatoria.id,
-        ong_creadora_id=escenario.ong.id,
-        creada_por_usuario_id=escenario.representante.id,
+        ong_creadora_id=ong.id,
+        creada_por_usuario_id=representante.id,
         estado=estado,
         version_actual=len(versiones),
     )
@@ -170,7 +185,7 @@ def _oferta(
     for numero, items in enumerate(versiones, start=1):
         version = OfertaVersion(
             oferta_id=oferta.id,
-            creada_por_usuario_id=escenario.representante.id,
+            creada_por_usuario_id=representante.id,
             numero=numero,
             presentada_en=datetime.now(UTC) if presentada else None,
         )
@@ -400,7 +415,7 @@ def test_consolida_solo_versiones_vigentes_presentadas_y_en_la_unidad_publicada(
         escenario,
         EstadoOferta.PRESENTADA,
         [
-            [(agua, Decimal(5000), "litros")],
+            [(agua, Decimal(500), "litros")],
             [(agua, Decimal(600), " Litros "), (kits, Decimal(4), "kits")],
         ],
     )
@@ -408,13 +423,22 @@ def test_consolida_solo_versiones_vigentes_presentadas_y_en_la_unidad_publicada(
         db_session,
         escenario,
         EstadoOferta.PRESENTADA,
-        [[(agua, Decimal(400), "litros"), (kits, Decimal(99), "cajas")]],
+        [[(agua, Decimal(400), "litros"), (kits, Decimal(9), "cajas")]],
+        identificador_ong="segunda",
     )
     _oferta(
-        db_session, escenario, EstadoOferta.BORRADOR, [[(kits, Decimal(10), "kits")]]
+        db_session,
+        escenario,
+        EstadoOferta.BORRADOR,
+        [[(kits, Decimal(10), "kits")]],
+        identificador_ong="borrador",
     )
     _oferta(
-        db_session, escenario, EstadoOferta.RETIRADA, [[(kits, Decimal(10), "kits")]]
+        db_session,
+        escenario,
+        EstadoOferta.RETIRADA,
+        [[(kits, Decimal(10), "kits")]],
+        identificador_ong="retirada",
     )
     _cerrar(client, escenario)
 

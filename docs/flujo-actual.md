@@ -30,7 +30,7 @@ Todas las rutas indicadas a continuación llevan el prefijo `/api/v1`.
 | --- | --- |
 | `OPERADOR_MUNICIPAL` | Registra emergencias, consulta las de su municipio y reintenta su vinculación con Bonita. |
 | `COORDINADOR_REGIONAL` | Ve emergencias registradas disponibles o asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
-| `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, registra ofertas parciales desde la aplicación y consulta las ofertas de su ONG. |
+| `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, registra una oferta parcial por convocatoria, la modifica durante la ventana y consulta las ofertas de su ONG. |
 | `AUDITOR_DIRECTIVO` | Tiene sesión local, pero todavía no posee operaciones funcionales de la Entrega 2. |
 | `ADMINISTRADOR` | Gestiona usuarios, roles, organizaciones y contraseñas; no interviene en el recorrido operativo de una emergencia. |
 | Bonita | Usa un token técnico y el `caseId` raíz para ejecutar callbacks internos; no usa una sesión de usuario. |
@@ -219,23 +219,36 @@ Una ONG activa dispone de:
 | `GET /convocatorias` | `frontend/src/pages/ConvocatoriasAbiertasPage.tsx`; lista rondas abiertas y no vencidas. |
 | `GET /emergencias/{id}/lotes` | `frontend/src/pages/LotesPublicadosPage.tsx`; devuelve únicamente lotes `PUBLICADO`. |
 | `POST /ofertas` | `frontend/src/pages/NuevaOfertaPage.tsx`; registra una oferta básica presentada sobre uno o más lotes publicados. |
+| `PUT /ofertas/{oferta_id}` | Agrega una versión inmutable a la oferta propia mientras la convocatoria sigue abierta. |
 | `GET /ofertas` | `frontend/src/pages/MisOfertasPage.tsx`; lista solo las ofertas de la ONG autenticada. |
 
 La creación está implementada en `backend/app/api/routes/ofertas.py` y
 `backend/app/services/ofertas.py`. En una transacción se crea `oferta` con
-estado `PRESENTADA`, su `oferta_version` número 1 y los `oferta_item`. Se valida
-que la convocatoria esté abierta y dentro de plazo, que cada lote pertenezca a
-esa convocatoria, continúe publicado, tenga cantidad positiva y use la unidad
-publicada.
+estado `PRESENTADA`, su `oferta_version` número 1 y los `oferta_item`. Una
+restricción única permite una sola oferta por ONG y convocatoria. Se valida que
+la convocatoria esté abierta y dentro de plazo, que cada lote pertenezca a esa
+convocatoria, continúe publicado, tenga cantidad positiva, no supere la cantidad
+publicada y use la unidad publicada.
+
+La edición bloquea la oferta, verifica `version_bloqueo`, crea la siguiente
+`oferta_version` completa y conserva intactas las revisiones anteriores. Una
+convocatoria cerrada o una versión desactualizada producen un conflicto.
+
+El máximo se aplica a cada ONG de forma individual. Varias ONGs pueden ofrecer
+en conjunto más que la necesidad del lote, porque todavía son propuestas
+alternativas; la selección posterior decide qué cantidades adjudicar sin superar
+la necesidad.
 
 Cuando se presenta la oferta, los usuarios activos del centro coordinador
 asignado reciben una notificación en tiempo real.
 
 El tablero de la ONG enlaza el formulario “Presentar oferta”. La pantalla permite
 elegir una convocatoria, agregar uno o más lotes mediante `useFieldArray`,
-declarar recursos, personal o aportes mixtos y enviar cantidades parciales
-positivas. Zod valida el formulario y TanStack Query actualiza las consultas de
-convocatorias y ofertas luego del alta.
+declarar recursos, personal o aportes mixtos y enviar cantidades parciales o
+totales dentro del máximo publicado. Las convocatorias ya ofertadas no aparecen
+como una nueva opción; “Mis ofertas” permite modificar la propuesta vigente.
+Zod valida el formulario y TanStack Query actualiza las consultas luego del alta
+o la edición.
 
 ### 7. Bonita cierra y consolida las ofertas
 
@@ -293,7 +306,7 @@ Estas etapas no deben interpretarse como funcionalidad completa. Actualmente:
 | Borrar lote | `DELETE /emergencias/{id}/lotes/{lote_id}` | `backend/app/api/routes/lotes.py` | `services/lotes.py` | `LotesForm.tsx` |
 | Publicación | `POST /emergencias/{id}/publicar` | `backend/app/api/routes/convocatorias.py` | `services/convocatorias.py`, `services/publicacion_bonita.py` | `LotesForm.tsx` |
 | Convocatorias ONG | `GET /convocatorias` | `backend/app/api/routes/convocatorias.py` | `services/convocatorias.py` | `ConvocatoriasAbiertasPage.tsx` |
-| Oferta | `POST /ofertas` | `backend/app/api/routes/ofertas.py` | `services/ofertas.py` | `NuevaOfertaPage.tsx`, `OfertaForm.tsx` |
+| Oferta | `POST /ofertas`, `PUT /ofertas/{id}` | `backend/app/api/routes/ofertas.py` | `services/ofertas.py` | `NuevaOfertaPage.tsx`, `OfertaForm.tsx` |
 | Mis ofertas | `GET /ofertas` | `backend/app/api/routes/ofertas.py` | `services/ofertas.py` | `MisOfertasPage.tsx` |
 | Apertura BPM | `POST /emergencias/{id}/notificar-apertura` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Cierre BPM | `POST /emergencias/{id}/cerrar-convocatoria` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |

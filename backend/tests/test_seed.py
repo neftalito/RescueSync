@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -117,4 +117,14 @@ def test_seed_deja_convocatoria_lotes_y_oferta_para_pruebas(
         select(Convocatoria).where(Convocatoria.emergencia_id == emergencia.id)
     )
     assert convocatoria is not None
-    assert _contar(db_session, Oferta, Oferta.convocatoria_id == convocatoria.id) == 1
+    assert (
+        _contar(
+            db_session,
+            Oferta,
+            and_(
+                Oferta.convocatoria_id == convocatoria.id,
+                Oferta.fusionada_en_oferta_id.is_(None),
+            ),
+        )
+        == 1
+    )

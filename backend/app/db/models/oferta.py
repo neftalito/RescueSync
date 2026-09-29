@@ -39,6 +39,17 @@ class Oferta(Base):
     __table_args__ = (
         CheckConstraint("version_actual > 0", name="version_actual_positiva"),
         CheckConstraint("version_bloqueo > 0", name="version_bloqueo_positiva"),
+        CheckConstraint(
+            "fusionada_en_oferta_id IS NULL OR fusionada_en_oferta_id <> id",
+            name="fusion_distinta",
+        ),
+        Index(
+            "uq_oferta_convocatoria_ong_vigente",
+            "convocatoria_id",
+            "ong_creadora_id",
+            unique=True,
+            postgresql_where=text("fusionada_en_oferta_id IS NULL"),
+        ),
         Index("ix_oferta_convocatoria_estado", "convocatoria_id", "estado"),
         Index("ix_oferta_ong_estado", "ong_creadora_id", "estado"),
     )
@@ -55,6 +66,10 @@ class Oferta(Base):
     creada_por_usuario_id: Mapped[int] = mapped_column(
         ForeignKey("usuario.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    fusionada_en_oferta_id: Mapped[int | None] = mapped_column(
+        ForeignKey("oferta.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     estado: Mapped[EstadoOferta] = mapped_column(
         Enum(EstadoOferta, name="estado_oferta"),

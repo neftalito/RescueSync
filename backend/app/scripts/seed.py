@@ -218,6 +218,7 @@ def _oferta(
         select(Oferta).where(
             Oferta.convocatoria_id == convocatoria.id,
             Oferta.ong_creadora_id == ong.id,
+            Oferta.fusionada_en_oferta_id.is_(None),
         )
     )
     if oferta is None:

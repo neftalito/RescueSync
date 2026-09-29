@@ -222,6 +222,7 @@ def consolidar_ofertas(
             )
             .where(
                 Oferta.convocatoria_id == convocatoria.id,
+                Oferta.fusionada_en_oferta_id.is_(None),
                 Oferta.estado.not_in(ESTADOS_OFERTA_NO_CONSOLIDABLES),
                 OfertaVersion.presentada_en.is_not(None),
             )

@@ -5,6 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
+import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { OfertaForm } from "./OfertaForm";
@@ -52,6 +53,8 @@ const ofertaCreada = {
   creada_por_usuario_id: 7,
   estado: "PRESENTADA",
   version_actual: 1,
+  version_bloqueo: 1,
+  editable: true,
   observaciones: "Entrega dentro de 24 horas",
   presentada_en: "2026-09-28T12:00:00Z",
   creada_en: "2026-09-28T12:00:00Z",
@@ -75,7 +78,14 @@ const ofertaCreada = {
   ],
 };
 
-const server = setupServer();
+const ofertaPropia = {
+  ...ofertaCreada,
+  emergencia: convocatorias[0]?.emergencia,
+};
+
+const server = setupServer(
+  http.get(`${API_URL}/ofertas`, () => HttpResponse.json([])),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -84,13 +94,15 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderForm(): void {
+function renderForm(ofertaId?: number): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <OfertaForm csrfToken={CSRF_TOKEN} />
+      <MemoryRouter>
+        <OfertaForm csrfToken={CSRF_TOKEN} ofertaId={ofertaId} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -179,6 +191,9 @@ describe("OfertaForm", () => {
       ],
     });
     await waitFor(() => expect(cantidadConsultas).toBe(2));
+    expect(
+      screen.queryByRole("button", { name: "Presentar otra oferta" }),
+    ).not.toBeInTheDocument();
   });
 
   it("valida de forma accesible que la cantidad sea positiva", async () => {
@@ -207,6 +222,79 @@ describe("OfertaForm", () => {
     );
   });
 
+  it("rechaza una cantidad mayor que la publicada", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () =>
+        HttpResponse.json(convocatorias),
+      ),
+    );
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.selectOptions(
+      await screen.findByLabelText("Convocatoria"),
+      "8",
+    );
+    await agregarLote(user, "54");
+    await user.type(screen.getByLabelText("Cantidad ofrecida"), "1000,001");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+
+    expect(
+      await screen.findByText(
+        "La cantidad ofrecida no puede superar 1000.000 litros.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("precarga y modifica la única oferta de la convocatoria", async () => {
+    let cuerpo: unknown;
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () =>
+        HttpResponse.json(convocatorias),
+      ),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([ofertaPropia])),
+      http.put(`${API_URL}/ofertas/92`, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json({
+          ...ofertaCreada,
+          version_actual: 2,
+          version_bloqueo: 2,
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm(92);
+
+    expect(await screen.findByDisplayValue("250.500")).toBeInTheDocument();
+    await user.clear(screen.getAllByLabelText("Cantidad ofrecida")[0]!);
+    await user.type(screen.getAllByLabelText("Cantidad ofrecida")[0]!, "300");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Oferta 92 actualizada correctamente.",
+    );
+    expect(cuerpo).toEqual({
+      version_bloqueo: 1,
+      observaciones: "Entrega dentro de 24 horas",
+      items: [
+        {
+          lote_id: 54,
+          tipo: "RECURSO",
+          descripcion: "Agua potable",
+          cantidad_ofrecida: "300",
+          unidad: "litros",
+        },
+        {
+          lote_id: 55,
+          tipo: "PERSONAL",
+          descripcion: "Paramédicos",
+          cantidad_ofrecida: "3.000",
+          unidad: "personas",
+        },
+      ],
+    });
+  });
+
   it("muestra estados accesibles de carga, error y lista vacía", async () => {
     let resolver: ((response: Response) => void) | undefined;
     const pendiente = new Promise<Response>((resolve) => {
@@ -221,7 +309,7 @@ describe("OfertaForm", () => {
     resolver?.(HttpResponse.json([]));
     expect(
       await screen.findByText(
-        "En este momento no hay convocatorias abiertas para ofertar.",
+        "En este momento no hay convocatorias abiertas sin una oferta de tu ONG.",
       ),
     ).toBeInTheDocument();
 

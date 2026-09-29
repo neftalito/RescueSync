@@ -30,10 +30,9 @@ class OfertaItemRequest(BaseModel):
         return valor.strip() if isinstance(valor, str) else valor
 
 
-class OfertaCreateRequest(BaseModel):
-    """Oferta de la ONG autenticada sobre uno o más lotes de una convocatoria."""
+class OfertaContenidoRequest(BaseModel):
+    """Contenido versionable de una oferta sobre uno o más lotes."""
 
-    convocatoria_id: int = Field(gt=0)
     observaciones: str | None = Field(default=None, max_length=4000)
     items: list[OfertaItemRequest] = Field(min_length=1)
 
@@ -43,11 +42,23 @@ class OfertaCreateRequest(BaseModel):
         return valor.strip() if isinstance(valor, str) else valor
 
     @model_validator(mode="after")
-    def rechazar_lotes_duplicados(self) -> "OfertaCreateRequest":
+    def rechazar_lotes_duplicados(self) -> "OfertaContenidoRequest":
         ids = [item.lote_id for item in self.items]
         if len(ids) != len(set(ids)):
             raise ValueError("La oferta no puede repetir el mismo lote.")
         return self
+
+
+class OfertaCreateRequest(OfertaContenidoRequest):
+    """Nueva oferta de la ONG autenticada para una convocatoria."""
+
+    convocatoria_id: int = Field(gt=0)
+
+
+class OfertaUpdateRequest(OfertaContenidoRequest):
+    """Nueva versión del contenido de una oferta existente."""
+
+    version_bloqueo: int = Field(gt=0)
 
 
 class OfertaItemResponse(BaseModel):
@@ -71,6 +82,8 @@ class OfertaResponse(BaseModel):
     creada_por_usuario_id: int
     estado: EstadoOferta
     version_actual: int
+    version_bloqueo: int
+    editable: bool
     observaciones: str | None
     presentada_en: AwareDatetime
     creada_en: AwareDatetime
