@@ -72,3 +72,17 @@ class LoteResponse(BaseModel):
     version: int
     creado_en: AwareDatetime
     actualizado_en: AwareDatetime
+
+
+class LotePublicadoPublicoResponse(BaseModel):
+    """Datos publicados de un lote visibles para cualquier ONG activa."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    emergencia_id: int
+    tipo_necesidad: str
+    descripcion: str | None
+    cantidad_requerida: Decimal
+    unidad: str
+    estado: EstadoLote

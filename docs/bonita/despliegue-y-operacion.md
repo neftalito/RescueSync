@@ -53,7 +53,11 @@ instalada. El inicializador actúa así:
 | Definición con casos | Nunca la elimina ni reemplaza. |
 
 El contenedor `bonita-deploy` termina con `Exited (0)` cuando la instalación fue
-correcta. Ese estado es esperado.
+correcta. Ese estado es esperado. Compose espera primero el health de FastAPI
+para desplegar los callbacks; a su vez, el comando normal del frontend espera
+que `/api/v1/health/bonita` confirme la definición habilitada antes de iniciar
+Vite. Los comandos de prueba que reemplazan ese comando no dependen de un
+Runtime real.
 
 ## Diagnóstico
 

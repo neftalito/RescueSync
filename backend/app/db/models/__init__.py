@@ -6,13 +6,16 @@ from app.db.models.enums import (
     EstadoLote,
     EstadoOferta,
     EstadoSincronizacionBonita,
+    EstadoTareaBonita,
     GravedadEmergencia,
     RolUsuario,
     TipoAporte,
+    TipoNotificacion,
     TipoOrganizacion,
     TipoParticipacion,
 )
 from app.db.models.lote import Lote
+from app.db.models.notificacion import Notificacion
 from app.db.models.oferta import Oferta, OfertaItem, OfertaParticipante, OfertaVersion
 from app.db.models.organizacion import Organizacion
 from app.db.models.usuario import Usuario
@@ -26,8 +29,10 @@ __all__ = [
     "EstadoLote",
     "EstadoOferta",
     "EstadoSincronizacionBonita",
+    "EstadoTareaBonita",
     "GravedadEmergencia",
     "Lote",
+    "Notificacion",
     "Oferta",
     "OfertaItem",
     "OfertaParticipante",
@@ -35,6 +40,7 @@ __all__ = [
     "Organizacion",
     "RolUsuario",
     "TipoAporte",
+    "TipoNotificacion",
     "TipoOrganizacion",
     "TipoParticipacion",
     "Usuario",

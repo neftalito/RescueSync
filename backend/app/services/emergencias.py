@@ -14,6 +14,7 @@ from app.db.models import (
 )
 from app.schemas.emergencia import EmergenciaCreate
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.notificaciones import notificar_emergencia_registrada
 
 
 class EmergenciaError(Exception):
@@ -26,6 +27,14 @@ class MunicipioInvalidoError(EmergenciaError):
 
 class CentroInvalidoError(EmergenciaError):
     """El usuario no conserva un centro coordinador vigente para consultar emergencias."""
+
+
+class EmergenciaNoEncontradaError(EmergenciaError):
+    """La emergencia indicada no existe."""
+
+
+class EmergenciaNoAutorizadaError(EmergenciaError):
+    """La emergencia no pertenece al municipio del operador."""
 
 
 class DatosEmergenciaInvalidosError(EmergenciaError):
@@ -69,6 +78,12 @@ def registrar_emergencia(
     )
     session.add(emergencia)
     try:
+        session.flush()
+        notificar_emergencia_registrada(
+            session,
+            emergencia_id=emergencia.id,
+            zona=emergencia.zona,
+        )
         session.commit()
     except IntegrityError as error:
         session.rollback()
@@ -135,3 +150,31 @@ def listar_emergencias(session: Session, usuario: Usuario) -> list[Emergencia]:
         raise EmergenciaError("El rol autenticado no tiene una bandeja de emergencias.")
 
     return list(session.scalars(enunciado).all())
+
+
+def obtener_emergencia_para_reintento(
+    session: Session,
+    usuario: Usuario,
+    emergencia_id: int,
+) -> Emergencia:
+    """Autoriza el reintento solo para el municipio dueño de la emergencia.
+
+    Raises:
+        MunicipioInvalidoError: Si el operador ya no pertenece a un municipio activo.
+        EmergenciaNoEncontradaError: Si no existe la emergencia indicada.
+        EmergenciaNoAutorizadaError: Si pertenece a otro municipio.
+    """
+
+    municipio = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.MUNICIPIO)
+    if municipio is None:
+        raise MunicipioInvalidoError(
+            "Solo un municipio activo puede reintentar la vinculación."
+        )
+    emergencia = session.get(Emergencia, emergencia_id)
+    if emergencia is None:
+        raise EmergenciaNoEncontradaError("La emergencia no existe.")
+    if emergencia.municipio_id != municipio.id:
+        raise EmergenciaNoAutorizadaError(
+            "Solo el municipio que registró la emergencia puede reintentarla."
+        )
+    return emergencia

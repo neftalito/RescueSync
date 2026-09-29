@@ -2,28 +2,26 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
     EstadoConvocatoria,
+    EstadoLote,
     EstadoOferta,
+    Lote,
     Oferta,
     OfertaItem,
     OfertaVersion,
     TipoOrganizacion,
     Usuario,
 )
-from app.schemas.oferta import (
-    ConvocatoriaOfertaDisponibleResponse,
-    LoteOfertaDisponibleResponse,
-    OfertaCreateRequest,
-    OfertaItemRequest,
-)
+from app.schemas.oferta import OfertaCreateRequest, OfertaItemRequest
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.notificaciones import notificar_oferta_recibida
 
 
 class OfertaError(Exception):
@@ -54,53 +52,6 @@ class DatosOfertaInvalidosError(OfertaError):
     """La base rechazó la oferta aunque Pydantic la haya aceptado."""
 
 
-def listar_convocatorias_disponibles(
-    session: Session,
-    usuario: Usuario,
-) -> list[ConvocatoriaOfertaDisponibleResponse]:
-    """Lista convocatorias abiertas con lotes publicados para la ONG vigente."""
-
-    ong = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.ONG)
-    if ong is None:
-        raise OngNoAutorizadaError("Solo una ONG activa puede consultar convocatorias.")
-
-    ahora = datetime.now(UTC)
-    convocatorias = session.scalars(
-        select(Convocatoria)
-        .where(
-            Convocatoria.estado == EstadoConvocatoria.ABIERTA,
-            Convocatoria.cierra_en > ahora,
-            Convocatoria.lotes.any(),
-        )
-        .options(
-            selectinload(Convocatoria.emergencia),
-            selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
-        )
-        .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
-    ).all()
-
-    return [
-        ConvocatoriaOfertaDisponibleResponse(
-            id=convocatoria.id,
-            numero=convocatoria.numero,
-            emergencia_id=convocatoria.emergencia_id,
-            gravedad=convocatoria.emergencia.gravedad,
-            zona=convocatoria.emergencia.zona,
-            lotes=[
-                LoteOfertaDisponibleResponse(
-                    lote_id=publicacion.lote_id,
-                    tipo_necesidad=publicacion.lote.tipo_necesidad,
-                    descripcion=publicacion.lote.descripcion,
-                    cantidad_publicada=publicacion.cantidad_publicada,
-                    unidad_publicada=publicacion.unidad_publicada,
-                )
-                for publicacion in convocatoria.lotes
-            ],
-        )
-        for convocatoria in convocatorias
-    ]
-
-
 def registrar_oferta(
     session: Session,
     usuario: Usuario,
@@ -128,6 +79,9 @@ def registrar_oferta(
     publicaciones = _publicaciones_bloqueadas(
         session, convocatoria.id, [item.lote_id for item in datos.items]
     )
+    publicaciones_validadas = [
+        _publicacion_de(publicaciones, item) for item in datos.items
+    ]
     ahora = datetime.now(UTC)
     oferta = Oferta(
         convocatoria_id=convocatoria.id,
@@ -150,8 +104,11 @@ def registrar_oferta(
     session.add(version)
     session.flush()
 
-    for item in datos.items:
-        publicacion = _publicacion_de(publicaciones, item)
+    for item, publicacion in zip(
+        datos.items,
+        publicaciones_validadas,
+        strict=True,
+    ):
         session.add(
             OfertaItem(
                 oferta_version_id=version.id,
@@ -165,6 +122,13 @@ def registrar_oferta(
         )
 
     try:
+        emergencia = convocatoria.emergencia
+        notificar_oferta_recibida(
+            session,
+            oferta_id=oferta.id,
+            centro_coordinador_id=emergencia.centro_coordinador_id,
+            zona=emergencia.zona,
+        )
         session.commit()
     except IntegrityError as error:
         session.rollback()
@@ -184,14 +148,54 @@ def registrar_oferta(
     return recargada
 
 
+def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
+    """Devuelve las ofertas de la ONG activa del usuario, sin importar quién las creó.
+
+    Nunca incluye ofertas de otra organización: la consulta filtra siempre
+    por `ong_creadora_id` de la ONG vigente del usuario autenticado.
+
+    Raises:
+        OngNoAutorizadaError: Si el usuario no representa una ONG activa.
+    """
+
+    ong = organizacion_vigente_de_tipo(usuario, TipoOrganizacion.ONG)
+    if ong is None:
+        raise OngNoAutorizadaError("Solo una ONG activa consulta sus ofertas.")
+
+    return list(
+        session.scalars(
+            select(Oferta)
+            .join(
+                OfertaVersion,
+                and_(
+                    OfertaVersion.oferta_id == Oferta.id,
+                    OfertaVersion.numero == Oferta.version_actual,
+                ),
+            )
+            .where(
+                Oferta.ong_creadora_id == ong.id,
+                Oferta.estado != EstadoOferta.BORRADOR,
+                OfertaVersion.presentada_en.is_not(None),
+            )
+            .options(
+                joinedload(Oferta.convocatoria).joinedload(Convocatoria.emergencia),
+                selectinload(Oferta.versiones).selectinload(OfertaVersion.items),
+            )
+            .order_by(Oferta.creada_en.desc())
+        ).all()
+    )
+
+
 def _publicaciones_bloqueadas(
     session: Session, convocatoria_id: int, lote_ids: list[int]
 ) -> dict[int, ConvocatoriaLote]:
     filas = session.scalars(
         select(ConvocatoriaLote)
+        .join(Lote, Lote.id == ConvocatoriaLote.lote_id)
         .where(
             ConvocatoriaLote.convocatoria_id == convocatoria_id,
             ConvocatoriaLote.lote_id.in_(lote_ids),
+            Lote.estado == EstadoLote.PUBLICADO,
         )
         .with_for_update()
     ).all()

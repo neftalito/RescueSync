@@ -1,17 +1,17 @@
 """Caso de uso para publicar la convocatoria de una emergencia.
 
-La sincronización con la tarea humana `Generar lotes de necesidades` de
-Bonita queda fuera de este caso de uso (ver ticket de seguimiento): esta
-función solo confirma la publicación local. Mientras ese ticket no exista, el
-proceso BPM queda detenido en esa tarea después de publicar aquí.
+Esta función solo confirma la publicación local; la sincronización con la
+tarea humana `Generar lotes de necesidades` de Bonita se hace aparte, desde
+la ruta HTTP, con `app.services.publicacion_bonita.completar_generacion_lotes`
+(mismo criterio que separa `registrar_emergencia` de
+`vincular_emergencia_con_bonita`).
 """
 
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.models import (
     Convocatoria,
@@ -20,13 +20,13 @@ from app.db.models import (
     EstadoConvocatoria,
     EstadoEmergencia,
     EstadoLote,
-    GravedadEmergencia,
     Lote,
     Organizacion,
     TipoOrganizacion,
     Usuario,
 )
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.notificaciones import notificar_convocatoria_publicada
 
 VENTANA_CIERRE_PROVISORIA = timedelta(hours=2)
 """Marcador temporal de `cierra_en` hasta que Bonita confirme la fecha real."""
@@ -60,26 +60,6 @@ class DatosConvocatoriaInvalidosError(ConvocatoriaError):
     """La base rechazó la convocatoria aunque los datos previos parecían válidos."""
 
 
-@dataclass(frozen=True, slots=True)
-class ConvocatoriaResumen:
-    """Fila del listado de convocatorias de un centro coordinador.
-
-    No expone la entidad ORM: el listado necesita el conteo de lotes publicados
-    y los datos de la emergencia para que el coordinador identifique la
-    convocatoria sin abrir cada emergencia.
-    """
-
-    id: int
-    emergencia_id: int
-    numero: int
-    estado: EstadoConvocatoria
-    publicada_en: datetime
-    cierra_en: datetime
-    cantidad_lotes: int
-    gravedad: GravedadEmergencia
-    zona: str
-
-
 def publicar_convocatoria(
     session: Session,
     usuario: Usuario,
@@ -91,20 +71,26 @@ def publicar_convocatoria(
     `ConvocatoriaLote`, los pasa a `PUBLICADO` y transiciona la emergencia a
     `PUBLICADA`, todo en una única transacción.
 
+    Si la emergencia ya está `PUBLICADA` y conserva una convocatoria
+    `ABIERTA`, no crea nada nuevo: devuelve esa convocatoria tal cual, para
+    que el llamador pueda reintentar solo la sincronización con Bonita.
+
     Args:
         session: Sesión SQLAlchemy con la que se confirma la transacción.
         usuario: Coordinador regional vigente cargado desde PostgreSQL.
         emergencia_id: Emergencia a publicar.
 
     Returns:
-        La convocatoria recién publicada.
+        La convocatoria recién publicada, o la ya abierta si se trata de un
+        reintento.
 
     Raises:
         EmergenciaNoEncontradaError: Si la emergencia no existe.
         CentroNoAutorizadoError: Si el usuario no conserva un centro activo o
             no es el asignado a la emergencia.
         EstadoEmergenciaInvalidoError: Si la emergencia no admite publicación
-            en su estado actual (por ejemplo, ya fue publicada).
+            ni reintento en su estado actual (por ejemplo, ya se cerró la
+            convocatoria).
         SinLotesValidosError: Si no hay ningún lote en borrador para publicar.
         DatosConvocatoriaInvalidosError: Si la base rechaza la operación.
     """
@@ -118,6 +104,14 @@ def publicar_convocatoria(
     if emergencia.centro_coordinador_id != centro.id:
         raise CentroNoAutorizadoError(
             "Solo el centro coordinador asignado publica esta convocatoria."
+        )
+    if emergencia.estado is EstadoEmergencia.PUBLICADA:
+        convocatoria_abierta = _convocatoria_abierta(session, emergencia.id)
+        if convocatoria_abierta is not None:
+            return convocatoria_abierta
+        raise EstadoEmergenciaInvalidoError(
+            "La emergencia ya está publicada y no tiene una convocatoria "
+            "abierta para reintentar."
         )
     if emergencia.estado not in ESTADOS_EMERGENCIA_PUBLICABLES:
         raise EstadoEmergenciaInvalidoError(
@@ -159,6 +153,12 @@ def publicar_convocatoria(
     emergencia.estado = EstadoEmergencia.PUBLICADA
 
     try:
+        notificar_convocatoria_publicada(
+            session,
+            convocatoria_id=convocatoria.id,
+            municipio_id=emergencia.municipio_id,
+            zona=emergencia.zona,
+        )
         session.commit()
     except IntegrityError as error:
         session.rollback()
@@ -169,77 +169,28 @@ def publicar_convocatoria(
     return convocatoria
 
 
-def listar_convocatorias(
-    session: Session,
-    usuario: Usuario,
-    estado: EstadoConvocatoria | None = None,
-) -> list[ConvocatoriaResumen]:
-    """Devuelve las convocatorias de las emergencias del centro del coordinador.
+def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
+    """Devuelve las convocatorias abiertas visibles para cualquier ONG activa.
 
-    El filtro por `Emergencia.centro_coordinador_id` se resuelve en la base: el
-    frontend solo ordena y filtra por estado, nunca decide qué puede ver.
-
-    Args:
-        session: Sesión SQLAlchemy de lectura.
-        usuario: Coordinador regional vigente cargado desde PostgreSQL.
-        estado: Si se informa, acota el resultado a ese estado.
-
-    Returns:
-        Las convocatorias del centro, de la más reciente a la más antigua.
-
-    Raises:
-        CentroNoAutorizadoError: Si el usuario no conserva un centro coordinador
-            activo.
+    No filtra por organización: una convocatoria abierta es pública por
+    definición y no expone datos de ninguna ONG. Incluye el detalle de sus
+    lotes publicados en una sola consulta.
     """
 
-    centro = _obtener_centro(usuario)
-    consulta = (
-        select(
-            Convocatoria.id,
-            Convocatoria.emergencia_id,
-            Convocatoria.numero,
-            Convocatoria.estado,
-            Convocatoria.publicada_en,
-            Convocatoria.cierra_en,
-            func.count(ConvocatoriaLote.lote_id).label("cantidad_lotes"),
-            Emergencia.gravedad,
-            Emergencia.zona,
-        )
-        .join(Emergencia, Convocatoria.emergencia_id == Emergencia.id)
-        .outerjoin(
-            ConvocatoriaLote, ConvocatoriaLote.convocatoria_id == Convocatoria.id
-        )
-        .where(Emergencia.centro_coordinador_id == centro.id)
-        .group_by(Convocatoria.id, Emergencia.gravedad, Emergencia.zona)
-        .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
+    return list(
+        session.scalars(
+            select(Convocatoria)
+            .where(
+                Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+                Convocatoria.cierra_en > datetime.now(UTC),
+            )
+            .options(
+                selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
+                joinedload(Convocatoria.emergencia),
+            )
+            .order_by(Convocatoria.publicada_en.desc())
+        ).all()
     )
-    if estado is not None:
-        consulta = consulta.where(Convocatoria.estado == estado)
-
-    return [
-        ConvocatoriaResumen(
-            id=convocatoria_id,
-            emergencia_id=emergencia_id,
-            numero=numero,
-            estado=estado_convocatoria,
-            publicada_en=publicada_en,
-            cierra_en=cierra_en,
-            cantidad_lotes=cantidad_lotes,
-            gravedad=gravedad,
-            zona=zona,
-        )
-        for (
-            convocatoria_id,
-            emergencia_id,
-            numero,
-            estado_convocatoria,
-            publicada_en,
-            cierra_en,
-            cantidad_lotes,
-            gravedad,
-            zona,
-        ) in session.execute(consulta).all()
-    ]
 
 
 def _obtener_centro(usuario: Usuario) -> Organizacion:
@@ -256,8 +207,25 @@ def _obtener_centro(usuario: Usuario) -> Organizacion:
     return centro
 
 
+def _convocatoria_abierta(session: Session, emergencia_id: int) -> Convocatoria | None:
+    """Busca, bloqueada, la convocatoria `ABIERTA` de la emergencia, si existe."""
+
+    return session.scalar(
+        select(Convocatoria)
+        .where(
+            Convocatoria.emergencia_id == emergencia_id,
+            Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+        )
+        .with_for_update()
+    )
+
+
 def _siguiente_numero(session: Session, emergencia_id: int) -> int:
-    """Calcula el próximo número de convocatoria de la emergencia(pueden abrirse mas de una convocatoria por emergencia)"""
+    """Calcula el próximo número de convocatoria de la emergencia.
+
+    Puede haber más de una convocatoria por emergencia a lo largo del
+    tiempo (reapertura de una ronda), aunque esa lógica no es parte de T12.
+    """
 
     ultimo = session.scalar(
         select(func.max(Convocatoria.numero)).where(

@@ -5,25 +5,32 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_operacion
+from app.api.dependencies import GestorTiempoRealDep, requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Usuario
+from app.db.models import Oferta, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
+from app.schemas.convocatoria import EmergenciaResumenResponse
 from app.schemas.oferta import (
-    ConvocatoriaOfertaDisponibleResponse,
     OfertaCreateRequest,
     OfertaItemResponse,
+    OfertaPropiaResponse,
     OfertaResponse,
 )
 from app.services import ofertas as servicio
+from app.services.notificaciones import clave_oferta_recibida
+from app.services.tiempo_real import programar_evento_confirmado
 
 router = APIRouter()
 
 UsuarioOng = Annotated[
     Usuario,
     Depends(requerir_operacion(OperacionProtegida.PRESENTAR_OFERTA)),
+]
+UsuarioConsultaOfertas = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CONSULTAR_OFERTAS_PROPIAS)),
 ]
 
 
@@ -58,31 +65,23 @@ _CODIGOS_ERROR: dict[type[servicio.OfertaError], int] = {
 }
 
 
-@router.get(
-    "/convocatorias",
-    response_model=list[ConvocatoriaOfertaDisponibleResponse],
-    status_code=status.HTTP_200_OK,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
-        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
-    },
-    summary="Consultar convocatorias disponibles para ofertar",
-    description=(
-        "Devuelve convocatorias abiertas y dentro de su ventana de recepción, "
-        "con sus lotes publicados. Solo representantes de una ONG activa."
-    ),
-)
-def listar_convocatorias_disponibles(
-    session: Annotated[Session, Depends(get_db)],
-    usuario: UsuarioOng,
-) -> list[ConvocatoriaOfertaDisponibleResponse]:
-    try:
-        return servicio.listar_convocatorias_disponibles(session, usuario)
-    except servicio.OngNoAutorizadaError as error:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(error),
-        ) from error
+def _respuesta(oferta: Oferta) -> OfertaResponse:
+    """Arma la respuesta a partir de la versión vigente de la oferta."""
+
+    version = next(v for v in oferta.versiones if v.numero == oferta.version_actual)
+    return OfertaResponse(
+        id=oferta.id,
+        convocatoria_id=oferta.convocatoria_id,
+        emergencia_id=oferta.convocatoria.emergencia_id,
+        ong_creadora_id=oferta.ong_creadora_id,
+        creada_por_usuario_id=oferta.creada_por_usuario_id,
+        estado=oferta.estado,
+        version_actual=oferta.version_actual,
+        observaciones=version.observaciones,
+        presentada_en=version.presentada_en,
+        creada_en=oferta.creada_en,
+        items=[OfertaItemResponse.model_validate(item) for item in version.items],
+    )
 
 
 @router.post(
@@ -103,6 +102,7 @@ def crear_oferta(
     datos: OfertaCreateRequest,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPresentaOferta,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> OfertaResponse:
     try:
         oferta = servicio.registrar_oferta(session, usuario, datos)
@@ -111,17 +111,44 @@ def crear_oferta(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
 
-    version = oferta.versiones[0]
-    return OfertaResponse(
-        id=oferta.id,
-        convocatoria_id=oferta.convocatoria_id,
-        emergencia_id=oferta.convocatoria.emergencia_id,
-        ong_creadora_id=oferta.ong_creadora_id,
-        creada_por_usuario_id=oferta.creada_por_usuario_id,
-        estado=oferta.estado,
-        version_actual=oferta.version_actual,
-        observaciones=version.observaciones,
-        presentada_en=version.presentada_en,
-        creada_en=oferta.creada_en,
-        items=[OfertaItemResponse.model_validate(item) for item in version.items],
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_oferta_recibida(oferta.id),
     )
+    return _respuesta(oferta)
+
+
+@router.get(
+    "",
+    response_model=list[OfertaPropiaResponse],
+    status_code=status.HTTP_200_OK,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
+    summary="Listar mis ofertas",
+    description=(
+        "Devuelve las ofertas presentadas por la ONG activa del usuario "
+        "autenticado, con el contexto de la emergencia, sin exponer ofertas "
+        "de otra organización. Solo REPRESENTANTE_ONG."
+    ),
+)
+def listar_mis_ofertas(
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioConsultaOfertas,
+) -> list[OfertaPropiaResponse]:
+    """Consulta las ofertas de la ONG del usuario sin modificar nada."""
+
+    try:
+        ofertas = servicio.listar_ofertas_propias(session, usuario)
+    except servicio.OfertaError as error:
+        raise HTTPException(
+            status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
+        ) from error
+    return [
+        OfertaPropiaResponse(
+            **_respuesta(oferta).model_dump(),
+            emergencia=EmergenciaResumenResponse.model_validate(
+                oferta.convocatoria.emergencia
+            ),
+        )
+        for oferta in ofertas
+    ]

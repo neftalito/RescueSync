@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { registrarOferta } from "../api/ofertas";
-import { convocatoriasDisponiblesQueryKey } from "./useConvocatoriasDisponibles";
 import type { OfertaFormData } from "../schemas/oferta";
+import { convocatoriasAbiertasQueryKey } from "./useConvocatoriasAbiertas";
+import { misOfertasQueryKey } from "./useMisOfertas";
 
 interface RegistrarOfertaVariables {
   datos: OfertaFormData;
@@ -16,8 +17,9 @@ export function useRegistrarOferta() {
       registrarOferta(datos, csrfToken),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: convocatoriasDisponiblesQueryKey,
+        queryKey: convocatoriasAbiertasQueryKey,
       });
+      void queryClient.invalidateQueries({ queryKey: misOfertasQueryKey });
     },
   });
 }

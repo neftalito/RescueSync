@@ -263,6 +263,35 @@ class ClienteBonita:
             )
         return tareas[0] if tareas else None
 
+    def tarea_completada(self, case_id: int, nombre: str) -> bool:
+        """Confirma en el historial archivado que la tarea humana se completó.
+
+        A diferencia de `buscar_tarea_lista`, que solo ve tareas activas, esto
+        consulta el archivo de Bonita: es la única evidencia confiable de que
+        una tarea terminó, porque dejar de estar `ready` también puede
+        significar que solo se asignó sin llegar a ejecutarse.
+        """
+
+        respuesta = self._enviar(
+            "GET",
+            "/API/bpm/archivedHumanTask",
+            params=[
+                ("p", 0),
+                ("c", 5),
+                ("f", f"caseId={case_id}"),
+                ("f", f"name={nombre}"),
+                ("f", "state=completed"),
+            ],
+            estados_esperados=(httpx.codes.OK,),
+        )
+        tareas = _validar_lista(respuesta, TareaHumana, "tareas archivadas")
+        if any(tarea.case_id != case_id or tarea.name != nombre for tarea in tareas):
+            raise BonitaRespuestaInvalidaError(
+                f"Bonita devolvió una tarea archivada que no coincide con el "
+                f"caso {case_id}."
+            )
+        return len(tareas) > 0
+
     def ejecutar_tarea(self, tarea_id: int, usuario_actor: str) -> None:
         """Asigna una tarea a un miembro de su actor y la completa sin entradas.
 

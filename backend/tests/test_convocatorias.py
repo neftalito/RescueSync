@@ -4,12 +4,16 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from pydantic import SecretStr
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import obtener_cliente_bonita
 from app.core.security import (
     crear_token_csrf,
     crear_valor_sesion,
@@ -22,6 +26,7 @@ from app.db.models import (
     EstadoConvocatoria,
     EstadoEmergencia,
     EstadoLote,
+    EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
     Organizacion,
@@ -30,10 +35,18 @@ from app.db.models import (
     Usuario,
 )
 from app.db.session import get_db
+from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
+from app.integrations.bonita.contratos import (
+    TAREA_GENERAR_LOTES,
+    USUARIO_ACTOR_COORDINADOR,
+)
 from app.main import app
 from app.services import convocatorias as servicio_convocatorias
 
 PASSWORD = "Una-clave-segura-2026"
+BASE_URL_BONITA = "http://bonita:8080/bonita"
+CASE_ID_BONITA = 4242
+TAREA_ID_BONITA = 17
 
 
 @pytest.fixture
@@ -126,12 +139,16 @@ def usuarios_denegados(
 def emergencia(
     db_session: Session, municipio: Organizacion, operador: Usuario
 ) -> Emergencia:
+    """Emergencia ya vinculada a un caso de Bonita (simula un alta previa)."""
+
     emergencia = Emergencia(
         municipio_id=municipio.id,
         creada_por_usuario_id=operador.id,
         gravedad=GravedadEmergencia.ALTA,
         zona="Ribera norte",
         descripcion="Inundación con familias evacuadas",
+        bonita_sync=EstadoSincronizacionBonita.VINCULADA,
+        bonita_process_instance_id=CASE_ID_BONITA,
     )
     db_session.add(emergencia)
     db_session.flush()
@@ -140,14 +157,72 @@ def emergencia(
 
 
 @pytest.fixture
-def client(db_session: Session) -> Iterator[TestClient]:
+def cliente_bonita() -> Iterator[ClienteBonita]:
+    configuracion = ConfiguracionBonita(
+        base_url=BASE_URL_BONITA,
+        usuario="install",
+        password=SecretStr("clave-tecnica"),
+        nombre_proceso="RescueSync",
+        version_proceso="1.2",
+        timeout_conexion_segundos=1,
+        timeout_lectura_segundos=1,
+    )
+    with ClienteBonita(configuracion) as cliente:
+        yield cliente
+
+
+@pytest.fixture
+def client(db_session: Session, cliente_bonita: ClienteBonita) -> Iterator[TestClient]:
     def usar_sesion_de_prueba() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
+    app.dependency_overrides[obtener_cliente_bonita] = lambda: cliente_bonita
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+def _login_bonita(router: respx.MockRouter, token: str = "csrf-1") -> None:
+    router.post(f"{BASE_URL_BONITA}/loginservice").mock(
+        return_value=httpx.Response(
+            204, headers={"set-cookie": f"X-Bonita-API-Token={token}"}
+        )
+    )
+
+
+def _tarea_generar_lotes_lista(router: respx.MockRouter) -> None:
+    router.get(f"{BASE_URL_BONITA}/API/bpm/humanTask").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "id": str(TAREA_ID_BONITA),
+                    "name": TAREA_GENERAR_LOTES,
+                    "state": "ready",
+                    "caseId": str(CASE_ID_BONITA),
+                }
+            ],
+        )
+    )
+
+
+def _completar_tarea_generar_lotes(router: respx.MockRouter) -> None:
+    """Mockea el ciclo completo: login, búsqueda, identidad y ejecución."""
+
+    _login_bonita(router)
+    _tarea_generar_lotes_lista(router)
+    router.get(f"{BASE_URL_BONITA}/API/identity/user").mock(
+        return_value=httpx.Response(
+            200, json=[{"id": "9", "userName": USUARIO_ACTOR_COORDINADOR}]
+        )
+    )
+    router.put(f"{BASE_URL_BONITA}/API/bpm/humanTask/{TAREA_ID_BONITA}").mock(
+        return_value=httpx.Response(200)
+    )
+    router.post(f"{BASE_URL_BONITA}/API/bpm/userTask/{TAREA_ID_BONITA}/execution").mock(
+        return_value=httpx.Response(204)
+    )
 
 
 def _autenticar(client: TestClient, usuario: Usuario) -> str:
@@ -205,20 +280,26 @@ def test_publica_convocatoria_con_lotes_en_borrador_y_pasa_a_publicada(
     db_session.flush()
     csrf = _autenticar(client, coordinador)
 
-    response = client.post(
-        f"/api/v1/emergencias/{emergencia.id}/publicar",
-        headers={"X-CSRF-Token": csrf},
-    )
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        response = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
 
     assert response.status_code == 201
     payload = response.json()
     assert payload["numero"] == 1
     assert payload["estado"] == "ABIERTA"
     assert payload["emergencia_id"] == emergencia.id
+    assert payload["bonita_generar_lotes_estado"] == "COMPLETADA"
+    assert payload["bonita_generar_lotes_ultimo_error"] is None
+    assert payload["bonita_generar_lotes_ultimo_intento_en"] is not None
     assert {item["lote_id"] for item in payload["lotes"]} == {lote.id, otro_lote.id}
     assert all(
         Decimal(item["cantidad_publicada"]) == Decimal(1000)
         and item["unidad_publicada"] == "litros"
+        and item["tipo_necesidad"]
         for item in payload["lotes"]
     )
 
@@ -303,7 +384,7 @@ def test_rechaza_publicar_centro_distinto(
     assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
-def test_rechaza_publicar_emergencia_ya_publicada(
+def test_reintenta_sincronizacion_bonita_si_la_convocatoria_sigue_abierta(
     client: TestClient,
     db_session: Session,
     emergencia: Emergencia,
@@ -315,11 +396,59 @@ def test_rechaza_publicar_emergencia_ya_publicada(
     db_session.flush()
     csrf = _autenticar(client, coordinador)
 
-    primera = client.post(
-        f"/api/v1/emergencias/{emergencia.id}/publicar",
-        headers={"X-CSRF-Token": csrf},
-    )
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        primera = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
     assert primera.status_code == 201
+    assert primera.json()["bonita_generar_lotes_estado"] == "COMPLETADA"
+    primer_intento_en = primera.json()["bonita_generar_lotes_ultimo_intento_en"]
+
+    # La tarea ya se completó: el segundo intento no debe volver a llamar a
+    # Bonita, solo reconfirma el estado ya sincronizado.
+    with respx.mock(assert_all_called=False) as router:
+        acceso = router.post(f"{BASE_URL_BONITA}/loginservice").mock(
+            return_value=httpx.Response(204)
+        )
+        segunda = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert segunda.status_code == 201
+    assert segunda.json()["id"] == primera.json()["id"]
+    assert segunda.json()["bonita_generar_lotes_ultimo_intento_en"] == primer_intento_en
+    assert acceso.call_count == 0
+    assert _contar_convocatorias(db_session, emergencia.id) == 1
+
+
+def test_rechaza_publicar_si_la_convocatoria_ya_cerro(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    _lote(db_session, emergencia, coordinador)
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        primera = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert primera.status_code == 201
+
+    convocatoria = db_session.get(Convocatoria, primera.json()["id"])
+    assert convocatoria is not None
+    convocatoria.estado = EstadoConvocatoria.CERRADA
+    convocatoria.cerrada_en = datetime.now(UTC)
+    db_session.commit()
 
     segunda = client.post(
         f"/api/v1/emergencias/{emergencia.id}/publicar",
@@ -328,6 +457,56 @@ def test_rechaza_publicar_emergencia_ya_publicada(
 
     assert segunda.status_code == 409
     assert _contar_convocatorias(db_session, emergencia.id) == 1
+
+
+def test_publica_localmente_aunque_falle_la_sincronizacion_con_bonita(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    _lote(db_session, emergencia, coordinador)
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    with respx.mock(assert_all_called=True) as router:
+        _login_bonita(router)
+        router.get(f"{BASE_URL_BONITA}/API/bpm/humanTask").mock(
+            return_value=httpx.Response(500)
+        )
+        response = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["bonita_generar_lotes_estado"] in {"ERROR", "RESULTADO_DESCONOCIDO"}
+    assert payload["bonita_generar_lotes_ultimo_error"]
+    assert _contar_convocatorias(db_session, emergencia.id) == 1
+
+
+def test_rechaza_publicar_emergencia_en_estado_no_publicable(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    emergencia.estado = EstadoEmergencia.CANCELADA
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    response = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/publicar",
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 409
+    assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
 def test_exige_sesion_y_csrf(
@@ -471,242 +650,155 @@ def test_openapi_documenta_publicar_convocatoria(client: TestClient) -> None:
 def _convocatoria(
     db_session: Session,
     emergencia: Emergencia,
-    *,
+    lotes: list[Lote],
     numero: int = 1,
     estado: EstadoConvocatoria = EstadoConvocatoria.ABIERTA,
-    publicada_en: datetime | None = None,
-    horas: int = 1,
 ) -> Convocatoria:
-    """Crea una convocatoria ya persistida con su fecha de publicación fijada."""
-
-    inicio = publicada_en or datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    ahora = datetime.now(UTC)
     convocatoria = Convocatoria(
         emergencia_id=emergencia.id,
         numero=numero,
         estado=estado,
-        publicada_en=inicio,
-        cierra_en=inicio + timedelta(hours=horas),
-        cerrada_en=inicio if estado is EstadoConvocatoria.CERRADA else None,
+        cierra_en=ahora.replace(microsecond=0) + timedelta(hours=2),
+        cerrada_en=ahora if estado is EstadoConvocatoria.CERRADA else None,
     )
     db_session.add(convocatoria)
+    db_session.flush()
+    for lote in lotes:
+        db_session.add(
+            ConvocatoriaLote(
+                convocatoria_id=convocatoria.id,
+                lote_id=lote.id,
+                cantidad_publicada=lote.cantidad_requerida,
+                unidad_publicada=lote.unidad,
+            )
+        )
+        lote.estado = EstadoLote.PUBLICADO
     db_session.flush()
     db_session.refresh(convocatoria)
     return convocatoria
 
 
-def _publicar_lote(
-    db_session: Session,
-    convocatoria: Convocatoria,
-    lote: Lote,
-) -> ConvocatoriaLote:
-    """Snapshotea un lote en la convocatoria como lo hace la publicación."""
+def _neutralizar_convocatorias_abiertas(db_session: Session) -> None:
+    """Cierra, solo dentro de esta transacción de prueba, cualquier convocatoria
 
-    publicacion = ConvocatoriaLote(
-        convocatoria_id=convocatoria.id,
-        lote_id=lote.id,
-        cantidad_publicada=lote.cantidad_requerida,
-        unidad_publicada=lote.unidad,
+    `ABIERTA` que ya exista en la base (por ejemplo, datos de un seed de
+    desarrollo). El listado de T14 es global y sin este ajuste el resultado
+    dependería de qué más haya en la base al correr la prueba.
+    """
+    db_session.execute(
+        update(Convocatoria)
+        .where(Convocatoria.estado == EstadoConvocatoria.ABIERTA)
+        .values(estado=EstadoConvocatoria.CANCELADA)
     )
-    lote.estado = EstadoLote.PUBLICADO
-    db_session.add(publicacion)
     db_session.flush()
-    return publicacion
 
 
-def test_lista_las_convocatorias_del_centro_con_su_conteo_de_lotes(
+def test_listar_convocatorias_devuelve_solo_abiertas_con_sus_lotes(
     client: TestClient,
     db_session: Session,
     emergencia: Emergencia,
     coordinador: Usuario,
-    centro: Organizacion,
+    usuarios_denegados: dict[RolUsuario, Usuario],
 ) -> None:
-    emergencia.centro_coordinador_id = centro.id
-    convocatoria = _convocatoria(db_session, emergencia)
-    _publicar_lote(
-        db_session, convocatoria, _lote(db_session, emergencia, coordinador, "Agua")
-    )
-    _publicar_lote(
-        db_session,
-        convocatoria,
-        _lote(db_session, emergencia, coordinador, "Abrigo", EstadoLote.PUBLICADO),
-    )
-    _autenticar(client, coordinador)
+    _neutralizar_convocatorias_abiertas(db_session)
+    lote_abierta = _lote(db_session, emergencia, coordinador, tipo="Agua potable")
+    abierta = _convocatoria(db_session, emergencia, [lote_abierta], numero=1)
 
-    response = client.get("/api/v1/convocatorias")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "items": [
-            {
-                "id": convocatoria.id,
-                "emergencia_id": emergencia.id,
-                "numero": 1,
-                "estado": "ABIERTA",
-                "publicada_en": "2026-09-20T12:00:00Z",
-                "cierra_en": "2026-09-20T13:00:00Z",
-                "cantidad_lotes": 2,
-                "gravedad": "ALTA",
-                "zona": "Ribera norte",
-            }
-        ]
-    }
-
-
-def test_lista_de_mas_reciente_a_mas_antigua(
-    client: TestClient,
-    db_session: Session,
-    emergencia: Emergencia,
-    coordinador: Usuario,
-    centro: Organizacion,
-) -> None:
-    emergencia.centro_coordinador_id = centro.id
-    antigua = _convocatoria(
+    lote_cerrada = _lote(db_session, emergencia, coordinador, tipo="Abrigo")
+    _convocatoria(
         db_session,
         emergencia,
-        numero=1,
-        estado=EstadoConvocatoria.CERRADA,
-        publicada_en=datetime(2026, 9, 18, 9, 0, tzinfo=UTC),
-    )
-    reciente = _convocatoria(
-        db_session,
-        emergencia,
+        [lote_cerrada],
         numero=2,
-        publicada_en=datetime(2026, 9, 20, 9, 0, tzinfo=UTC),
-    )
-    _autenticar(client, coordinador)
-
-    response = client.get("/api/v1/convocatorias")
-
-    assert response.status_code == 200
-    assert [item["id"] for item in response.json()["items"]] == [
-        reciente.id,
-        antigua.id,
-    ]
-
-
-def test_no_lista_convocatorias_de_otros_centros(
-    client: TestClient,
-    db_session: Session,
-    emergencia: Emergencia,
-    coordinador: Usuario,
-    operador: Usuario,
-) -> None:
-    otro_emergencia = Emergencia(
-        municipio_id=emergencia.municipio_id,
-        creada_por_usuario_id=operador.id,
-        gravedad=GravedadEmergencia.BAJA,
-        zona="Barrio sur",
-        descripcion="Corte de luz",
-    )
-    db_session.add(otro_emergencia)
-    db_session.flush()
-    _convocatoria(db_session, emergencia, numero=1)
-    ajena = _convocatoria(db_session, otro_emergencia, numero=1)
-    _autenticar(client, coordinador)
-
-    response = client.get("/api/v1/convocatorias")
-
-    assert response.status_code == 200
-    assert ajena.id not in [item["id"] for item in response.json()["items"]]
-    assert response.json()["items"] == []
-
-
-def test_filtra_el_listado_por_estado(
-    client: TestClient,
-    db_session: Session,
-    emergencia: Emergencia,
-    coordinador: Usuario,
-    centro: Organizacion,
-) -> None:
-    emergencia.centro_coordinador_id = centro.id
-    cerrada = _convocatoria(
-        db_session,
-        emergencia,
-        numero=1,
         estado=EstadoConvocatoria.CERRADA,
-        publicada_en=datetime(2026, 9, 18, 9, 0, tzinfo=UTC),
     )
-    _autenticar(client, coordinador)
 
-    sin_filtro = client.get("/api/v1/convocatorias")
-    abierta = client.get("/api/v1/convocatorias?estado=ABIERTA")
-    cerrada_response = client.get("/api/v1/convocatorias?estado=CERRADA")
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
 
-    assert sin_filtro.json()["items"] == [
-        {
-            "id": cerrada.id,
-            "emergencia_id": emergencia.id,
-            "numero": 1,
-            "estado": "CERRADA",
-            "publicada_en": "2026-09-18T09:00:00Z",
-            "cierra_en": "2026-09-18T10:00:00Z",
-            "cantidad_lotes": 0,
-            "gravedad": "ALTA",
-            "zona": "Ribera norte",
-        }
-    ]
-    assert abierta.json()["items"] == []
-    assert [item["id"] for item in cerrada_response.json()["items"]] == [cerrada.id]
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    cuerpo = response.json()
+    assert [c["id"] for c in cuerpo] == [abierta.id]
+    (item_lote,) = cuerpo[0]["lotes"]
+    assert item_lote["lote_id"] == lote_abierta.id
+    assert item_lote["tipo_necesidad"] == "Agua potable"
+    assert item_lote["descripcion"] == "Necesidad prioritaria"
+    assert Decimal(item_lote["cantidad_publicada"]) == Decimal(1000)
+    assert item_lote["unidad_publicada"] == "litros"
+    assert cuerpo[0]["emergencia"] == {
+        "zona": emergencia.zona,
+        "gravedad": emergencia.gravedad.value,
+        "descripcion": emergencia.descripcion,
+    }
+    assert "bonita_generar_lotes_estado" not in cuerpo[0]
+    assert "bonita_generar_lotes_ultimo_error" not in cuerpo[0]
+    assert "bonita_generar_lotes_ultimo_intento_en" not in cuerpo[0]
 
 
-def test_rechaza_estado_desconocido_en_el_filtro(
-    client: TestClient, coordinador: Usuario
+def test_listar_convocatorias_excluye_abierta_fuera_de_ventana(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
 ) -> None:
-    _autenticar(client, coordinador)
+    _neutralizar_convocatorias_abiertas(db_session)
+    lote = _lote(db_session, emergencia, coordinador, tipo="Agua vencida")
+    convocatoria = _convocatoria(db_session, emergencia, [lote])
+    ahora = datetime.now(UTC)
+    convocatoria.publicada_en = ahora - timedelta(hours=2)
+    convocatoria.cierra_en = ahora - timedelta(minutes=1)
+    db_session.flush()
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
 
-    response = client.get("/api/v1/convocatorias?estado=PUBLICADA")
+    response = client.get("/api/v1/convocatorias")
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json() == []
 
 
-def test_exige_sesion_para_listar_convocatorias(client: TestClient) -> None:
+def test_listar_convocatorias_vacio_sin_convocatorias_abiertas(
+    client: TestClient,
+    db_session: Session,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    response = client.get("/api/v1/convocatorias")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_listar_convocatorias_exige_sesion(client: TestClient) -> None:
     response = client.get("/api/v1/convocatorias")
 
     assert response.status_code == 401
-
-
-def test_no_exige_csrf_para_listar_convocatorias(
-    client: TestClient, coordinador: Usuario
-) -> None:
-    _autenticar(client, coordinador)
-
-    response = client.get("/api/v1/convocatorias")
-
-    assert response.status_code == 200
-
-
-def test_servicio_rechaza_listar_convocatorias_sin_centro(
-    db_session: Session, emergencia: Emergencia
-) -> None:
-    # Un coordinador sin centro no llega al endpoint: `obtener_usuario_actual`
-    # ya invalida la sesión. La defensa vive en el servicio, como en la
-    # publicación, y se verifica sin persistir el usuario para no chocar con el
-    # trigger que exige organización a ese rol.
-    coordinador_suelto = Usuario(
-        organizacion_id=None,
-        email="suelto-listado-convocatorias@centro.org",
-        password_hash=generar_password_hash(PASSWORD),
-        rol=RolUsuario.COORDINADOR_REGIONAL,
-    )
-
-    with pytest.raises(servicio_convocatorias.CentroNoAutorizadoError):
-        servicio_convocatorias.listar_convocatorias(db_session, coordinador_suelto)
 
 
 @pytest.mark.parametrize(
     "rol",
     [
         RolUsuario.OPERADOR_MUNICIPAL,
-        RolUsuario.REPRESENTANTE_ONG,
+        RolUsuario.COORDINADOR_REGIONAL,
         RolUsuario.AUDITOR_DIRECTIVO,
     ],
 )
-def test_deniega_listar_convocatorias_a_otros_roles(
+def test_listar_convocatorias_deniega_roles_no_ong(
     client: TestClient,
+    coordinador: Usuario,
     usuarios_denegados: dict[RolUsuario, Usuario],
     rol: RolUsuario,
 ) -> None:
-    _autenticar(client, usuarios_denegados[rol])
+    usuario = (
+        coordinador
+        if rol is RolUsuario.COORDINADOR_REGIONAL
+        else usuarios_denegados[rol]
+    )
+    _autenticar(client, usuario)
 
     response = client.get("/api/v1/convocatorias")
 
@@ -718,6 +810,6 @@ def test_openapi_documenta_listar_convocatorias(client: TestClient) -> None:
 
     assert response.status_code == 200
     operacion = response.json()["paths"]["/api/v1/convocatorias"]["get"]
+    assert operacion["responses"]["200"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
-    assert "estado" in {param["name"] for param in operacion["parameters"]}

@@ -1,28 +1,25 @@
 import {
-  convocatoriaSchema,
-  convocatoriasListSchema,
+  convocatoriaPublicadaSchema,
+  convocatoriasSchema,
   type Convocatoria,
-  type ConvocatoriaResumen,
-  type EstadoConvocatoria,
+  type ConvocatoriaPublicada,
 } from "../schemas/convocatoria";
 import { apiRequest } from "./client";
 
-export function listarConvocatorias(
-  estado?: EstadoConvocatoria,
-): Promise<ConvocatoriaResumen[]> {
-  const query = estado === undefined ? "" : `?estado=${estado}`;
-  return apiRequest(
-    `/convocatorias${query}`,
-    convocatoriasListSchema,
-  ).then((respuesta) => respuesta.items);
+export function listarConvocatoriasAbiertas(): Promise<Convocatoria[]> {
+  return apiRequest("/convocatorias", convocatoriasSchema);
 }
 
 export function publicarConvocatoria(
   emergenciaId: number,
   csrfToken: string,
-): Promise<Convocatoria> {
-  return apiRequest(`/emergencias/${emergenciaId}/publicar`, convocatoriaSchema, {
-    method: "POST",
-    headers: { "X-CSRF-Token": csrfToken },
-  });
+): Promise<ConvocatoriaPublicada> {
+  return apiRequest(
+    `/emergencias/${emergenciaId}/publicar`,
+    convocatoriaPublicadaSchema,
+    {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    },
+  );
 }

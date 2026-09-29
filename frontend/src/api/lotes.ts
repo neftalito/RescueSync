@@ -1,8 +1,23 @@
-import { lotesSchema, type Lote, type LotesFormData } from "../schemas/lote";
+import {
+  lotesPublicadosSchema,
+  lotesSchema,
+  type Lote,
+  type LotePublicadoPublico,
+  type LotesFormData,
+} from "../schemas/lote";
 import { apiRequest, apiRequestVoid } from "./client";
 
 export function listarLotes(emergenciaId: number): Promise<Lote[]> {
   return apiRequest(`/emergencias/${emergenciaId}/lotes`, lotesSchema);
+}
+
+export function listarLotesPublicados(
+  emergenciaId: number,
+): Promise<LotePublicadoPublico[]> {
+  return apiRequest(
+    `/emergencias/${emergenciaId}/lotes`,
+    lotesPublicadosSchema,
+  );
 }
 
 export function guardarLotes(

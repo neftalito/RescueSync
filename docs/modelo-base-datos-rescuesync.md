@@ -27,6 +27,7 @@ El modelo busca cubrir:
 - Historial inmutable de versiones de ofertas.
 - Vinculación y reconciliación con una instancia de Bonita.
 - Restricciones y transacciones que eviten inconsistencias concurrentes.
+- Buzones durables para las novedades entregadas en tiempo real.
 
 No se incluyen inventario nacional, certificaciones, JWT del Sistema Nacional
 ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
@@ -52,6 +53,7 @@ ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
 ```mermaid
 erDiagram
     ORGANIZACION ||--o{ USUARIO : agrupa
+    USUARIO ||--o{ NOTIFICACION : recibe
     ORGANIZACION ||--o{ EMERGENCIA : registra_como_municipio
     ORGANIZACION o|--o{ EMERGENCIA : coordina
     USUARIO ||--o{ EMERGENCIA : crea
@@ -95,6 +97,18 @@ erDiagram
         integer version_sesion
         timestamptz creado_en
         timestamptz actualizado_en
+    }
+
+    NOTIFICACION {
+        bigint id PK
+        bigint usuario_id FK
+        varchar clave_evento
+        tipo_notificacion tipo
+        varchar titulo
+        text mensaje
+        varchar ruta
+        timestamptz leida_en
+        timestamptz creada_en
     }
 
     EMERGENCIA {
@@ -752,11 +766,11 @@ Cerrar y seleccionar el snapshot dentro de la misma transacción evita que una
 |---|---|---|
 | `POST /api/v1/emergencias` | `emergencia` | Crea una emergencia `REGISTRADA` y prepara su vinculación con Bonita. |
 | `GET /api/v1/emergencias` | `emergencia`, `organizacion` | Filtra por organización, rol y estado. |
+| `POST /api/v1/emergencias/{id}/reintentar-bonita` | `emergencia` | Reintenta o reconcilia la vinculación sin duplicar un caso cuyo resultado era incierto. |
 | `POST /api/v1/emergencias/{id}/lotes` | `lote` | Crea o edita lotes en `BORRADOR`. |
 | `GET /api/v1/emergencias/{id}/lotes` | `lote`, `convocatoria_lote` | Lista lotes y distingue borradores de publicados. |
 | `POST /api/v1/emergencias/{id}/publicar` | `emergencia`, `convocatoria`, `convocatoria_lote`, `lote` | Publica al menos un lote de forma atómica. |
-| `GET /api/v1/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote` | Lista las convocatorias del centro coordinador, con filtro opcional por estado. |
-| `GET /api/v1/ofertas/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote`, `lote` | Lista a la ONG las ventanas abiertas y sus lotes publicados. |
+| `GET /api/v1/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote`, `lote` | Lista ventanas abiertas y sus necesidades. |
 | `POST /api/v1/ofertas` | `oferta`, `oferta_version`, `oferta_item` | Registra una oferta sobre lotes publicados. |
 | `GET /api/v1/ofertas` | `oferta`, `oferta_version` | Devuelve las ofertas visibles para la ONG autenticada. |
 

@@ -1,5 +1,4 @@
 from collections.abc import Iterator
-from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -17,10 +16,8 @@ from app.core.security import (
 from app.db.models import (
     Emergencia,
     EstadoEmergencia,
-    EstadoLote,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
-    Lote,
     Organizacion,
     RolUsuario,
     TipoOrganizacion,
@@ -226,25 +223,6 @@ def _crear_emergencia(
     return emergencia
 
 
-def _crear_lote(
-    db_session: Session,
-    emergencia: Emergencia,
-    usuario: Usuario,
-    estado: EstadoLote = EstadoLote.BORRADOR,
-) -> Lote:
-    lote = Lote(
-        emergencia_id=emergencia.id,
-        creado_por_usuario_id=usuario.id,
-        tipo_necesidad="Agua",
-        cantidad_requerida=Decimal(100),
-        unidad="litros",
-        estado=estado,
-    )
-    db_session.add(lote)
-    db_session.flush()
-    return lote
-
-
 def test_registra_emergencia_valida_con_municipio_y_estado_inicial(
     client: TestClient,
     db_session: Session,
@@ -315,6 +293,7 @@ def test_registra_emergencia_rechaza_datos_invalidos_sin_persistir(
     )
 
     assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
     assert _contar_emergencias(db_session) == iniciales
 
 
@@ -557,48 +536,6 @@ def test_lista_emergencias_de_coordinador_incluye_las_asignadas_a_su_centro(
     assert ajena.id not in ids
 
 
-def test_lista_emergencias_cuenta_solo_lotes_publicables(
-    client: TestClient,
-    db_session: Session,
-    municipio: Organizacion,
-    usuario_municipal: Usuario,
-    usuario_coordinador: Usuario,
-    centro_coordinador: Organizacion,
-) -> None:
-    con_borrador = _crear_emergencia(
-        db_session,
-        municipio,
-        usuario_municipal,
-        centro_coordinador_id=centro_coordinador.id,
-    )
-    _crear_lote(db_session, con_borrador, usuario_municipal)
-    _crear_lote(db_session, con_borrador, usuario_municipal)
-    # Un lote ya publicado no se puede publicar de nuevo: no cuenta.
-    _crear_lote(db_session, con_borrador, usuario_municipal, EstadoLote.PUBLICADO)
-    sin_lotes = _crear_emergencia(
-        db_session,
-        municipio,
-        usuario_municipal,
-        centro_coordinador_id=centro_coordinador.id,
-    )
-    # Cada petición real corre en su propia sesión; la de prueba se reutiliza, así
-    # que hay que soltar lo cacheado para que la cuenta se lea de la base.
-    db_session.expire_all()
-    _autenticar(client, usuario_coordinador)
-
-    response = client.get("/api/v1/emergencias")
-
-    assert response.status_code == 200
-    # La base es compartida con las cargas de demostración: solo se miran las
-    # filas creadas acá.
-    propias = {
-        item["id"]: item["cantidad_lotes_borrador"]
-        for item in response.json()
-        if item["id"] in {con_borrador.id, sin_lotes.id}
-    }
-    assert propias == {con_borrador.id: 2, sin_lotes.id: 0}
-
-
 def test_lista_emergencias_de_coordinador_devuelve_vacio_sin_pendientes(
     client: TestClient, db_session: Session, usuario_coordinador: Usuario
 ) -> None:
@@ -712,4 +649,4 @@ def test_openapi_documenta_la_bandeja_de_emergencias(client: TestClient) -> None
     assert operacion["responses"]["200"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
-    assert "EmergenciaBandejaResponse" in str(operacion["responses"]["200"])
+    assert "EmergenciaResponse" in str(operacion["responses"]["200"])

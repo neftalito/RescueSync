@@ -49,6 +49,16 @@ class EstadoSincronizacionBonita(StrEnum):
     RESULTADO_DESCONOCIDO = "RESULTADO_DESCONOCIDO"
 
 
+class EstadoTareaBonita(StrEnum):
+    """Resultado conocido de completar una tarea humana de Bonita al publicar."""
+
+    PENDIENTE = "PENDIENTE"
+    EN_PROGRESO = "EN_PROGRESO"
+    COMPLETADA = "COMPLETADA"
+    ERROR = "ERROR"
+    RESULTADO_DESCONOCIDO = "RESULTADO_DESCONOCIDO"
+
+
 class EstadoLote(StrEnum):
     """Controla si un lote todavía puede editarse o ya fue publicado."""
 
@@ -91,3 +101,14 @@ class TipoParticipacion(StrEnum):
 
     LIDER = "LIDER"
     MIEMBRO = "MIEMBRO"
+
+
+class TipoNotificacion(StrEnum):
+    """Clasifica las novedades operativas que recibe un usuario."""
+
+    EMERGENCIA_REGISTRADA = "EMERGENCIA_REGISTRADA"
+    EMERGENCIA_ESTADO_ACTUALIZADO = "EMERGENCIA_ESTADO_ACTUALIZADO"
+    CONVOCATORIA_PUBLICADA = "CONVOCATORIA_PUBLICADA"
+    CONVOCATORIA_ACTUALIZADA = "CONVOCATORIA_ACTUALIZADA"
+    CONVOCATORIA_CERRADA = "CONVOCATORIA_CERRADA"
+    OFERTA_RECIBIDA = "OFERTA_RECIBIDA"

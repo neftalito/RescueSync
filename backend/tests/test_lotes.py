@@ -241,6 +241,50 @@ def test_crea_uno_o_mas_lotes_en_borrador_sin_publicar(
     assert _contar_convocatorias(db_session, emergencia.id) == 0
 
 
+@pytest.mark.parametrize(
+    "estado",
+    [
+        EstadoEmergencia.PUBLICADA,
+        EstadoEmergencia.EN_EVALUACION,
+        EstadoEmergencia.RESUELTA,
+        EstadoEmergencia.CANCELADA,
+    ],
+)
+def test_no_guarda_borradores_si_la_emergencia_ya_no_es_editable(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    estado: EstadoEmergencia,
+) -> None:
+    emergencia.estado = estado
+    db_session.commit()
+    csrf = _autenticar(client, coordinador)
+    iniciales = _contar_lotes(db_session)
+
+    response = client.post(
+        f"/api/v1/emergencias/{emergencia.id}/lotes",
+        json={
+            "lotes": [
+                {
+                    "tipo_necesidad": "Agua",
+                    "cantidad_requerida": 10,
+                    "unidad": "litros",
+                }
+            ]
+        },
+        headers={"X-CSRF-Token": csrf},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "detail": "La emergencia ya no admite guardar lotes en borrador."
+    }
+    assert _contar_lotes(db_session) == iniciales
+    db_session.refresh(emergencia)
+    assert emergencia.centro_coordinador_id is None
+
+
 def test_edita_lote_en_borrador_sin_crear_filas(
     client: TestClient,
     db_session: Session,
@@ -356,6 +400,8 @@ def test_rechaza_edicion_sin_version(
     )
 
     assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
+    assert "versión" in response.json()["detail"]
     db_session.expire_all()
     guardado = db_session.get(Lote, lote.id)
     assert guardado is not None
@@ -975,11 +1021,10 @@ def test_listar_exige_sesion(client: TestClient, emergencia: Emergencia) -> None
     "rol",
     [
         RolUsuario.OPERADOR_MUNICIPAL,
-        RolUsuario.REPRESENTANTE_ONG,
         RolUsuario.AUDITOR_DIRECTIVO,
     ],
 )
-def test_listar_deniega_roles_que_no_gestionan_lotes(
+def test_listar_deniega_roles_que_no_consultan_lotes(
     client: TestClient,
     db_session: Session,
     emergencia: Emergencia,
@@ -994,6 +1039,49 @@ def test_listar_deniega_roles_que_no_gestionan_lotes(
 
     assert response.status_code == 403
     assert "Agua potable" not in response.text
+
+
+def test_listar_ong_ve_solo_lotes_publicados(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _lote(db_session, emergencia, coordinador, tipo="Sin publicar")
+    publicado = _lote(
+        db_session,
+        emergencia,
+        coordinador,
+        tipo="Agua potable",
+        estado=EstadoLote.PUBLICADO,
+    )
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes")
+
+    assert response.status_code == 200
+    cuerpo = response.json()
+    assert [lote["id"] for lote in cuerpo] == [publicado.id]
+    assert "Sin publicar" not in response.text
+    assert "creado_por_usuario_id" not in cuerpo[0]
+    assert "version" not in cuerpo[0]
+    assert "creado_en" not in cuerpo[0]
+    assert "actualizado_en" not in cuerpo[0]
+
+
+def test_servicio_listar_rechaza_ong_sin_organizacion(
+    db_session: Session, emergencia: Emergencia
+) -> None:
+    representante_suelto = Usuario(
+        organizacion_id=None,
+        email="suelto-listar-ong@rescuesync.org",
+        password_hash=generar_password_hash(PASSWORD),
+        rol=RolUsuario.REPRESENTANTE_ONG,
+    )
+
+    with pytest.raises(servicio_lotes.OngNoAutorizadaError):
+        servicio_lotes.listar_lotes(db_session, representante_suelto, emergencia.id)
 
 
 def test_servicio_listar_rechaza_coordinador_sin_centro(

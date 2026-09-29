@@ -3,11 +3,15 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
+import { useNotificacionesTiempoReal } from "./hooks/useNotificacionesTiempoReal";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
-import { ConvocatoriasPage } from "./pages/ConvocatoriasPage";
+import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
+import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
+import { MisOfertasPage } from "./pages/MisOfertasPage";
+import { NuevaOfertaPage } from "./pages/NuevaOfertaPage";
 import { UsersPage } from "./pages/UsersPage";
 
 function LoadingScreen(): ReactElement {
@@ -26,6 +30,9 @@ function LoadingScreen(): ReactElement {
 function ProtectedApp(): ReactElement {
   const session = useSession();
   const location = useLocation();
+  const tiempoRealHabilitado =
+    session.isSuccess && !session.data.usuario.requiere_cambio_password;
+  useNotificacionesTiempoReal(tiempoRealHabilitado);
 
   if (session.isPending) return <LoadingScreen />;
 
@@ -83,20 +90,42 @@ function ProtectedApp(): ReactElement {
         }
       />
       <Route
-        path="/convocatorias"
+        path="/emergencias/:emergenciaId/lotes"
         element={
           session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
-            <ConvocatoriasPage />
+            <LotesPage session={session.data} />
+          ) : session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <LotesPublicadosPage />
           ) : (
             <Navigate to="/" replace />
           )
         }
       />
       <Route
-        path="/emergencias/:emergenciaId/lotes"
+        path="/convocatorias"
         element={
-          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
-            <LotesPage session={session.data} />
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <ConvocatoriasAbiertasPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-ofertas"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <MisOfertasPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/ofertas/nueva"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <NuevaOfertaPage csrfToken={session.data.csrf_token} />
           ) : (
             <Navigate to="/" replace />
           )

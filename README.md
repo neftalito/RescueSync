@@ -10,13 +10,33 @@ integración inicial con Bonita.
 | Componente | Tecnología y responsabilidad |
 | --- | --- |
 | Frontend | React, TypeScript estricto, Vite y Tailwind CSS. Consume solamente FastAPI. |
-| Backend | FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Autentica, autoriza y adapta Bonita. |
-| Base local | PostgreSQL 16. Persiste emergencias, lotes, convocatorias y ofertas. |
+| Backend | FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Autentica, autoriza, adapta Bonita y entrega novedades por WebSocket. |
+| Base local | PostgreSQL 16. Persiste emergencias, lotes, convocatorias, ofertas y notificaciones. |
 | BPM | Bonita Runtime 10.4. Administra el recorrido y los temporizadores. |
 
 El frontend nunca llama directamente a Bonita ni a PostgreSQL. FastAPI concentra
 las sesiones locales, RBAC, CSRF, persistencia y traducción de contratos externos.
 La API Nacional con JWT corresponde a la Entrega 3.
+
+## Actualizaciones y notificaciones en tiempo real
+
+FastAPI expone `WS /api/v1/notificaciones/ws`. El navegador se autentica con la
+misma cookie `HttpOnly` de la sesión y el backend valida el encabezado `Origin`
+contra `CORS_ORIGINS`. Cada novedad se persiste primero en PostgreSQL y recién
+después del commit se envía al usuario conectado. Si estuvo desconectado, puede
+recuperarla mediante `GET /api/v1/notificaciones` y marcarla como leída con
+`PATCH /api/v1/notificaciones/{id}/leida`.
+
+El mensaje WebSocket funciona como una señal: el frontend invalida la consulta
+TanStack Query afectada y vuelve a obtener el estado por REST. Bonita continúa
+siendo responsable de los temporizadores; sus callbacks producen las novedades
+al confirmar la apertura o el cierre de una convocatoria.
+
+El distribuidor de conexiones es local al proceso de FastAPI, apropiado para la
+única instancia configurada actualmente en Compose. Antes de ejecutar varias
+réplicas del backend se debe incorporar un bus compartido (por ejemplo Redis)
+para propagar el mismo evento a las conexiones mantenidas por cada réplica. La
+persistencia del buzón no depende de ese bus.
 
 ## Requisitos
 
@@ -150,6 +170,7 @@ principales son:
 - [Modelos y migraciones](docs/desarrollo/migraciones.md).
 - [Modelo de base de datos](docs/modelo-base-datos-rescuesync.md).
 - [Imágenes de producción](docs/despliegue.md).
+- [Demo local y con Cloudflare Tunnel](docs/demo-cloudflare.md).
 
 Las fuentes funcionales de la entrega y el único `.bar` versionado también están
 catalogados en ese índice.

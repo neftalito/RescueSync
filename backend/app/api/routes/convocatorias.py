@@ -2,26 +2,32 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_operacion
+from app.api.dependencies import (
+    ClienteBonitaDep,
+    GestorTiempoRealDep,
+    requerir_operacion,
+)
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Convocatoria, EstadoConvocatoria, Usuario
+from app.db.models import Convocatoria, ConvocatoriaLote, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas.convocatoria import (
+    ConvocatoriaAbiertaResponse,
     ConvocatoriaResponse,
-    ConvocatoriaResumenResponse,
-    ConvocatoriasListResponse,
+    EmergenciaResumenResponse,
     LotePublicadoResponse,
 )
 from app.services import convocatorias as servicio
-from app.services.convocatorias import ConvocatoriaResumen
+from app.services.notificaciones import clave_convocatoria_publicada
+from app.services.publicacion_bonita import completar_generacion_lotes
+from app.services.tiempo_real import programar_evento_confirmado
 
 router = APIRouter()
-consultas_router = APIRouter()
+router_publico = APIRouter()
 
 UsuarioCoordinador = Annotated[
     Usuario,
@@ -77,25 +83,26 @@ def _respuesta(convocatoria: Convocatoria) -> ConvocatoriaResponse:
         publicada_en=convocatoria.publicada_en,
         cierra_en=convocatoria.cierra_en,
         lotes=[
-            LotePublicadoResponse.model_validate(publicacion)
+            _respuesta_lote(publicacion)
             for publicacion in sorted(convocatoria.lotes, key=lambda p: p.lote_id)
         ],
+        bonita_generar_lotes_estado=convocatoria.bonita_generar_lotes_estado,
+        bonita_generar_lotes_ultimo_error=convocatoria.bonita_generar_lotes_ultimo_error,
+        bonita_generar_lotes_ultimo_intento_en=(
+            convocatoria.bonita_generar_lotes_ultimo_intento_en
+        ),
     )
 
 
-def _resumen(fila: ConvocatoriaResumen) -> ConvocatoriaResumenResponse:
-    """Proyecta la fila del servicio al contrato HTTP del listado."""
+def _respuesta_lote(publicacion: ConvocatoriaLote) -> LotePublicadoResponse:
+    """Expone el snapshot cuantitativo junto con el detalle legible del lote."""
 
-    return ConvocatoriaResumenResponse(
-        id=fila.id,
-        emergencia_id=fila.emergencia_id,
-        numero=fila.numero,
-        estado=fila.estado,
-        publicada_en=fila.publicada_en,
-        cierra_en=fila.cierra_en,
-        cantidad_lotes=fila.cantidad_lotes,
-        gravedad=fila.gravedad,
-        zona=fila.zona,
+    return LotePublicadoResponse(
+        lote_id=publicacion.lote_id,
+        tipo_necesidad=publicacion.lote.tipo_necesidad,
+        descripcion=publicacion.lote.descripcion,
+        cantidad_publicada=publicacion.cantidad_publicada,
+        unidad_publicada=publicacion.unidad_publicada,
     )
 
 
@@ -107,18 +114,23 @@ def _resumen(fila: ConvocatoriaResumen) -> ConvocatoriaResumenResponse:
     summary="Publicar la convocatoria de una emergencia",
     description=(
         "Exige al menos un lote en borrador, crea la convocatoria y "
-        "transiciona la emergencia a PUBLICADA de forma atómica. Solo el "
-        "centro coordinador asignado, con token CSRF vigente. La "
-        "sincronización con la tarea humana de Bonita queda para un ticket "
-        "de seguimiento: `cierra_en` se guarda con un valor provisorio."
+        "transiciona la emergencia a PUBLICADA de forma atómica; `cierra_en` "
+        "se guarda con un valor provisorio hasta que Bonita confirme la "
+        "fecha real. Completa además la tarea `Generar lotes de "
+        "necesidades` en Bonita; si esa sincronización falla, la "
+        "publicación local igual queda confirmada y se puede reintentar "
+        "llamando de nuevo a este mismo endpoint. Solo el centro "
+        "coordinador asignado, con token CSRF vigente."
     ),
 )
 def publicar_convocatoria(
     emergencia_id: EmergenciaId,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPublicaConvocatoria,
+    cliente: ClienteBonitaDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> ConvocatoriaResponse:
-    """Valida el estado en base de datos y publica la convocatoria."""
+    """Valida el estado en base de datos, publica y sincroniza con Bonita."""
 
     try:
         convocatoria = servicio.publicar_convocatoria(session, usuario, emergencia_id)
@@ -126,38 +138,54 @@ def publicar_convocatoria(
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
+    convocatoria = completar_generacion_lotes(
+        session, convocatoria.emergencia, convocatoria, cliente
+    )
+    programar_evento_confirmado(
+        gestor_tiempo_real,
+        session,
+        clave_convocatoria_publicada(convocatoria.id),
+    )
     return _respuesta(convocatoria)
 
 
-@consultas_router.get(
+@router_publico.get(
     "",
-    response_model=ConvocatoriasListResponse,
+    response_model=list[ConvocatoriaAbiertaResponse],
     status_code=status.HTTP_200_OK,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
-        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
-    },
-    summary="Listar las convocatorias del centro coordinador",
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
+    summary="Listar convocatorias abiertas",
     description=(
-        "Devuelve las convocatorias de las emergencias asignadas al centro "
-        "coordinador del usuario autenticado, de la más reciente a la más "
-        "antigua, con la cantidad de lotes publicados. `estado` acota el "
-        "resultado a `ABIERTA`, `CERRADA` o `CANCELADA`; si se omite, llegan "
-        "todas. No requiere token CSRF por ser una consulta."
+        "Devuelve las convocatorias actualmente abiertas con sus lotes "
+        "publicados y el contexto mínimo de la emergencia (zona, gravedad y "
+        "descripción), para que cualquier ONG activa identifique dónde "
+        "ofertar. Solo REPRESENTANTE_ONG."
     ),
 )
-def listar_convocatorias(
+def listar_convocatorias_abiertas(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaConvocatorias,
-    estado: Annotated[EstadoConvocatoria | None, Query()] = None,
-) -> ConvocatoriasListResponse:
-    """Lista las convocatorias visibles para el coordinador autenticado."""
+) -> list[ConvocatoriaAbiertaResponse]:
+    """Consulta las convocatorias abiertas sin reclamar ni modificar nada."""
 
-    try:
-        filas = servicio.listar_convocatorias(session, usuario, estado)
-    except servicio.CentroNoAutorizadoError as error:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail=str(error)
-        ) from error
-    return ConvocatoriasListResponse(items=[_resumen(fila) for fila in filas])
+    convocatorias = servicio.listar_convocatorias_abiertas(session)
+    return [
+        ConvocatoriaAbiertaResponse(
+            id=convocatoria.id,
+            emergencia_id=convocatoria.emergencia_id,
+            numero=convocatoria.numero,
+            estado=convocatoria.estado,
+            publicada_en=convocatoria.publicada_en,
+            cierra_en=convocatoria.cierra_en,
+            lotes=[
+                _respuesta_lote(publicacion)
+                for publicacion in sorted(
+                    convocatoria.lotes, key=lambda publicacion: publicacion.lote_id
+                )
+            ],
+            emergencia=EmergenciaResumenResponse.model_validate(
+                convocatoria.emergencia
+            ),
+        )
+        for convocatoria in convocatorias
+    ]

@@ -3,11 +3,12 @@ import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
 import { useEmergencias } from "../hooks/useEmergencias";
-import { PublicarConvocatoria } from "./PublicarConvocatoria";
+import { useReintentarVinculacionBonita } from "../hooks/useReintentarVinculacionBonita";
 import {
+  estadoSincronizacionBonitaLabels,
   estadoLabels,
   gravedadLabels,
-  type EmergenciaBandeja,
+  type Emergencia,
 } from "../schemas/emergencia";
 import type { Role } from "../schemas/auth";
 
@@ -18,8 +19,7 @@ type RolConBandeja = Extract<
 
 interface BandejaEmergenciasProps {
   rol: RolConBandeja;
-  /** Solo el coordinador publica; el municipio no necesita el token. */
-  csrfToken: string;
+  csrfToken?: string;
 }
 
 const copyPorRol: Record<RolConBandeja, { titulo: string; vacio: string }> = {
@@ -45,10 +45,18 @@ function TarjetaEmergencia({
   rol,
   csrfToken,
 }: {
-  emergencia: EmergenciaBandeja;
+  emergencia: Emergencia;
   rol: RolConBandeja;
-  csrfToken: string;
+  csrfToken?: string;
 }): ReactElement {
+  const reintento = useReintentarVinculacionBonita();
+  const reintentoError =
+    reintento.error instanceof ApiError
+      ? reintento.error.message
+      : reintento.isError
+        ? "No pudimos reintentar la vinculación. Intentá nuevamente."
+        : null;
+
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
@@ -66,25 +74,44 @@ function TarjetaEmergencia({
       </summary>
       <div className="mt-4 border-t border-slate-100 pt-4 text-sm leading-6 text-slate-600">
         <p>{emergencia.descripcion}</p>
-        {rol === "COORDINADOR_REGIONAL" && (
-          <div className="mt-4 space-y-4">
-            <Link
-              to={`/emergencias/${emergencia.id}/lotes`}
-              className="inline-flex rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-bold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
-            >
-              {emergencia.cantidad_lotes_borrador > 0
-                ? "Ver lotes"
-                : "Generar lotes"}
-            </Link>
-            {emergencia.cantidad_lotes_borrador > 0 && (
-              <PublicarConvocatoria
-                emergenciaId={emergencia.id}
-                csrfToken={csrfToken}
-                cantidadBorrador={emergencia.cantidad_lotes_borrador}
-                publicada={false}
-              />
+        {rol === "OPERADOR_MUNICIPAL" && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="font-semibold text-slate-800">
+              {estadoSincronizacionBonitaLabels[emergencia.bonita_sync]}
+            </p>
+            {emergencia.bonita_ultimo_error && (
+              <p className="mt-1 text-red-800">
+                {emergencia.bonita_ultimo_error}
+              </p>
+            )}
+            {reintentoError && (
+              <p role="alert" className="mt-2 text-red-800">
+                {reintentoError}
+              </p>
+            )}
+            {emergencia.bonita_sync !== "VINCULADA" && csrfToken && (
+              <button
+                type="button"
+                disabled={reintento.isPending}
+                onClick={() =>
+                  reintento.mutate({ emergenciaId: emergencia.id, csrfToken })
+                }
+                className="mt-3 rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+              >
+                {reintento.isPending
+                  ? "Reintentando…"
+                  : "Reintentar vinculación"}
+              </button>
             )}
           </div>
+        )}
+        {rol === "COORDINADOR_REGIONAL" && (
+          <Link
+            to={`/emergencias/${emergencia.id}/lotes`}
+            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+          >
+            Generar lotes
+          </Link>
         )}
       </div>
     </details>
@@ -131,6 +158,15 @@ export function BandejaEmergencias({
     );
   }
 
+  // Al publicar, la mutación actualiza la emergencia en caché a PUBLICADA para
+  // conservar la confirmación en la pantalla de lotes. La bandeja del
+  // coordinador debe aplicar también sobre ese caché el contrato del backend:
+  // únicamente emergencias REGISTRADA pendientes de revisión.
+  const emergencias =
+    rol === "COORDINADOR_REGIONAL"
+      ? query.data.filter((emergencia) => emergencia.estado === "REGISTRADA")
+      : query.data;
+
   return (
     <section aria-labelledby="bandeja-emergencias-titulo">
       <h3
@@ -140,7 +176,7 @@ export function BandejaEmergencias({
         {copy.titulo}
       </h3>
 
-      {query.data.length === 0 ? (
+      {emergencias.length === 0 ? (
         <p
           role="status"
           className="mt-4 rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm"
@@ -149,7 +185,7 @@ export function BandejaEmergencias({
         </p>
       ) : (
         <div className="mt-4 space-y-3">
-          {query.data.map((emergencia) => (
+          {emergencias.map((emergencia) => (
             <TarjetaEmergencia
               key={emergencia.id}
               emergencia={emergencia}

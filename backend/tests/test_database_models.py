@@ -136,6 +136,7 @@ def _publicar_lote(
     convocatoria: Convocatoria,
     lote: Lote,
 ) -> ConvocatoriaLote:
+    lote.estado = EstadoLote.PUBLICADO
     publicacion = ConvocatoriaLote(
         convocatoria_id=convocatoria.id,
         lote_id=lote.id,
@@ -192,6 +193,7 @@ def test_metadata_registra_todo_el_esquema() -> None:
         "oferta_version",
         "oferta_item",
         "oferta_participante",
+        "notificacion",
     }
 
 
@@ -262,7 +264,7 @@ def test_persiste_el_flujo_basico_con_defaults_y_relaciones(
 
     assert emergencia.estado is EstadoEmergencia.REGISTRADA
     assert emergencia.bonita_sync is EstadoSincronizacionBonita.PENDIENTE
-    assert lote.estado is EstadoLote.BORRADOR
+    assert lote.estado is EstadoLote.PUBLICADO
     assert convocatoria.estado is EstadoConvocatoria.ABIERTA
     assert publicacion.lote_id == lote.id
     assert item.convocatoria_lote == publicacion
@@ -556,6 +558,56 @@ def test_item_rechaza_convocatoria_distinta_a_la_oferta(
         db_session.flush()
 
     _assert_restriccion(error, "ck_oferta_item_misma_convocatoria")
+
+
+def test_item_rechaza_lote_asociado_que_no_esta_publicado(
+    db_session: Session,
+) -> None:
+    municipio = _crear_organizacion(
+        db_session, TipoOrganizacion.MUNICIPIO, "Municipio Lote Borrador"
+    )
+    ong = _crear_organizacion(db_session, TipoOrganizacion.ONG, "ONG Lote Borrador")
+    operador = _crear_usuario(
+        db_session,
+        municipio,
+        RolUsuario.OPERADOR_MUNICIPAL,
+        "borrador@municipio.test",
+    )
+    representante = _crear_usuario(
+        db_session,
+        ong,
+        RolUsuario.REPRESENTANTE_ONG,
+        "borrador@ong.test",
+    )
+    emergencia = _crear_emergencia(db_session, municipio, operador, "Zona borrador")
+    lote = _crear_lote(db_session, emergencia, operador, "Agua")
+    convocatoria = _crear_convocatoria(db_session, emergencia, 1)
+    db_session.add(
+        ConvocatoriaLote(
+            convocatoria_id=convocatoria.id,
+            lote_id=lote.id,
+            cantidad_publicada=lote.cantidad_requerida,
+            unidad_publicada=lote.unidad,
+        )
+    )
+    db_session.flush()
+    _, version = _crear_oferta(db_session, convocatoria, ong, representante)
+    db_session.add(
+        OfertaItem(
+            oferta_version_id=version.id,
+            convocatoria_id=convocatoria.id,
+            lote_id=lote.id,
+            tipo=TipoAporte.RECURSO,
+            descripcion="Agua potable",
+            cantidad_ofrecida=Decimal(10),
+            unidad=lote.unidad,
+        )
+    )
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_oferta_item_lote_publicado")
 
 
 def test_oferta_requiere_una_organizacion_ong(db_session: Session) -> None:

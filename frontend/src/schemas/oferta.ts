@@ -1,33 +1,40 @@
 import { z } from "zod";
 
-export const tiposAporte = ["RECURSO", "PERSONAL", "MIXTO"] as const;
+import { emergenciaResumenSchema } from "./convocatoria";
 
-export const tipoAporteLabels: Record<(typeof tiposAporte)[number], string> = {
-  RECURSO: "Recursos",
-  PERSONAL: "Personal",
-  MIXTO: "Recursos y personal",
+export const estadosOferta = [
+  "BORRADOR",
+  "PRESENTADA",
+  "EN_VALIDACION",
+  "VALIDADA",
+  "ADJUDICADA",
+  "NO_ADJUDICADA",
+  "RETIRADA",
+] as const;
+
+export type EstadoOferta = (typeof estadosOferta)[number];
+
+export const estadoOfertaLabels: Record<EstadoOferta, string> = {
+  BORRADOR: "Borrador",
+  PRESENTADA: "Presentada",
+  EN_VALIDACION: "En validación",
+  VALIDADA: "Validada",
+  ADJUDICADA: "Adjudicada",
+  NO_ADJUDICADA: "No adjudicada",
+  RETIRADA: "Retirada",
 };
 
-export const loteOfertaDisponibleSchema = z.object({
-  lote_id: z.number().int().positive(),
-  tipo_necesidad: z.string(),
-  descripcion: z.string().nullable(),
-  cantidad_publicada: z.union([z.number(), z.string()]),
-  unidad_publicada: z.string(),
-});
+export const tiposAporte = ["RECURSO", "PERSONAL", "MIXTO"] as const;
 
-export const convocatoriaOfertaDisponibleSchema = z.object({
-  id: z.number().int().positive(),
-  numero: z.number().int().positive(),
-  emergencia_id: z.number().int().positive(),
-  gravedad: z.enum(["BAJA", "MEDIA", "ALTA", "CRITICA"]),
-  zona: z.string(),
-  lotes: z.array(loteOfertaDisponibleSchema),
-});
+export type TipoAporte = (typeof tiposAporte)[number];
 
-export const convocatoriasOfertaDisponiblesSchema = z.array(
-  convocatoriaOfertaDisponibleSchema,
-);
+export const tipoAporteLabels: Record<TipoAporte, string> = {
+  RECURSO: "Recurso",
+  PERSONAL: "Personal",
+  MIXTO: "Mixto",
+};
+
+const cantidadOfrecidaPattern = /^\d{1,11}(?:[.,]\d{1,3})?$/;
 
 export const ofertaItemFormSchema = z.object({
   lote_id: z.number().int().positive("Elegí un lote publicado."),
@@ -38,8 +45,16 @@ export const ofertaItemFormSchema = z.object({
     .min(1, "Describí el aporte.")
     .max(2000, "La descripción no puede superar los 2000 caracteres."),
   cantidad_ofrecida: z
-    .number({ error: "Ingresá una cantidad." })
-    .positive("La cantidad ofrecida debe ser mayor que cero."),
+    .string()
+    .trim()
+    .regex(
+      cantidadOfrecidaPattern,
+      "Ingresá una cantidad con hasta 11 enteros y 3 decimales.",
+    )
+    .refine(
+      (valor) => Number(valor.replace(",", ".")) > 0,
+      "La cantidad ofrecida debe ser mayor que cero.",
+    ),
   unidad: z.string().min(1, "El lote no tiene una unidad válida."),
 });
 
@@ -52,32 +67,36 @@ export const ofertaFormSchema = z.object({
   items: z.array(ofertaItemFormSchema).min(1, "Agregá al menos un lote."),
 });
 
-export const ofertaResponseSchema = z.object({
+export const ofertaItemSchema = z.object({
+  id: z.number().int().positive(),
+  lote_id: z.number().int().positive(),
+  tipo: z.enum(tiposAporte),
+  descripcion: z.string(),
+  // Pydantic serializa `Decimal` como texto en JSON.
+  cantidad_ofrecida: z.union([z.string(), z.number()]).transform(String),
+  unidad: z.string(),
+});
+
+export const ofertaSchema = z.object({
   id: z.number().int().positive(),
   convocatoria_id: z.number().int().positive(),
   emergencia_id: z.number().int().positive(),
   ong_creadora_id: z.number().int().positive(),
   creada_por_usuario_id: z.number().int().positive(),
-  estado: z.string(),
+  estado: z.enum(estadosOferta),
   version_actual: z.number().int().positive(),
   observaciones: z.string().nullable(),
-  presentada_en: z.string(),
-  creada_en: z.string(),
-  items: z.array(
-    z.object({
-      id: z.number().int().positive(),
-      lote_id: z.number().int().positive(),
-      tipo: z.enum(tiposAporte),
-      descripcion: z.string(),
-      cantidad_ofrecida: z.union([z.number(), z.string()]),
-      unidad: z.string(),
-    }),
-  ),
+  presentada_en: z.string().min(1),
+  creada_en: z.string().min(1),
+  items: z.array(ofertaItemSchema),
+  emergencia: emergenciaResumenSchema,
 });
 
-export type ConvocatoriaOfertaDisponible = z.infer<
-  typeof convocatoriaOfertaDisponibleSchema
->;
-export type LoteOfertaDisponible = z.infer<typeof loteOfertaDisponibleSchema>;
+export const ofertaCreadaSchema = ofertaSchema.omit({ emergencia: true });
+
+export const ofertasSchema = z.array(ofertaSchema);
+
+export type OfertaItem = z.infer<typeof ofertaItemSchema>;
+export type Oferta = z.infer<typeof ofertaSchema>;
+export type OfertaCreada = z.infer<typeof ofertaCreadaSchema>;
 export type OfertaFormData = z.infer<typeof ofertaFormSchema>;
-export type Oferta = z.infer<typeof ofertaResponseSchema>;

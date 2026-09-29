@@ -13,6 +13,7 @@ import { LotesForm } from "./LotesForm";
 const API_URL = "http://localhost:8000/api/v1";
 const CSRF_TOKEN = "csrf-firmado";
 const URL_LOTES = `${API_URL}/emergencias/31/lotes`;
+const URL_PUBLICAR = `${API_URL}/emergencias/31/publicar`;
 
 function loteGuardado(
   id: number,
@@ -45,13 +46,21 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderForm(lotes: Lote[] = []): void {
+function renderForm(
+  lotes: Lote[] = [],
+  convocatoriaPublicada = false,
+): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
-      <LotesForm emergenciaId={31} csrfToken={CSRF_TOKEN} lotes={lotes} />
+      <LotesForm
+        emergenciaId={31}
+        csrfToken={CSRF_TOKEN}
+        convocatoriaPublicada={convocatoriaPublicada}
+        lotes={lotes}
+      />
     </QueryClientProvider>,
   );
 }
@@ -166,6 +175,101 @@ describe("LotesForm", () => {
     });
     expect(publicaciones).toHaveLength(0);
     expect(screen.getAllByText("Borrador")).toHaveLength(2);
+  });
+
+  it("publica explícitamente los lotes guardados y muestra el resultado", async () => {
+    let csrfHeader: string | null = null;
+    server.use(
+      http.post(URL_PUBLICAR, ({ request }) => {
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        return HttpResponse.json(
+          {
+            id: 14,
+            emergencia_id: 31,
+            numero: 1,
+            estado: "ABIERTA",
+            publicada_en: "2026-09-28T16:00:00Z",
+            cierra_en: "2026-09-29T16:00:00Z",
+            lotes: [
+              {
+                lote_id: 7,
+                tipo_necesidad: "Agua potable",
+                descripcion: "Bidones",
+                cantidad_publicada: "500.000",
+                unidad_publicada: "litros",
+              },
+            ],
+            bonita_generar_lotes_estado: "COMPLETADA",
+            bonita_generar_lotes_ultimo_error: null,
+            bonita_generar_lotes_ultimo_intento_en: "2026-09-28T16:00:01Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+
+    await user.click(
+      screen.getByRole("button", { name: "Publicar convocatoria" }),
+    );
+
+    expect(
+      await screen.findByText("Convocatoria publicada."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Se incluyeron 1 lote.")).toBeInTheDocument();
+    expect(csrfHeader).toBe(CSRF_TOKEN);
+    expect(
+      screen.getByRole("button", { name: "Convocatoria publicada" }),
+    ).toBeDisabled();
+  });
+
+  it("no vuelve a publicar una convocatoria ya publicada", async () => {
+    let publicaciones = 0;
+    server.use(
+      http.post(URL_PUBLICAR, () => {
+        publicaciones += 1;
+        return HttpResponse.json({}, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm(
+      [loteGuardado(7, "Agua potable", "500.000", "litros")],
+      true,
+    );
+
+    const boton = screen.getByRole("button", {
+      name: "Convocatoria publicada",
+    });
+    expect(boton).toBeDisabled();
+
+    await user.click(boton);
+
+    expect(publicaciones).toBe(0);
+  });
+
+  it("explica el rechazo al publicar sin perder los borradores", async () => {
+    server.use(
+      http.post(URL_PUBLICAR, () =>
+        HttpResponse.json(
+          { detail: "La convocatoria requiere al menos un lote válido." },
+          { status: 409 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+
+    await user.click(
+      screen.getByRole("button", { name: "Publicar convocatoria" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "La convocatoria requiere al menos un lote válido.",
+    );
+    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+      "Agua potable",
+    );
   });
 
   it("reenvía los lotes guardados con su id para editarlos", async () => {

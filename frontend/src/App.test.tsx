@@ -52,9 +52,6 @@ function sessionForRole(role: Role, requiresPasswordChange = false): Session {
 const session = sessionForRole("OPERADOR_MUNICIPAL");
 const server = setupServer(
   http.get(`${API_URL}/emergencias`, () => HttpResponse.json([], { status: 200 })),
-  http.get(`${API_URL}/ofertas/convocatorias`, () =>
-    HttpResponse.json([], { status: 200 }),
-  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -368,7 +365,6 @@ describe("autenticación", () => {
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
       actualizada_en: "2026-09-19T18:20:39.102766Z",
-  cantidad_lotes_borrador: 0,
     };
     const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
     let usuarioActivo: "municipio" | "coordinador" = "municipio";
@@ -427,7 +423,6 @@ describe("autenticación", () => {
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
       actualizada_en: "2026-09-19T18:20:39.102766Z",
-  cantidad_lotes_borrador: 0,
     };
     const coordinadorSession = sessionForRole("COORDINADOR_REGIONAL");
     let sesionVigente: "municipio" | "vencida" | "coordinador" = "municipio";
@@ -539,39 +534,5 @@ describe("navegación por rol", () => {
         screen.queryByRole("heading", { name: hiddenAction }),
       ).not.toBeInTheDocument();
     }
-  });
-
-  it("deja consultar las convocatorias solo al coordinador regional", async () => {
-    server.use(
-      http.get(`${API_URL}/auth/me`, () =>
-        HttpResponse.json(sessionForRole("COORDINADOR_REGIONAL")),
-      ),
-      http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
-      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json({ items: [] })),
-    );
-    renderApp("/convocatorias");
-
-    expect(
-      await screen.findByRole("heading", { name: "Convocatorias de tu centro" }),
-    ).toBeInTheDocument();
-  });
-
-  it.each<Role>([
-    "OPERADOR_MUNICIPAL",
-    "REPRESENTANTE_ONG",
-    "AUDITOR_DIRECTIVO",
-    "ADMINISTRADOR",
-  ])("redirige a $role fuera del listado de convocatorias", async (rol) => {
-    server.use(
-      http.get(`${API_URL}/auth/me`, () =>
-        HttpResponse.json(sessionForRole(rol)),
-      ),
-      http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
-    );
-    renderApp("/convocatorias");
-
-    expect(
-      await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
-    ).toBeInTheDocument();
   });
 });

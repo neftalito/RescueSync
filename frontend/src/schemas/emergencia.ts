@@ -37,6 +37,26 @@ export const estados = [
   "CANCELADA",
 ] as const;
 
+export const estadosSincronizacionBonita = [
+  "PENDIENTE",
+  "VINCULADA",
+  "ERROR",
+  "RESULTADO_DESCONOCIDO",
+] as const;
+
+export type EstadoSincronizacionBonita =
+  (typeof estadosSincronizacionBonita)[number];
+
+export const estadoSincronizacionBonitaLabels: Record<
+  EstadoSincronizacionBonita,
+  string
+> = {
+  PENDIENTE: "Vinculación pendiente",
+  VINCULADA: "Vinculada con Bonita",
+  ERROR: "Error de vinculación",
+  RESULTADO_DESCONOCIDO: "Vinculación por confirmar",
+};
+
 export type Estado = (typeof estados)[number];
 
 export const estadoLabels: Record<Estado, string> = {
@@ -58,25 +78,15 @@ export const emergenciaSchema = z.object({
   zona: z.string(),
   descripcion: z.string(),
   estado: z.enum(estados),
-  bonita_sync: z.string().min(1),
+  bonita_sync: z.enum(estadosSincronizacionBonita),
   bonita_process_instance_id: z.number().int().positive().nullable(),
+  bonita_ultimo_error: z.string().nullable().default(null),
+  bonita_ultimo_intento_en: z.string().min(1).nullable().default(null),
   creada_en: z.string().min(1),
   actualizada_en: z.string().min(1),
 });
 
 export const emergenciasSchema = z.array(emergenciaSchema);
 
-/**
- * La bandeja suma los lotes que todavía se pueden publicar. Lo resuelve la base,
- * así la interfaz no pide los lotes de cada fila para decidir si ofrece la
- * acción de publicar.
- */
-export const emergenciaBandejaSchema = emergenciaSchema.extend({
-  cantidad_lotes_borrador: z.number().int().nonnegative(),
-});
-
-export const emergenciasBandejaSchema = z.array(emergenciaBandejaSchema);
-
 export type EmergenciaFormData = z.infer<typeof emergenciaFormSchema>;
 export type Emergencia = z.infer<typeof emergenciaSchema>;
-export type EmergenciaBandeja = z.infer<typeof emergenciaBandejaSchema>;

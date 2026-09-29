@@ -17,8 +17,14 @@ const convocatorias = [
     id: 8,
     numero: 2,
     emergencia_id: 31,
-    gravedad: "ALTA",
-    zona: "Ribera norte",
+    estado: "ABIERTA",
+    publicada_en: "2026-09-28T12:00:00Z",
+    cierra_en: "2026-09-29T12:00:00Z",
+    emergencia: {
+      gravedad: "ALTA",
+      zona: "Ribera norte",
+      descripcion: "Inundación con familias evacuadas",
+    },
     lotes: [
       {
         lote_id: 54,
@@ -29,10 +35,10 @@ const convocatorias = [
       },
       {
         lote_id: 55,
-        tipo_necesidad: "Kits de higiene",
+        tipo_necesidad: "Paramédicos",
         descripcion: null,
-        cantidad_publicada: "40.000",
-        unidad_publicada: "kits",
+        cantidad_publicada: "10.000",
+        unidad_publicada: "personas",
       },
     ],
   },
@@ -47,16 +53,24 @@ const ofertaCreada = {
   estado: "PRESENTADA",
   version_actual: 1,
   observaciones: "Entrega dentro de 24 horas",
-  presentada_en: "2026-09-26T12:00:00Z",
-  creada_en: "2026-09-26T12:00:00Z",
+  presentada_en: "2026-09-28T12:00:00Z",
+  creada_en: "2026-09-28T12:00:00Z",
   items: [
     {
       id: 111,
       lote_id: 54,
       tipo: "RECURSO",
-      descripcion: "Bidones de agua potable",
-      cantidad_ofrecida: "250.000",
+      descripcion: "Agua potable",
+      cantidad_ofrecida: "250.500",
       unidad: "litros",
+    },
+    {
+      id: 112,
+      lote_id: 55,
+      tipo: "PERSONAL",
+      descripcion: "Paramédicos",
+      cantidad_ofrecida: "3.000",
+      unidad: "personas",
     },
   ],
 };
@@ -81,15 +95,25 @@ function renderForm(): void {
   );
 }
 
+async function agregarLote(
+  user: ReturnType<typeof userEvent.setup>,
+  id: string,
+): Promise<void> {
+  await user.selectOptions(screen.getByLabelText("Lote para agregar"), id);
+  await user.click(screen.getByRole("button", { name: "Agregar lote" }));
+}
+
 describe("OfertaForm", () => {
-  it("permite elegir convocatoria y lote y presenta una oferta parcial", async () => {
+  it("presenta una oferta parcial con recursos y personal para varios lotes", async () => {
     let cuerpo: unknown;
     let csrfHeader: string | null = null;
     let cantidadConsultas = 0;
     server.use(
-      http.get(`${API_URL}/ofertas/convocatorias`, () => {
+      http.get(`${API_URL}/convocatorias`, () => {
         cantidadConsultas += 1;
-        return HttpResponse.json(convocatorias);
+        return HttpResponse.json(
+          cantidadConsultas === 1 ? convocatorias : [],
+        );
       }),
       http.post(`${API_URL}/ofertas`, async ({ request }) => {
         csrfHeader = request.headers.get("X-CSRF-Token");
@@ -104,18 +128,26 @@ describe("OfertaForm", () => {
       await screen.findByLabelText("Convocatoria"),
       "8",
     );
-    await user.selectOptions(
-      screen.getByLabelText("Lote para agregar"),
-      "54",
-    );
-    await user.click(screen.getByRole("button", { name: "Agregar lote" }));
-    await user.clear(screen.getByLabelText("Cantidad ofrecida"));
-    await user.type(screen.getByLabelText("Cantidad ofrecida"), "250");
-    await user.clear(screen.getByLabelText("Descripción del aporte"));
-    await user.type(
-      screen.getByLabelText("Descripción del aporte"),
-      "Bidones de agua potable",
-    );
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+    expect(
+      await screen.findByText("Agregá al menos un lote."),
+    ).toBeInTheDocument();
+
+    await agregarLote(user, "54");
+    await agregarLote(user, "55");
+    const [cantidadAgua, cantidadPersonal] =
+      screen.getAllByLabelText("Cantidad ofrecida");
+    const [, tipoPersonal] = screen.getAllByLabelText("Tipo de aporte");
+    if (
+      cantidadAgua === undefined ||
+      cantidadPersonal === undefined ||
+      tipoPersonal === undefined
+    ) {
+      throw new Error("No se renderizaron los dos lotes de la oferta.");
+    }
+    await user.type(cantidadAgua, "250,5");
+    await user.type(cantidadPersonal, "3");
+    await user.selectOptions(tipoPersonal, "PERSONAL");
     await user.type(
       screen.getByLabelText("Observaciones (opcional)"),
       "Entrega dentro de 24 horas",
@@ -133,18 +165,25 @@ describe("OfertaForm", () => {
         {
           lote_id: 54,
           tipo: "RECURSO",
-          descripcion: "Bidones de agua potable",
-          cantidad_ofrecida: 250,
+          descripcion: "Agua potable",
+          cantidad_ofrecida: "250.5",
           unidad: "litros",
+        },
+        {
+          lote_id: 55,
+          tipo: "PERSONAL",
+          descripcion: "Paramédicos",
+          cantidad_ofrecida: "3",
+          unidad: "personas",
         },
       ],
     });
     await waitFor(() => expect(cantidadConsultas).toBe(2));
   });
 
-  it("muestra la validación cuando la cantidad no es positiva", async () => {
+  it("valida de forma accesible que la cantidad sea positiva", async () => {
     server.use(
-      http.get(`${API_URL}/ofertas/convocatorias`, () =>
+      http.get(`${API_URL}/convocatorias`, () =>
         HttpResponse.json(convocatorias),
       ),
     );
@@ -155,11 +194,8 @@ describe("OfertaForm", () => {
       await screen.findByLabelText("Convocatoria"),
       "8",
     );
-    await user.selectOptions(
-      screen.getByLabelText("Lote para agregar"),
-      "54",
-    );
-    await user.click(screen.getByRole("button", { name: "Agregar lote" }));
+    await agregarLote(user, "54");
+    await user.type(screen.getByLabelText("Cantidad ofrecida"), "0");
     await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
 
     expect(
@@ -176,10 +212,7 @@ describe("OfertaForm", () => {
     const pendiente = new Promise<Response>((resolve) => {
       resolver = resolve;
     });
-    server.use(
-      http.get(`${API_URL}/ofertas/convocatorias`, () => pendiente),
-    );
-    const user = userEvent.setup();
+    server.use(http.get(`${API_URL}/convocatorias`, () => pendiente));
     renderForm();
 
     expect(await screen.findByRole("status")).toHaveTextContent(
@@ -194,15 +227,11 @@ describe("OfertaForm", () => {
 
     cleanup();
     server.use(
-      http.get(`${API_URL}/ofertas/convocatorias`, () =>
+      http.get(`${API_URL}/convocatorias`, () =>
         HttpResponse.json({ detail: "No hay conexión." }, { status: 503 }),
       ),
     );
     renderForm();
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No hay conexión.",
-    );
-    await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "No hay conexión.",
     );

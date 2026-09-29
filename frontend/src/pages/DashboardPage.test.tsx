@@ -42,7 +42,6 @@ const emergenciaCreada = {
   bonita_process_instance_id: null,
   creada_en: "2026-09-19T18:20:39.102766Z",
   actualizada_en: "2026-09-19T18:20:39.102766Z",
-  cantidad_lotes_borrador: 0,
 };
 
 const server = setupServer();

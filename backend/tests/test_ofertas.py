@@ -6,17 +6,24 @@ from typing import get_args
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.routes import ofertas as ofertas_route
+from app.core.security import crear_token_csrf, crear_valor_sesion
 from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoLote,
+    EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
+    Oferta,
+    OfertaVersion,
     Organizacion,
     RolUsuario,
     TipoAporte,
@@ -49,7 +56,8 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
     try:
-        yield TestClient(app)
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(ofertas_route.exigir_ong_con_csrf, None)
@@ -66,6 +74,12 @@ def _autenticar_solo_rol(client: TestClient, usuario: Usuario) -> None:
     """Bypasea solo la resolución de usuario/rol; el CSRF corre real."""
     usuario_ong_depends = get_args(ofertas_route.UsuarioOng)[1]
     app.dependency_overrides[usuario_ong_depends.dependency] = lambda: usuario
+
+
+def _autenticar_con_cookie(client: TestClient, usuario: Usuario) -> str:
+    """Autentica con una sesión real (cookie + CSRF), sin overrides de dependencia."""
+    client.cookies.set("rescuesync_session", crear_valor_sesion(usuario.id))
+    return crear_token_csrf(usuario.id)
 
 
 def _organizacion(
@@ -121,6 +135,7 @@ def escenario(db_session: Session) -> Escenario:
         tipo_necesidad="Agua",
         cantidad_requerida=Decimal(1000),
         unidad="litros",
+        estado=EstadoLote.PUBLICADO,
     )
     lote_kits = Lote(
         emergencia_id=emergencia.id,
@@ -128,6 +143,7 @@ def escenario(db_session: Session) -> Escenario:
         tipo_necesidad="Kits",
         cantidad_requerida=Decimal(10),
         unidad="kits",
+        estado=EstadoLote.PUBLICADO,
     )
     lote_sin_publicar = Lote(
         emergencia_id=emergencia.id,
@@ -258,99 +274,6 @@ def test_crea_oferta_con_multiples_items_en_distintos_lotes(
     assert len(response.json()["items"]) == 2
 
 
-def test_lista_convocatorias_abiertas_con_lotes_publicados_para_ong(
-    client: TestClient, escenario: Escenario, db_session: Session
-) -> None:
-    _autenticar_solo_rol(client, escenario.representante)
-    # El índice parcial uq_convocatoria_abierta_por_emergencia admite una sola
-    # convocatoria ABIERTA por emergencia, así que la vencida necesita la suya.
-    # Lleva un lote publicado para que el descarte se deba al cierre vencido y
-    # no a que le falten lotes publicados.
-    emergencia_vencida = Emergencia(
-        municipio_id=escenario.emergencia.municipio_id,
-        creada_por_usuario_id=escenario.operador_municipal.id,
-        gravedad=GravedadEmergencia.ALTA,
-        zona="Zona vencida",
-        descripcion="Emergencia con convocatoria vencida",
-        bonita_process_instance_id=4243,
-        bonita_sync=EstadoSincronizacionBonita.VINCULADA,
-    )
-    db_session.add(emergencia_vencida)
-    db_session.flush()
-    lote_vencido = Lote(
-        emergencia_id=emergencia_vencida.id,
-        creado_por_usuario_id=escenario.operador_municipal.id,
-        tipo_necesidad="Frazadas",
-        cantidad_requerida=Decimal(200),
-        unidad="unidades",
-    )
-    db_session.add(lote_vencido)
-    db_session.flush()
-    vencida = Convocatoria(
-        emergencia_id=emergencia_vencida.id,
-        numero=1,
-        estado=EstadoConvocatoria.ABIERTA,
-        publicada_en=datetime.now(UTC) - timedelta(days=2),
-        cierra_en=datetime.now(UTC) - timedelta(minutes=1),
-    )
-    db_session.add(vencida)
-    db_session.flush()
-    db_session.add(
-        ConvocatoriaLote(
-            convocatoria_id=vencida.id,
-            lote_id=lote_vencido.id,
-            cantidad_publicada=lote_vencido.cantidad_requerida,
-            unidad_publicada=lote_vencido.unidad,
-        )
-    )
-    db_session.flush()
-
-    response = client.get("/api/v1/ofertas/convocatorias")
-
-    assert response.status_code == 200
-    # El listado no se compara por igualdad completa: la base es compartida con
-    # las cargas de demostración, así que pueden existir otras convocatorias
-    # abiertas legítimas. Lo que se verifica es que la vigente llegue con sus
-    # lotes y que la vencida no aparezca.
-    items = response.json()
-    assert vencida.id not in {item["id"] for item in items}
-    assert [item for item in items if item["id"] == escenario.convocatoria.id] == [
-        {
-            "id": escenario.convocatoria.id,
-            "numero": 1,
-            "emergencia_id": escenario.emergencia.id,
-            "gravedad": "CRITICA",
-            "zona": "Zona CB",
-            "lotes": [
-                {
-                    "lote_id": escenario.lote_agua.id,
-                    "tipo_necesidad": "Agua",
-                    "descripcion": None,
-                    "cantidad_publicada": "1000.000",
-                    "unidad_publicada": "litros",
-                },
-                {
-                    "lote_id": escenario.lote_kits.id,
-                    "tipo_necesidad": "Kits",
-                    "descripcion": None,
-                    "cantidad_publicada": "10.000",
-                    "unidad_publicada": "kits",
-                },
-            ],
-        }
-    ]
-
-
-def test_rechaza_consultar_convocatorias_con_usuario_que_no_es_ong(
-    client: TestClient, escenario: Escenario
-) -> None:
-    _autenticar_solo_rol(client, escenario.operador_municipal)
-
-    response = client.get("/api/v1/ofertas/convocatorias")
-
-    assert response.status_code == 403
-
-
 # --- Reglas de negocio del servicio -----------------------------------------
 
 
@@ -420,6 +343,25 @@ def test_rechaza_lote_no_publicado_en_la_convocatoria(
     assert response.status_code == 404
 
 
+def test_rechaza_lote_asociado_que_ya_no_esta_publicado(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    escenario.lote_agua.estado = EstadoLote.CANCELADO
+    db_session.commit()
+    _autenticar_sin_csrf(client, escenario.representante)
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, unidad="litros")],
+        ),
+    )
+
+    assert response.status_code == 404
+    assert "no está publicado" in response.json()["detail"]
+
+
 def test_rechaza_unidad_que_no_coincide_con_la_publicada(
     client: TestClient, escenario: Escenario
 ) -> None:
@@ -432,6 +374,68 @@ def test_rechaza_unidad_que_no_coincide_con_la_publicada(
     response = _crear(client, body)
 
     assert response.status_code == 422
+
+
+def test_rechazo_de_un_item_no_deja_una_oferta_parcial(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+    versiones_antes = (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion)) or 0
+    )
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [
+                _item(escenario.lote_agua.id, cantidad=100, unidad="litros"),
+                _item(999_999_999, cantidad=2, unidad="kits"),
+            ],
+        ),
+    )
+
+    assert response.status_code == 404
+    assert db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes
+    assert (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion))
+        == versiones_antes
+    )
+
+
+def test_hace_rollback_ante_fallo_de_persistencia(
+    client: TestClient,
+    escenario: Escenario,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _autenticar_sin_csrf(client, escenario.representante)
+    db_session.commit()
+    ofertas_antes = db_session.scalar(select(func.count()).select_from(Oferta)) or 0
+    versiones_antes = (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion)) or 0
+    )
+
+    def commit_fallido() -> None:
+        raise IntegrityError("INSERT", {}, Exception("restricción simulada"))
+
+    monkeypatch.setattr(db_session, "commit", commit_fallido)
+
+    response = _crear(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+    )
+
+    assert response.status_code == 422
+    assert db_session.scalar(select(func.count()).select_from(Oferta)) == ofertas_antes
+    assert (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion))
+        == versiones_antes
+    )
 
 
 # --- Validación de schema (Pydantic) ----------------------------------------
@@ -501,3 +505,115 @@ def test_rechaza_sin_header_csrf(client: TestClient, escenario: Escenario) -> No
     response = client.post("/api/v1/ofertas", json=body)
 
     assert response.status_code == 403
+
+
+# --- Listado "Mis ofertas" ---------------------------------------------------
+
+
+def _crear_con_csrf(client: TestClient, body: dict[str, object], csrf: str) -> object:
+    return client.post("/api/v1/ofertas", json=body, headers={"X-CSRF-Token": csrf})
+
+
+def test_lista_solo_las_ofertas_de_la_ong_propia(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    csrf_propio = _autenticar_con_cookie(client, escenario.representante)
+    propia = _crear_con_csrf(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_agua.id, cantidad=100, unidad="litros")],
+        ),
+        csrf_propio,
+    )
+    assert propia.status_code == 201
+
+    otra_representante = _usuario(
+        db_session, escenario.otra_ong, RolUsuario.REPRESENTANTE_ONG, "otra@cb.org"
+    )
+    csrf_otra = _autenticar_con_cookie(client, otra_representante)
+    ajena = _crear_con_csrf(
+        client,
+        _payload(
+            escenario.convocatoria.id,
+            [_item(escenario.lote_kits.id, cantidad=2, unidad="kits")],
+        ),
+        csrf_otra,
+    )
+    assert ajena.status_code == 201
+
+    _autenticar_con_cookie(client, escenario.representante)
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    cuerpo = response.json()
+    assert [oferta["id"] for oferta in cuerpo] == [propia.json()["id"]]
+    assert all(oferta["ong_creadora_id"] == escenario.ong.id for oferta in cuerpo)
+
+
+def test_lista_vacia_sin_ofertas_presentadas(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_con_cookie(client, escenario.representante)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_lista_omite_borrador_persistido_sin_fecha_de_presentacion(
+    client: TestClient, escenario: Escenario, db_session: Session
+) -> None:
+    borrador = Oferta(
+        convocatoria_id=escenario.convocatoria.id,
+        ong_creadora_id=escenario.ong.id,
+        creada_por_usuario_id=escenario.representante.id,
+        estado=EstadoOferta.BORRADOR,
+        version_actual=1,
+        version_bloqueo=1,
+    )
+    db_session.add(borrador)
+    db_session.flush()
+    db_session.add(
+        OfertaVersion(
+            oferta_id=borrador.id,
+            creada_por_usuario_id=escenario.representante.id,
+            numero=1,
+            observaciones="Todavía en preparación",
+            presentada_en=None,
+        )
+    )
+    db_session.flush()
+    _autenticar_con_cookie(client, escenario.representante)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_listar_ofertas_exige_sesion(client: TestClient) -> None:
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 401
+
+
+def test_listar_ofertas_deniega_a_quien_no_representa_una_ong(
+    client: TestClient, escenario: Escenario
+) -> None:
+    _autenticar_con_cookie(client, escenario.operador_municipal)
+
+    response = client.get("/api/v1/ofertas")
+
+    assert response.status_code == 403
+
+
+def test_openapi_documenta_listar_mis_ofertas(client: TestClient) -> None:
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    operacion = response.json()["paths"]["/api/v1/ofertas"]["get"]
+    assert operacion["responses"]["200"]["description"]
+    assert operacion["summary"]
+    assert operacion["description"]

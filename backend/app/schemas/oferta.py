@@ -11,28 +11,8 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.models.enums import EstadoOferta, GravedadEmergencia, TipoAporte
-
-
-class LoteOfertaDisponibleResponse(BaseModel):
-    """Snapshot de un lote publicado que admite ofertas."""
-
-    lote_id: int
-    tipo_necesidad: str
-    descripcion: str | None
-    cantidad_publicada: Decimal
-    unidad_publicada: str
-
-
-class ConvocatoriaOfertaDisponibleResponse(BaseModel):
-    """Convocatoria abierta y sus lotes publicados disponibles para una ONG."""
-
-    id: int
-    numero: int
-    emergencia_id: int
-    gravedad: GravedadEmergencia
-    zona: str
-    lotes: list[LoteOfertaDisponibleResponse]
+from app.db.models.enums import EstadoOferta, TipoAporte
+from app.schemas.convocatoria import EmergenciaResumenResponse
 
 
 class OfertaItemRequest(BaseModel):
@@ -95,3 +75,9 @@ class OfertaResponse(BaseModel):
     presentada_en: AwareDatetime
     creada_en: AwareDatetime
     items: list[OfertaItemResponse]
+
+
+class OfertaPropiaResponse(OfertaResponse):
+    """Oferta propia con el contexto de la emergencia para mostrarla sin IDs."""
+
+    emergencia: EmergenciaResumenResponse

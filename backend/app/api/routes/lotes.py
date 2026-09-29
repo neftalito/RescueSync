@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import requerir_operacion
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Usuario
+from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.lote import LoteResponse, LotesRequest
+from app.schemas.lote import LotePublicadoPublicoResponse, LoteResponse, LotesRequest
 from app.services import lotes as servicio
 
 router = APIRouter()
@@ -19,6 +19,10 @@ router = APIRouter()
 UsuarioCoordinador = Annotated[
     Usuario,
     Depends(requerir_operacion(OperacionProtegida.GESTIONAR_LOTES)),
+]
+UsuarioConsultaLotes = Annotated[
+    Usuario,
+    Depends(requerir_operacion(OperacionProtegida.CONSULTAR_LOTES_PUBLICADOS)),
 ]
 EmergenciaId = Annotated[int, Path(gt=0)]
 LoteId = Annotated[int, Path(gt=0)]
@@ -50,8 +54,10 @@ RESPUESTAS_ERROR: dict[int | str, dict[str, object]] = {
 _CODIGOS_ERROR: dict[type[servicio.LoteError], int] = {
     servicio.EmergenciaNoEncontradaError: status.HTTP_404_NOT_FOUND,
     servicio.CentroNoAutorizadoError: status.HTTP_403_FORBIDDEN,
+    servicio.OngNoAutorizadaError: status.HTTP_403_FORBIDDEN,
     servicio.LoteNoEncontradoError: status.HTTP_404_NOT_FOUND,
     servicio.LoteNoEditableError: status.HTTP_409_CONFLICT,
+    servicio.EstadoEmergenciaInvalidoError: status.HTTP_409_CONFLICT,
     servicio.LoteDesactualizadoError: status.HTTP_409_CONFLICT,
     servicio.DatosLoteInvalidosError: status.HTTP_422_UNPROCESSABLE_CONTENT,
 }
@@ -90,7 +96,7 @@ def guardar_lotes(
 
 @router.get(
     "/{emergencia_id}/lotes",
-    response_model=list[LoteResponse],
+    response_model=list[LoteResponse | LotePublicadoPublicoResponse],
     status_code=status.HTTP_200_OK,
     responses={
         codigo: RESPUESTAS_ERROR[codigo]
@@ -102,24 +108,27 @@ def guardar_lotes(
     },
     summary="Listar los lotes de una emergencia",
     description=(
-        "Devuelve todos los lotes de la emergencia, en borrador o publicados, "
-        "ordenados por alta, para que el coordinador retome su edición. El "
-        "campo `estado` indica cuáles siguen siendo editables. Solo el centro "
-        "coordinador asignado a la emergencia; si aún no tiene centro, la "
-        "lista está vacía y la consulta no la reclama."
+        "Devuelve los lotes de la emergencia según quién consulta. El centro "
+        "coordinador asignado ve todos los lotes, en borrador o publicados, "
+        "ordenados por alta, para retomar su edición; si aún no tiene centro, "
+        "la lista está vacía y la consulta no la reclama. Una ONG activa ve "
+        "únicamente los lotes ya publicados. El campo `estado` indica cuáles "
+        "siguen siendo editables."
     ),
 )
 def listar_lotes(
     emergencia_id: EmergenciaId,
     session: Annotated[Session, Depends(get_db)],
-    usuario: UsuarioCoordinador,
-) -> list[LoteResponse]:
+    usuario: UsuarioConsultaLotes,
+) -> list[LoteResponse | LotePublicadoPublicoResponse]:
     """Consulta los lotes del centro autenticado sin modificar la emergencia."""
 
     try:
         lotes = servicio.listar_lotes(session, usuario, emergencia_id)
     except servicio.LoteError as error:
         raise _error_http(error) from error
+    if usuario.rol is RolUsuario.REPRESENTANTE_ONG:
+        return [LotePublicadoPublicoResponse.model_validate(lote) for lote in lotes]
     return [LoteResponse.model_validate(lote) for lote in lotes]
 
 

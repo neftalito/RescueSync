@@ -55,23 +55,28 @@ export const lotesFormSchema = z.object({
   lotes: z.array(loteItemFormSchema).min(1, "Agregá al menos un lote."),
 });
 
-export const loteSchema = z.object({
+export const lotePublicadoSchema = z.object({
   id: z.number().int().positive(),
   emergencia_id: z.number().int().positive(),
-  creado_por_usuario_id: z.number().int().positive(),
   tipo_necesidad: z.string(),
   descripcion: z.string().nullable(),
   // Pydantic serializa `Decimal` como texto en JSON.
   cantidad_requerida: z.union([z.string(), z.number()]).transform(String),
   unidad: z.string(),
   estado: z.enum(estadosLote),
+});
+
+export const loteSchema = lotePublicadoSchema.extend({
+  creado_por_usuario_id: z.number().int().positive(),
   version: z.number().int().positive(),
   creado_en: z.string().min(1),
   actualizado_en: z.string().min(1),
 });
 
 export const lotesSchema = z.array(loteSchema);
+export const lotesPublicadosSchema = z.array(lotePublicadoSchema);
 
 export type LoteItemFormData = z.infer<typeof loteItemFormSchema>;
 export type LotesFormData = z.infer<typeof lotesFormSchema>;
 export type Lote = z.infer<typeof loteSchema>;
+export type LotePublicadoPublico = z.infer<typeof lotePublicadoSchema>;
