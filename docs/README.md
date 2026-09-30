@@ -6,13 +6,17 @@ referencia.
 
 ## Desarrollo
 
-- [Autenticación local](./autenticacion-local.md): usuarios, seed, sesiones,
-  CSRF y matriz RBAC de la Entrega 2.
+- [Autenticación local](./autenticacion-local.md): administrador inicial,
+  gestión de usuarios, contraseñas, seed, sesiones, CSRF y matriz RBAC.
 - [Migraciones](./desarrollo/migraciones.md): modelos SQLAlchemy y flujo de
   trabajo con Alembic.
 - [Calidad y pruebas](./desarrollo/calidad-y-pruebas.md): comandos, hooks,
   verificaciones de CI y pruebas frontend.
+- [Flujo actual](./flujo-actual.md): recorrido operativo, notificaciones y mapa
+  de endpoints implementados.
 - [Imágenes de producción](./despliegue.md): targets Docker disponibles.
+- [Demo local y con Cloudflare Tunnel](./demo-cloudflare.md): publicación del
+  frontend de producción, configuración de orígenes y WebSocket.
 
 Las reglas obligatorias de ramas, arquitectura, código y definición de terminado
 están en [`AGENTS.md`](../AGENTS.md). No se duplican aquí para mantener una sola
@@ -36,8 +40,8 @@ fuente de verdad.
 
 ## Modelo y planificación
 
-- [Modelo de base de datos](./modelo-base-datos-rescuesync.md), con su
-  [diagrama](./modelo-base-datos-rescuesync.png).
+- [Modelo de base de datos](./modelo-base-datos-rescuesync.md), con el diagrama
+  Mermaid vigente dentro del documento.
 - [División de tareas de la Entrega 2](./DIVISION_TAREAS_ENTREGA_2.md).
 - [Gantt de la Entrega 2](./generated/gantt-entrega-2.pdf).
 

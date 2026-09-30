@@ -18,7 +18,7 @@ disponible en el repositorio.
 
 El modelo busca cubrir:
 
-- Organizaciones, usuarios y los cuatro roles requeridos.
+- Organizaciones, usuarios, los cuatro roles operativos y el rol administrador.
 - Registro de emergencias por un municipio.
 - Asignación y seguimiento por un Centro Coordinador Regional.
 - Creación y publicación de lotes de necesidades.
@@ -27,6 +27,7 @@ El modelo busca cubrir:
 - Historial inmutable de versiones de ofertas.
 - Vinculación y reconciliación con una instancia de Bonita.
 - Restricciones y transacciones que eviten inconsistencias concurrentes.
+- Buzones durables para las novedades entregadas en tiempo real.
 
 No se incluyen inventario nacional, certificaciones, JWT del Sistema Nacional
 ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
@@ -52,6 +53,7 @@ ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
 ```mermaid
 erDiagram
     ORGANIZACION ||--o{ USUARIO : agrupa
+    USUARIO ||--o{ NOTIFICACION : recibe
     ORGANIZACION ||--o{ EMERGENCIA : registra_como_municipio
     ORGANIZACION o|--o{ EMERGENCIA : coordina
     USUARIO ||--o{ EMERGENCIA : crea
@@ -91,8 +93,22 @@ erDiagram
         varchar password_hash
         rol_usuario rol
         boolean activo
+        boolean requiere_cambio_password
+        integer version_sesion
         timestamptz creado_en
         timestamptz actualizado_en
+    }
+
+    NOTIFICACION {
+        bigint id PK
+        bigint usuario_id FK
+        varchar clave_evento
+        tipo_notificacion tipo
+        varchar titulo
+        text mensaje
+        varchar ruta
+        timestamptz leida_en
+        timestamptz creada_en
     }
 
     EMERGENCIA {
@@ -228,6 +244,8 @@ erDiagram
         varchar password_hash
         rol_usuario rol
         boolean activo
+        boolean requiere_cambio_password
+        integer version_sesion
         timestamptz creado_en
         timestamptz actualizado_en
     }
@@ -393,6 +411,7 @@ OPERADOR_MUNICIPAL
 COORDINADOR_REGIONAL
 REPRESENTANTE_ONG
 AUDITOR_DIRECTIVO
+ADMINISTRADOR
 ```
 
 ### `gravedad_emergencia`
@@ -505,19 +524,21 @@ Reglas principales:
 
 ### 5.2. `usuario`
 
-Contiene las credenciales y el rol local. La cookie de sesión solo debe incluir
-el identificador mínimo del usuario; en cada petición se recuperan desde la base
-su organización, rol y estado vigentes.
+Contiene las credenciales y el rol local. La cookie de sesión solo incluye el
+identificador y la versión de sesión; en cada petición se recuperan desde la
+base su organización, rol y estado vigentes.
 
 Reglas principales:
 
 - `email` es único sin distinguir mayúsculas y minúsculas.
 - `password_hash` almacena exclusivamente un hash Argon2 generado con `pwdlib`.
+- `requiere_cambio_password` restringe una credencial temporal hasta que el
+  usuario la reemplace.
+- `version_sesion` es positiva y se incrementa para invalidar cookies emitidas.
 - Los operadores municipales pertenecen a un municipio.
 - Los coordinadores pertenecen a un Centro Coordinador.
 - Los representantes pertenecen a una ONG.
-- El rol Auditor/Directivo puede pertenecer a una organización administrativa
-  o admitir `organizacion_id` nulo si el dominio lo define expresamente.
+- Auditor/Directivo y Administrador no pertenecen a una organización.
 
 La compatibilidad entre rol y tipo de organización debe validarse en el servicio
 y, si se quiere una garantía estricta en PostgreSQL, mediante un trigger. Un
@@ -591,9 +612,11 @@ y a la ONG que la creó.
 `version_bloqueo` se utiliza para detectar actualizaciones concurrentes. El
 segundo campo nunca sustituye a `oferta_version`.
 
-En la oferta básica, una ONG puede crear una propuesta que cubra uno o más lotes
-de la convocatoria. La política sobre una o varias ofertas por ONG y
-convocatoria debe definirse antes de agregar una restricción `UNIQUE`.
+En la oferta básica, una ONG crea una única propuesta vigente por convocatoria,
+que puede cubrir uno o más lotes. Un índice único parcial sobre
+`(convocatoria_id, ong_creadora_id)` protege esa identidad; los cambios
+pertenecen a `oferta_version`. `fusionada_en_oferta_id` conserva sin exponer los
+duplicados históricos que existieran antes de adoptar la regla.
 
 ### 5.8. `oferta_version`
 
@@ -617,10 +640,14 @@ Detalla cuánto ofrece una versión para un lote publicado.
 Reglas principales:
 
 - `cantidad_ofrecida > 0`.
+- `cantidad_ofrecida <= convocatoria_lote.cantidad_publicada`.
 - `(oferta_version_id, lote_id)` es único.
 - El lote debe integrar la misma convocatoria que la oferta.
 - La unidad debe ser compatible con la unidad publicada del lote.
 - Una versión presentada tiene al menos un ítem.
+
+El límite se controla por ítem y ONG. La suma de propuestas de distintas ONGs
+puede superar la necesidad publicada antes de la adjudicación.
 
 La pertenencia a la misma convocatoria puede garantizarse con claves foráneas
 compuestas adicionales o con un trigger de restricción. También debe validarse
@@ -652,6 +679,7 @@ Cuando se implemente:
 - `CHECK (cierra_en > publicada_en)`.
 - `UNIQUE (bonita_process_instance_id)` cuando el valor no sea nulo.
 - `UNIQUE (emergencia_id, numero)` en convocatorias.
+- Índice único parcial `(convocatoria_id, ong_creadora_id)` en ofertas vigentes.
 - `UNIQUE (oferta_id, numero)` en versiones.
 - `UNIQUE (oferta_version_id, lote_id)` en ítems.
 - Claves foráneas explícitas para todas las relaciones del diagrama.
@@ -719,10 +747,11 @@ tarea.
 2. Comprobar que la hora UTC actual sea anterior a `cierra_en`.
 3. Verificar que el usuario represente a la ONG creadora.
 4. Validar que todos los lotes integren esa convocatoria.
-5. Insertar la oferta si es nueva.
-6. Insertar una nueva `oferta_version` y sus ítems.
-7. Actualizar `version_actual` y `version_bloqueo`.
-8. Confirmar de forma atómica.
+5. Insertar la oferta si es nueva y rechazar una segunda para la misma ONG.
+6. Validar que cada cantidad no supere la publicada para su lote.
+7. Insertar una nueva `oferta_version` y sus ítems.
+8. Actualizar `version_actual` y `version_bloqueo`.
+9. Confirmar de forma atómica.
 
 La restricción única de número de versión y el bloqueo de la oferta evitan que
 dos ediciones concurrentes creen la misma versión.
@@ -745,11 +774,13 @@ Cerrar y seleccionar el snapshot dentro de la misma transacción evita que una
 |---|---|---|
 | `POST /api/v1/emergencias` | `emergencia` | Crea una emergencia `REGISTRADA` y prepara su vinculación con Bonita. |
 | `GET /api/v1/emergencias` | `emergencia`, `organizacion` | Filtra por organización, rol y estado. |
+| `POST /api/v1/emergencias/{id}/reintentar-bonita` | `emergencia` | Reintenta o reconcilia la vinculación sin duplicar un caso cuyo resultado era incierto. |
 | `POST /api/v1/emergencias/{id}/lotes` | `lote` | Crea o edita lotes en `BORRADOR`. |
 | `GET /api/v1/emergencias/{id}/lotes` | `lote`, `convocatoria_lote` | Lista lotes y distingue borradores de publicados. |
 | `POST /api/v1/emergencias/{id}/publicar` | `emergencia`, `convocatoria`, `convocatoria_lote`, `lote` | Publica al menos un lote de forma atómica. |
 | `GET /api/v1/convocatorias` | `convocatoria`, `emergencia`, `convocatoria_lote`, `lote` | Lista ventanas abiertas y sus necesidades. |
 | `POST /api/v1/ofertas` | `oferta`, `oferta_version`, `oferta_item` | Registra una oferta sobre lotes publicados. |
+| `PUT /api/v1/ofertas/{id}` | `oferta`, `oferta_version`, `oferta_item` | Agrega una versión a la oferta propia durante la convocatoria. |
 | `GET /api/v1/ofertas` | `oferta`, `oferta_version` | Devuelve las ofertas visibles para la ONG autenticada. |
 
 `GET /api/v1/convocatorias` es una representación HTTP; la existencia de la
@@ -796,6 +827,8 @@ tabla no obliga a exponer internamente todas sus columnas.
 
 - Una oferta solo referencia lotes de su convocatoria.
 - Una oferta requiere al menos un ítem con cantidad positiva.
+- Una ONG mantiene una sola oferta por convocatoria.
+- Ningún ítem ofrece más que la cantidad publicada de su lote.
 - Una ONG no ve ni edita borradores de otra ONG.
 - Una edición crea una versión nueva y conserva la anterior.
 - Dos ediciones concurrentes no reciben el mismo número de versión.
@@ -810,10 +843,13 @@ Entrega 2:
 - Las claves primarias son `bigint` autoincrementales.
 - La gravedad admite `BAJA`, `MEDIA`, `ALTA` y `CRITICA`.
 - Cada usuario posee un único rol local. Los roles operativos requieren una
-  organización del tipo correspondiente; Auditor/Directivo puede no pertenecer
-  a una organización.
-- Una ONG puede registrar más de una oferta en una convocatoria. Cada oferta
-  conserva su propia secuencia inmutable de versiones.
+  organización del tipo correspondiente; Auditor/Directivo y Administrador no
+  pertenecen a una organización.
+- La revisión `20260917_0002` incorpora el administrador, el cambio obligatorio
+  de contraseñas temporales y el versionado de sesiones.
+- La migración correctiva `20260929_0007` reemplaza la política inicial de
+  múltiples ofertas: cada ONG mantiene una sola oferta por convocatoria y sus
+  modificaciones se conservan como versiones inmutables.
 - Las unidades se almacenan como texto no vacío. La compatibilidad entre
   unidades corresponde al caso de uso hasta que exista un catálogo acordado.
 - La duración no tiene un valor implícito en la base: al publicar, el caso de

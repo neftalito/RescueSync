@@ -22,6 +22,8 @@ def config(monkeypatch: pytest.MonkeyPatch) -> Config:
         "BONITA_BASE_URL": "http://bonita:8080/bonita",
         "BONITA_USERNAME": "install",
         "BONITA_PASSWORD": "install",
+        "ADMIN_EMAIL": "admin@rescuesync.org",
+        "ADMIN_INITIAL_PASSWORD": "administrador123",
         "BONITA_BAR_PATH": str(DOCS),
         "BONITA_CALLBACK_TOKEN": "t" * 40,
         "BONITA_PROCESS_NAME": "RescueSync",

@@ -13,6 +13,7 @@ from app.integrations.bonita.deploy import (
     _configured_bar_content,
     deploy,
     ensure_actor_users,
+    ensure_initial_admin,
 )
 
 BASE_URL = "http://bonita:8080/bonita"
@@ -47,6 +48,8 @@ def _config(
         base_url=BASE_URL,
         username="install",
         password="install",
+        admin_username="admin@rescuesync.org",
+        admin_initial_password="administrador123",
         actor_password="clave-actores",
         process_name="RescueSync",
         process_version="1.0",
@@ -80,6 +83,24 @@ def _mock_login(router: respx.MockRouter) -> None:
         return_value=httpx.Response(
             204,
             headers={"set-cookie": "X-Bonita-API-Token=csrf-token; Path=/bonita"},
+        )
+    )
+    router.get(f"{BASE_URL}/API/portal/profile").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": "7", "name": "Administrator"}],
+        )
+    )
+    router.get(f"{BASE_URL}/API/identity/user").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": "8", "userName": "admin@rescuesync.org"}],
+        )
+    )
+    router.get(f"{BASE_URL}/API/portal/profileMember").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": "9", "profile_id": "7", "user_id": "8"}],
         )
     )
 
@@ -180,6 +201,8 @@ def test_el_entorno_exige_un_token_de_callback_robusto(
         "BONITA_BASE_URL": BASE_URL,
         "BONITA_USERNAME": "install",
         "BONITA_PASSWORD": "install",
+        "ADMIN_EMAIL": "admin@rescuesync.org",
+        "ADMIN_INITIAL_PASSWORD": "administrador123",
         "BONITA_BAR_PATH": "/bonita-source",
         "BONITA_PROCESS_NAME": "RescueSync",
         "BONITA_PROCESS_VERSION": "1.2",
@@ -194,6 +217,116 @@ def test_el_entorno_exige_un_token_de_callback_robusto(
     config = Config.from_environment()
     assert (config.process_name, config.process_version) == ("RescueSync", "1.2")
     assert ("callbackToken", TOKEN) in config.process_parameters
+
+
+def test_crea_el_administrador_inicial_y_le_asigna_su_perfil(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+
+    with respx.mock(assert_all_called=True) as router:
+        profile_search = router.get(f"{BASE_URL}/API/portal/profile").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": "7", "name": "Administrator"}]
+            )
+        )
+        user_search = router.get(f"{BASE_URL}/API/identity/user").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        create_user = router.post(f"{BASE_URL}/API/identity/user").mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": "8", "userName": "admin@rescuesync.org"},
+            )
+        )
+        member_search = router.get(f"{BASE_URL}/API/portal/profileMember").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        create_member = router.post(f"{BASE_URL}/API/portal/profileMember").mock(
+            return_value=httpx.Response(
+                200,
+                json={"id": "9", "profile_id": "7", "user_id": "8"},
+            )
+        )
+
+        with httpx.Client() as client:
+            ensure_initial_admin(client, config)
+
+    assert profile_search.calls.last.request.url.params.get_list("f") == [
+        "name=Administrator"
+    ]
+    assert user_search.calls.last.request.url.params.get_list("f") == [
+        "userName=admin@rescuesync.org"
+    ]
+    assert create_user.calls.last.request.content == (
+        b'{"userName":"admin@rescuesync.org","password":"administrador123",'
+        b'"password_confirm":"administrador123","firstname":"Administrador",'
+        b'"lastname":"RescueSync","enabled":"true"}'
+    )
+    assert member_search.calls.last.request.url.params.get_list("f") == [
+        "member_type=user",
+        "profile_id=7",
+        "user_id=8",
+    ]
+    assert create_member.calls.last.request.content == (
+        b'{"profile_id":"7","member_type":"USER","user_id":"8"}'
+    )
+
+
+def test_no_modifica_un_administrador_ya_mapeado(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    with respx.mock(assert_all_called=False) as router:
+        profile_search = router.get(f"{BASE_URL}/API/portal/profile").mock(
+            return_value=httpx.Response(200, json=[{"id": 7, "name": "Administrator"}])
+        )
+        user_search = router.get(f"{BASE_URL}/API/identity/user").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": 8, "userName": "admin@rescuesync.org"}]
+            )
+        )
+        member_search = router.get(f"{BASE_URL}/API/portal/profileMember").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": 9, "profile_id": 7, "user_id": 8}]
+            )
+        )
+        create_user = router.post(f"{BASE_URL}/API/identity/user")
+        create_member = router.post(f"{BASE_URL}/API/portal/profileMember")
+
+        with httpx.Client() as client:
+            ensure_initial_admin(client, config)
+
+    assert profile_search.call_count == 1
+    assert user_search.call_count == 1
+    assert member_search.call_count == 1
+    assert not create_user.called
+    assert not create_member.called
+
+
+def test_no_eleva_una_cuenta_homonima_con_otra_password(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+
+    with respx.mock(assert_all_called=True) as router:
+        router.get(f"{BASE_URL}/API/portal/profile").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": "7", "name": "Administrator"}]
+            )
+        )
+        router.get(f"{BASE_URL}/API/identity/user").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": "8", "userName": "admin@rescuesync.org"}]
+            )
+        )
+        router.get(f"{BASE_URL}/API/portal/profileMember").mock(
+            return_value=httpx.Response(200, json=[])
+        )
+        router.post(f"{BASE_URL}/loginservice").mock(return_value=httpx.Response(401))
+
+        with (
+            httpx.Client() as client,
+            pytest.raises(DeploymentError, match="otras credenciales"),
+        ):
+            ensure_initial_admin(client, config)
 
 
 def test_instala_y_habilita_un_proceso_ausente(tmp_path: Path) -> None:

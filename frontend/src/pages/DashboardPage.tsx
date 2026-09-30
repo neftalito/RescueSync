@@ -1,43 +1,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactElement } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
-import { sessionQueryKey } from "../hooks/useSession";
-import { roleLabels, type Role, type Session } from "../schemas/auth";
+import { BandejaEmergencias } from "../components/BandejaEmergencias";
+import { EmergenciaForm } from "../components/EmergenciaForm";
+import { NotificationCenter } from "../components/NotificationCenter";
+import { roleLabels, type Session } from "../schemas/auth";
 
 interface DashboardPageProps {
   session: Session;
 }
-
-interface Stage {
-  role: Role;
-  actor: string;
-  title: string;
-  description: string;
-}
-
-const stages: Stage[] = [
-  {
-    role: "OPERADOR_MUNICIPAL",
-    actor: "Municipio",
-    title: "Registrar emergencia",
-    description: "Gravedad, zona afectada y descripción inicial.",
-  },
-  {
-    role: "COORDINADOR_REGIONAL",
-    actor: "Centro coordinador",
-    title: "Generar y publicar lotes",
-    description: "Necesidades cuantificadas antes de abrir la convocatoria.",
-  },
-  {
-    role: "REPRESENTANTE_ONG",
-    actor: "ONG",
-    title: "Presentar oferta",
-    description: "Recursos y personal para uno o más lotes publicados.",
-  },
-];
 
 export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const navigate = useNavigate();
@@ -45,7 +19,11 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const mutation = useMutation({
     mutationFn: () => logout(session.csrf_token),
     onSuccess: () => {
-      queryClient.removeQueries({ queryKey: sessionQueryKey });
+      // Limpia todo el caché (no solo la sesión): sin esto, una bandeja
+      // consultada por este usuario podría seguir en caché y mostrarse
+      // brevemente a la siguiente persona que inicie sesión en la misma
+      // pestaña, antes de que ese query vuelva a pedirse.
+      queryClient.clear();
       navigate("/login", { replace: true });
     },
   });
@@ -55,9 +33,9 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
       : mutation.isError
         ? "No pudimos cerrar la sesión. Intentá nuevamente."
         : null;
-  const visibleStages = stages.filter(
-    (stage) => stage.role === session.usuario.rol,
-  );
+  const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
+  const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
+  const esOng = session.usuario.rol === "REPRESENTANTE_ONG";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -80,6 +58,21 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 {roleLabels[session.usuario.rol]}
               </p>
             </div>
+            {session.usuario.rol === "ADMINISTRADOR" && (
+              <Link
+                to="/usuarios"
+                className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800"
+              >
+                Usuarios
+              </Link>
+            )}
+            <NotificationCenter csrfToken={session.csrf_token} />
+            <Link
+              to="/cambiar-password"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cambiar contraseña
+            </Link>
             <button
               type="button"
               disabled={mutation.isPending}
@@ -145,7 +138,81 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
             Acciones disponibles para tu rol
           </h2>
 
-          {visibleStages.length === 0 ? (
+          {session.usuario.rol === "ADMINISTRADOR" ? (
+            <article className="mt-5 rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-semibold text-slate-950">
+                Gestionar usuarios
+              </h3>
+              <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                Creá cuentas, actualizá roles y organizaciones, restablecé
+                contraseñas y administrá accesos.
+              </p>
+              <Link
+                to="/usuarios"
+                className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+              >
+                Abrir administración
+              </Link>
+            </article>
+          ) : esMunicipio ? (
+            <div className="mt-5 space-y-8">
+              <EmergenciaForm csrfToken={session.csrf_token} />
+              <BandejaEmergencias
+                rol="OPERADOR_MUNICIPAL"
+                csrfToken={session.csrf_token}
+              />
+            </div>
+          ) : esCoordinador ? (
+            <div className="mt-5">
+              <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
+            </div>
+          ) : esOng ? (
+            <div className="mt-5 grid gap-5 md:grid-cols-3">
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Convocatorias abiertas
+                </h3>
+                <p className="mt-3 leading-7 text-slate-600">
+                  Consultá las convocatorias vigentes y los lotes publicados en
+                  cada una.
+                </p>
+                <Link
+                  to="/convocatorias"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                >
+                  Ver convocatorias
+                </Link>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Mis ofertas
+                </h3>
+                <p className="mt-3 leading-7 text-slate-600">
+                  Revisá las ofertas que presentaste y su estado.
+                </p>
+                <Link
+                  to="/mis-ofertas"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                >
+                  Ver mis ofertas
+                </Link>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Presentar oferta
+                </h3>
+                <p className="mt-3 leading-7 text-slate-600">
+                  Recursos y personal para uno o más lotes publicados.
+                </p>
+                <Link
+                  to="/ofertas/nueva"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                >
+                  Crear oferta
+                </Link>
+              </article>
+            </div>
+          ) : (
             <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-xl font-semibold text-slate-950">
                 Perfil preparado para auditoría
@@ -155,37 +222,6 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                 Las consultas e indicadores se incorporarán en etapas posteriores.
               </p>
             </article>
-          ) : (
-            <div className="mt-5 grid gap-5 md:grid-cols-3">
-              {visibleStages.map((stage, index) => (
-                <article
-                  key={stage.actor}
-                  className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-cyan-800">
-                      {stage.actor}
-                    </span>
-                    <span className="grid size-8 place-items-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
-                      {index + 1}
-                    </span>
-                  </div>
-                  <h3 className="mt-8 text-xl font-semibold text-slate-950">
-                    {stage.title}
-                  </h3>
-                  <p className="mt-3 leading-7 text-slate-600">
-                    {stage.description}
-                  </p>
-                  <button
-                    type="button"
-                    disabled
-                    className="mt-8 w-full cursor-not-allowed rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-400"
-                  >
-                    Próximamente
-                  </button>
-                </article>
-              ))}
-            </div>
           )}
         </section>
       </section>

@@ -33,7 +33,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-rescuesync}
       POSTGRES_USER: ${POSTGRES_USER:-rescuesync}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuesync_dev}
-      CORS_ORIGINS: '["http://localhost:${FRONTEND_PORT:-5173}"]'
+      CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:${FRONTEND_PORT:-5173}"]}'
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@rescuesync.org}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-administrador123}
       BONITA_BASE_URL: ${BONITA_BASE_URL:-http://bonita:8080/bonita}
       BONITA_USERNAME: ${BONITA_USERNAME:-install}
       BONITA_PASSWORD: ${BONITA_PASSWORD:-install}
@@ -67,6 +69,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
+      - ./docs:/docs:ro
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
@@ -88,7 +91,12 @@ services:
     build:
       context: ./frontend
       target: development
-    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    command:
+      - sh
+      - -c
+      - |
+        until wget -q -O /dev/null http://backend:8000/api/v1/health/bonita; do sleep 2; done
+        exec npm run dev -- --host 0.0.0.0
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
     ports:
@@ -160,6 +168,8 @@ services:
       BONITA_BASE_URL: http://bonita:8080/bonita
       BONITA_USERNAME: ${BONITA_USERNAME:-install}
       BONITA_PASSWORD: ${BONITA_PASSWORD:-install}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@rescuesync.org}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-administrador123}
       BONITA_ACTOR_PASSWORD: ${BONITA_ACTOR_PASSWORD:-}
       BONITA_PROCESS_NAME: ${BONITA_PROCESS_NAME:-RescueSync}
       BONITA_PROCESS_VERSION: ${BONITA_PROCESS_VERSION:-1.2}
@@ -177,6 +187,8 @@ services:
     depends_on:
       bonita:
         condition: service_started
+      backend:
+        condition: service_healthy
     restart: "no"
 
 volumes:

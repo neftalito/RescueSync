@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -14,16 +15,20 @@ from app.db.models import (
     ConvocatoriaLote,
     Emergencia,
     EstadoConvocatoria,
+    EstadoEmergencia,
+    EstadoLote,
     EstadoOferta,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
     Lote,
+    Notificacion,
     Oferta,
     OfertaItem,
     OfertaVersion,
     Organizacion,
     RolUsuario,
     TipoAporte,
+    TipoNotificacion,
     TipoOrganizacion,
     Usuario,
 )
@@ -58,7 +63,8 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
     app.dependency_overrides[get_db] = usar_sesion_de_prueba
     try:
-        yield TestClient(app)
+        with TestClient(app) as test_client:
+            yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
 
@@ -119,6 +125,7 @@ def escenario(db_session: Session) -> Escenario:
             tipo_necesidad=tipo,
             cantidad_requerida=cantidad,
             unidad=unidad,
+            estado=EstadoLote.PUBLICADO,
         )
         db_session.add(lote)
         lotes.append(lote)
@@ -150,11 +157,26 @@ def _oferta(
     estado: EstadoOferta,
     versiones: list[list[tuple[Lote, Decimal, str]]],
     presentada: bool = True,
+    identificador_ong: str | None = None,
 ) -> Oferta:
+    ong = escenario.ong
+    representante = escenario.representante
+    if identificador_ong is not None:
+        ong = _organizacion(
+            session,
+            TipoOrganizacion.ONG,
+            f"ONG CB {identificador_ong}",
+        )
+        representante = _usuario(
+            session,
+            ong,
+            RolUsuario.REPRESENTANTE_ONG,
+            f"ong-{identificador_ong}@cb.org",
+        )
     oferta = Oferta(
         convocatoria_id=escenario.convocatoria.id,
-        ong_creadora_id=escenario.ong.id,
-        creada_por_usuario_id=escenario.representante.id,
+        ong_creadora_id=ong.id,
+        creada_por_usuario_id=representante.id,
         estado=estado,
         version_actual=len(versiones),
     )
@@ -163,7 +185,7 @@ def _oferta(
     for numero, items in enumerate(versiones, start=1):
         version = OfertaVersion(
             oferta_id=oferta.id,
-            creada_por_usuario_id=escenario.representante.id,
+            creada_por_usuario_id=representante.id,
             numero=numero,
             presentada_en=datetime.now(UTC) if presentada else None,
         )
@@ -260,7 +282,7 @@ def test_responde_503_si_el_token_no_esta_configurado(
     assert response.status_code == 503
 
 
-def test_notificacion_alinea_el_cierre_con_bonita_y_es_idempotente(
+def test_confirmacion_alinea_el_cierre_sin_notificar_a_la_ong_y_es_idempotente(
     client: TestClient,
     escenario: Escenario,
     db_session: Session,
@@ -275,6 +297,13 @@ def test_notificacion_alinea_el_cierre_con_bonita_y_es_idempotente(
     assert primera.json()["convocatoriaId"] == escenario.convocatoria.id
     db_session.refresh(escenario.convocatoria)
     assert escenario.convocatoria.cierra_en == cierre
+    avisos = db_session.scalars(
+        select(Notificacion).where(
+            Notificacion.usuario_id == escenario.representante.id,
+            Notificacion.tipo == TipoNotificacion.CONVOCATORIA_ACTUALIZADA,
+        )
+    ).all()
+    assert avisos == []
 
 
 @pytest.mark.parametrize(
@@ -350,7 +379,16 @@ def test_cierre_es_idempotente_y_bloquea_nuevas_notificaciones(
     assert primera.json()["estado"] == "CERRADA"
     assert primera.json()["cerradaEn"] == segunda.json()["cerradaEn"]
     db_session.refresh(escenario.convocatoria)
+    db_session.refresh(escenario.emergencia)
     assert escenario.convocatoria.estado is EstadoConvocatoria.CERRADA
+    assert escenario.emergencia.estado is EstadoEmergencia.EN_EVALUACION
+    aviso_municipal = db_session.scalar(
+        select(Notificacion).where(
+            Notificacion.usuario_id == escenario.emergencia.creada_por_usuario_id,
+            Notificacion.tipo == TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
+        )
+    )
+    assert aviso_municipal is not None
     reapertura = _notificar(
         client, escenario, cierre=datetime.now(UTC) + timedelta(hours=1)
     )
@@ -377,7 +415,7 @@ def test_consolida_solo_versiones_vigentes_presentadas_y_en_la_unidad_publicada(
         escenario,
         EstadoOferta.PRESENTADA,
         [
-            [(agua, Decimal(5000), "litros")],
+            [(agua, Decimal(500), "litros")],
             [(agua, Decimal(600), " Litros "), (kits, Decimal(4), "kits")],
         ],
     )
@@ -385,13 +423,22 @@ def test_consolida_solo_versiones_vigentes_presentadas_y_en_la_unidad_publicada(
         db_session,
         escenario,
         EstadoOferta.PRESENTADA,
-        [[(agua, Decimal(400), "litros"), (kits, Decimal(99), "cajas")]],
+        [[(agua, Decimal(400), "litros"), (kits, Decimal(9), "cajas")]],
+        identificador_ong="segunda",
     )
     _oferta(
-        db_session, escenario, EstadoOferta.BORRADOR, [[(kits, Decimal(10), "kits")]]
+        db_session,
+        escenario,
+        EstadoOferta.BORRADOR,
+        [[(kits, Decimal(10), "kits")]],
+        identificador_ong="borrador",
     )
     _oferta(
-        db_session, escenario, EstadoOferta.RETIRADA, [[(kits, Decimal(10), "kits")]]
+        db_session,
+        escenario,
+        EstadoOferta.RETIRADA,
+        [[(kits, Decimal(10), "kits")]],
+        identificador_ong="retirada",
     )
     _cerrar(client, escenario)
 

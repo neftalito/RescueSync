@@ -116,9 +116,7 @@ ciclo de vida:
 from app.core.config import get_settings
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 
-with ClienteBonita(
-    ConfiguracionBonita.desde_settings(get_settings())
-) as cliente:
+with ClienteBonita(ConfiguracionBonita.desde_settings(get_settings())) as cliente:
     proceso = cliente.obtener_proceso_habilitado()
 ```
 

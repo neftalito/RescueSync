@@ -16,6 +16,7 @@ class RolUsuario(StrEnum):
     COORDINADOR_REGIONAL = "COORDINADOR_REGIONAL"
     REPRESENTANTE_ONG = "REPRESENTANTE_ONG"
     AUDITOR_DIRECTIVO = "AUDITOR_DIRECTIVO"
+    ADMINISTRADOR = "ADMINISTRADOR"
 
 
 class GravedadEmergencia(StrEnum):
@@ -44,6 +45,16 @@ class EstadoSincronizacionBonita(StrEnum):
 
     PENDIENTE = "PENDIENTE"
     VINCULADA = "VINCULADA"
+    ERROR = "ERROR"
+    RESULTADO_DESCONOCIDO = "RESULTADO_DESCONOCIDO"
+
+
+class EstadoTareaBonita(StrEnum):
+    """Resultado conocido de completar una tarea humana de Bonita al publicar."""
+
+    PENDIENTE = "PENDIENTE"
+    EN_PROGRESO = "EN_PROGRESO"
+    COMPLETADA = "COMPLETADA"
     ERROR = "ERROR"
     RESULTADO_DESCONOCIDO = "RESULTADO_DESCONOCIDO"
 
@@ -90,3 +101,14 @@ class TipoParticipacion(StrEnum):
 
     LIDER = "LIDER"
     MIEMBRO = "MIEMBRO"
+
+
+class TipoNotificacion(StrEnum):
+    """Clasifica las novedades operativas que recibe un usuario."""
+
+    EMERGENCIA_REGISTRADA = "EMERGENCIA_REGISTRADA"
+    EMERGENCIA_ESTADO_ACTUALIZADO = "EMERGENCIA_ESTADO_ACTUALIZADO"
+    CONVOCATORIA_PUBLICADA = "CONVOCATORIA_PUBLICADA"
+    CONVOCATORIA_ACTUALIZADA = "CONVOCATORIA_ACTUALIZADA"
+    CONVOCATORIA_CERRADA = "CONVOCATORIA_CERRADA"
+    OFERTA_RECIBIDA = "OFERTA_RECIBIDA"

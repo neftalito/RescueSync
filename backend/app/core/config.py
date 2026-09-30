@@ -2,12 +2,22 @@ from functools import lru_cache
 from secrets import token_urlsafe
 from typing import Literal, Self
 
-from pydantic import Field, PrivateAttr, SecretStr, field_validator, model_validator
+from pydantic import (
+    EmailStr,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
 BONITA_CALLBACK_TOKEN_DESARROLLO = "dev-only-rescuesync-bonita-callback-token"
 """Token compartido por Compose en desarrollo; nunca es válido en producción."""
+
+ADMIN_INITIAL_PASSWORD_DESARROLLO = "administrador123"
+"""Clave pública del entorno local; nunca es válida en producción."""
 
 
 class Settings(BaseSettings):
@@ -55,6 +65,9 @@ class Settings(BaseSettings):
     session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     session_cookie_secure: bool | None = None
 
+    admin_email: EmailStr = "admin@rescuesync.org"
+    admin_initial_password: SecretStr = SecretStr(ADMIN_INITIAL_PASSWORD_DESARROLLO)
+
     @field_validator("session_secret", "bonita_callback_token", mode="before")
     @classmethod
     def normalizar_secreto_vacio(cls, valor: object) -> object:
@@ -80,6 +93,17 @@ class Settings(BaseSettings):
             raise ValueError("SESSION_SECRET debe tener al menos 32 caracteres")
         return valor
 
+    @field_validator("admin_initial_password")
+    @classmethod
+    def validar_admin_initial_password(cls, valor: SecretStr) -> SecretStr:
+        """Exige que la contraseña inicial cumpla la política local."""
+
+        if not 8 <= len(valor.get_secret_value()) <= 128:
+            raise ValueError(
+                "ADMIN_INITIAL_PASSWORD debe tener entre 8 y 128 caracteres"
+            )
+        return valor
+
     @model_validator(mode="after")
     def exigir_secret_en_produccion(self) -> Self:
         """Impide iniciar con configuraciones de sesión inseguras."""
@@ -98,6 +122,14 @@ class Settings(BaseSettings):
         ):
             raise ValueError(
                 "BONITA_CALLBACK_TOKEN propio es obligatorio en producción"
+            )
+        if (
+            self.app_env.casefold() == "production"
+            and self.admin_initial_password.get_secret_value()
+            == ADMIN_INITIAL_PASSWORD_DESARROLLO
+        ):
+            raise ValueError(
+                "ADMIN_INITIAL_PASSWORD propio es obligatorio en producción"
             )
         if self.session_cookie_samesite == "none" and not self.cookies_seguras:
             raise ValueError("SameSite=None requiere cookies Secure")

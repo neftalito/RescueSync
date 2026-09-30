@@ -136,6 +136,7 @@ def _publicar_lote(
     convocatoria: Convocatoria,
     lote: Lote,
 ) -> ConvocatoriaLote:
+    lote.estado = EstadoLote.PUBLICADO
     publicacion = ConvocatoriaLote(
         convocatoria_id=convocatoria.id,
         lote_id=lote.id,
@@ -192,6 +193,7 @@ def test_metadata_registra_todo_el_esquema() -> None:
         "oferta_version",
         "oferta_item",
         "oferta_participante",
+        "notificacion",
     }
 
 
@@ -262,7 +264,7 @@ def test_persiste_el_flujo_basico_con_defaults_y_relaciones(
 
     assert emergencia.estado is EstadoEmergencia.REGISTRADA
     assert emergencia.bonita_sync is EstadoSincronizacionBonita.PENDIENTE
-    assert lote.estado is EstadoLote.BORRADOR
+    assert lote.estado is EstadoLote.PUBLICADO
     assert convocatoria.estado is EstadoConvocatoria.ABIERTA
     assert publicacion.lote_id == lote.id
     assert item.convocatoria_lote == publicacion
@@ -316,6 +318,42 @@ def test_rol_de_usuario_debe_corresponder_a_su_organizacion(
         db_session.flush()
 
     _assert_restriccion(error, "ck_usuario_rol_organizacion")
+
+
+def test_administrador_no_admite_organizacion(db_session: Session) -> None:
+    municipio = _crear_organizacion(
+        db_session,
+        TipoOrganizacion.MUNICIPIO,
+        "Municipio administrador inválido",
+    )
+    usuario = Usuario(
+        organizacion_id=municipio.id,
+        email="admin-organizacion@rescuesync.org",
+        password_hash=ARGON2_HASH,
+        rol=RolUsuario.ADMINISTRADOR,
+    )
+    db_session.add(usuario)
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_usuario_rol_organizacion")
+
+
+def test_version_de_sesion_debe_ser_positiva(db_session: Session) -> None:
+    usuario = Usuario(
+        organizacion_id=None,
+        email="version-invalida@rescuesync.org",
+        password_hash=ARGON2_HASH,
+        rol=RolUsuario.AUDITOR_DIRECTIVO,
+        version_sesion=0,
+    )
+    db_session.add(usuario)
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_usuario_version_sesion_positiva")
 
 
 def test_emergencia_requiere_una_organizacion_municipal(
@@ -520,6 +558,135 @@ def test_item_rechaza_convocatoria_distinta_a_la_oferta(
         db_session.flush()
 
     _assert_restriccion(error, "ck_oferta_item_misma_convocatoria")
+
+
+def test_item_rechaza_lote_asociado_que_no_esta_publicado(
+    db_session: Session,
+) -> None:
+    municipio = _crear_organizacion(
+        db_session, TipoOrganizacion.MUNICIPIO, "Municipio Lote Borrador"
+    )
+    ong = _crear_organizacion(db_session, TipoOrganizacion.ONG, "ONG Lote Borrador")
+    operador = _crear_usuario(
+        db_session,
+        municipio,
+        RolUsuario.OPERADOR_MUNICIPAL,
+        "borrador@municipio.test",
+    )
+    representante = _crear_usuario(
+        db_session,
+        ong,
+        RolUsuario.REPRESENTANTE_ONG,
+        "borrador@ong.test",
+    )
+    emergencia = _crear_emergencia(db_session, municipio, operador, "Zona borrador")
+    lote = _crear_lote(db_session, emergencia, operador, "Agua")
+    convocatoria = _crear_convocatoria(db_session, emergencia, 1)
+    db_session.add(
+        ConvocatoriaLote(
+            convocatoria_id=convocatoria.id,
+            lote_id=lote.id,
+            cantidad_publicada=lote.cantidad_requerida,
+            unidad_publicada=lote.unidad,
+        )
+    )
+    db_session.flush()
+    _, version = _crear_oferta(db_session, convocatoria, ong, representante)
+    db_session.add(
+        OfertaItem(
+            oferta_version_id=version.id,
+            convocatoria_id=convocatoria.id,
+            lote_id=lote.id,
+            tipo=TipoAporte.RECURSO,
+            descripcion="Agua potable",
+            cantidad_ofrecida=Decimal(10),
+            unidad=lote.unidad,
+        )
+    )
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_oferta_item_lote_publicado")
+
+
+def test_oferta_es_unica_por_ong_y_convocatoria(db_session: Session) -> None:
+    municipio = _crear_organizacion(
+        db_session, TipoOrganizacion.MUNICIPIO, "Municipio Oferta Única"
+    )
+    ong = _crear_organizacion(db_session, TipoOrganizacion.ONG, "ONG Oferta Única")
+    operador = _crear_usuario(
+        db_session,
+        municipio,
+        RolUsuario.OPERADOR_MUNICIPAL,
+        "oferta-unica@municipio.test",
+    )
+    representante = _crear_usuario(
+        db_session,
+        ong,
+        RolUsuario.REPRESENTANTE_ONG,
+        "oferta-unica@ong.test",
+    )
+    emergencia = _crear_emergencia(db_session, municipio, operador, "Zona oferta única")
+    convocatoria = _crear_convocatoria(db_session, emergencia, 1)
+    _crear_oferta(db_session, convocatoria, ong, representante)
+    db_session.add(
+        Oferta(
+            convocatoria_id=convocatoria.id,
+            ong_creadora_id=ong.id,
+            creada_por_usuario_id=representante.id,
+            estado=EstadoOferta.PRESENTADA,
+        )
+    )
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "uq_oferta_convocatoria_ong_vigente")
+
+
+def test_item_rechaza_cantidad_mayor_que_la_publicada(
+    db_session: Session,
+) -> None:
+    municipio = _crear_organizacion(
+        db_session, TipoOrganizacion.MUNICIPIO, "Municipio Cantidad Máxima"
+    )
+    ong = _crear_organizacion(db_session, TipoOrganizacion.ONG, "ONG Cantidad Máxima")
+    operador = _crear_usuario(
+        db_session,
+        municipio,
+        RolUsuario.OPERADOR_MUNICIPAL,
+        "cantidad-maxima@municipio.test",
+    )
+    representante = _crear_usuario(
+        db_session,
+        ong,
+        RolUsuario.REPRESENTANTE_ONG,
+        "cantidad-maxima@ong.test",
+    )
+    emergencia = _crear_emergencia(
+        db_session, municipio, operador, "Zona cantidad máxima"
+    )
+    lote = _crear_lote(db_session, emergencia, operador, "Agua")
+    convocatoria = _crear_convocatoria(db_session, emergencia, 1)
+    _publicar_lote(db_session, convocatoria, lote)
+    _, version = _crear_oferta(db_session, convocatoria, ong, representante)
+    db_session.add(
+        OfertaItem(
+            oferta_version_id=version.id,
+            convocatoria_id=convocatoria.id,
+            lote_id=lote.id,
+            tipo=TipoAporte.RECURSO,
+            descripcion="Agua potable",
+            cantidad_ofrecida=Decimal(1001),
+            unidad=lote.unidad,
+        )
+    )
+
+    with pytest.raises(IntegrityError) as error:
+        db_session.flush()
+
+    _assert_restriccion(error, "ck_oferta_item_cantidad_publicada")
 
 
 def test_oferta_requiere_una_organizacion_ong(db_session: Session) -> None:

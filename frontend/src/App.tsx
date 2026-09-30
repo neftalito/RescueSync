@@ -1,10 +1,18 @@
 import { type ReactElement } from "react";
-import { Navigate, Route, Routes } from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
+import { useNotificacionesTiempoReal } from "./hooks/useNotificacionesTiempoReal";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { LotesPage } from "./pages/LotesPage";
+import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
+import { MisOfertasPage } from "./pages/MisOfertasPage";
+import { NuevaOfertaPage } from "./pages/NuevaOfertaPage";
+import { UsersPage } from "./pages/UsersPage";
 
 function LoadingScreen(): ReactElement {
   return (
@@ -19,8 +27,12 @@ function LoadingScreen(): ReactElement {
   );
 }
 
-function ProtectedDashboard(): ReactElement {
+function ProtectedApp(): ReactElement {
   const session = useSession();
+  const location = useLocation();
+  const tiempoRealHabilitado =
+    session.isSuccess && !session.data.usuario.requiere_cambio_password;
+  useNotificacionesTiempoReal(tiempoRealHabilitado);
 
   if (session.isPending) return <LoadingScreen />;
 
@@ -53,15 +65,92 @@ function ProtectedDashboard(): ReactElement {
     );
   }
 
-  return <DashboardPage session={session.data} />;
+  if (
+    session.data.usuario.requiere_cambio_password &&
+    location.pathname !== "/cambiar-password"
+  ) {
+    return <Navigate to="/cambiar-password" replace />;
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardPage session={session.data} />} />
+      <Route
+        path="/cambiar-password"
+        element={<ChangePasswordPage session={session.data} />}
+      />
+      <Route
+        path="/usuarios"
+        element={
+          session.data.usuario.rol === "ADMINISTRADOR" ? (
+            <UsersPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/emergencias/:emergenciaId/lotes"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <LotesPage session={session.data} />
+          ) : session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <LotesPublicadosPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/convocatorias"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <ConvocatoriasAbiertasPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-ofertas"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <MisOfertasPage />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/ofertas/nueva"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <NuevaOfertaPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/ofertas/:ofertaId/editar"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <NuevaOfertaPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }
 
 export default function App(): ReactElement {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<ProtectedDashboard />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/*" element={<ProtectedApp />} />
     </Routes>
   );
 }

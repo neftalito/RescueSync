@@ -31,6 +31,7 @@ from app.db.models import (
     Usuario,
 )
 from app.db.session import SessionLocal
+from app.services.bootstrap import asegurar_admin_inicial
 
 
 @dataclass(frozen=True)
@@ -217,6 +218,7 @@ def _oferta(
         select(Oferta).where(
             Oferta.convocatoria_id == convocatoria.id,
             Oferta.ong_creadora_id == ong.id,
+            Oferta.fusionada_en_oferta_id.is_(None),
         )
     )
     if oferta is None:
@@ -305,6 +307,8 @@ def _oferta(
 
 def seed_development_data(session: Session) -> SeedResult:
     """Crea o actualiza un escenario reproducible de la Entrega 2 sin duplicarlo."""
+
+    administrador = asegurar_admin_inicial(session, get_settings())
 
     municipio = _organizacion(
         session,
@@ -432,6 +436,11 @@ def seed_development_data(session: Session) -> SeedResult:
             CuentaSeed(
                 "auditor@rescuesync.org",
                 RolUsuario.AUDITOR_DIRECTIVO,
+                None,
+            ),
+            CuentaSeed(
+                administrador.email,
+                RolUsuario.ADMINISTRADOR,
                 None,
             ),
         ),
