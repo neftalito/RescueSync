@@ -72,6 +72,7 @@ persistencia del buzón no depende de ese bus.
    - Frontend: <http://localhost:5173>
    - API: <http://localhost:8000>
    - Swagger UI: <http://localhost:8000/docs>
+   - Bandeja local de correos (Mailpit): <http://localhost:8025>
    - Bonita Runtime: <http://localhost:8080/bonita>
    - Health de PostgreSQL: <http://localhost:8000/api/v1/health/database>
    - Health de Bonita: <http://localhost:8000/api/v1/health/bonita>
@@ -98,6 +99,17 @@ además de las dependencias de Node almacenadas en volúmenes.
 La guía de [autenticación local](docs/autenticacion-local.md) contiene las
 cuentas del seed, bootstrap del administrador, gestión de usuarios, cambio de
 contraseñas, endpoints de sesión y matriz RBAC.
+
+Desde el dashboard, el administrador también puede crear, editar, desactivar y
+recuperar municipios, centros coordinadores y ONG. La baja es lógica y desactiva
+las cuentas relacionadas; la recuperación no devuelve acceso a esas cuentas de
+forma automática.
+
+Al crear un usuario desde la administración, el backend genera una contraseña
+temporal y la envía por SMTP. En desarrollo, Mailpit captura el mensaje sin
+entregarlo a Internet; puede inspeccionarse en <http://localhost:8025>. Las
+variables `SMTP_*` permiten apuntar el mismo cliente a un sandbox de Mailtrap u
+otro proveedor SMTP.
 
 ## Cliente reutilizable de Bonita
 

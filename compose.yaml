@@ -1,6 +1,17 @@
 name: rescuesync
 
 services:
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   db:
     image: postgres:16-alpine
     environment:
@@ -44,6 +55,14 @@ services:
       BONITA_CALLBACK_TOKEN: ${BONITA_CALLBACK_TOKEN:-dev-only-rescuesync-bonita-callback-token}
       BONITA_CLIENT_CONNECT_TIMEOUT_SECONDS: ${BONITA_CLIENT_CONNECT_TIMEOUT_SECONDS:-3}
       BONITA_CLIENT_READ_TIMEOUT_SECONDS: ${BONITA_CLIENT_READ_TIMEOUT_SECONDS:-10}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
+      SMTP_SENDER_EMAIL: ${SMTP_SENDER_EMAIL:-no-reply@rescuesync.org}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
+      FRONTEND_PUBLIC_URL: ${FRONTEND_PUBLIC_URL:-http://localhost:${FRONTEND_PORT:-5173}}
     depends_on:
       db:
         condition: service_healthy
@@ -75,6 +94,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
     healthcheck:
       test:
         - CMD

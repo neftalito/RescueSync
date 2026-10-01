@@ -10,6 +10,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
+from app.integrations.email.cliente import ClienteSMTP, ConfiguracionSMTP
 from app.services.bootstrap import asegurar_admin_inicial
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     gestor_tiempo_real = GestorTiempoReal()
     gestor_tiempo_real.iniciar()
     app.state.gestor_tiempo_real = gestor_tiempo_real
+    app.state.cliente_email = ClienteSMTP(ConfiguracionSMTP.desde_settings(settings))
     try:
         with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
             app.state.cliente_bonita = cliente

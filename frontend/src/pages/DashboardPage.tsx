@@ -139,21 +139,38 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
           </h2>
 
           {session.usuario.rol === "ADMINISTRADOR" ? (
-            <article className="mt-5 rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
-              <h3 className="text-xl font-semibold text-slate-950">
-                Gestionar usuarios
-              </h3>
-              <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                Creá cuentas, actualizá roles y organizaciones, restablecé
-                contraseñas y administrá accesos.
-              </p>
-              <Link
-                to="/usuarios"
-                className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-              >
-                Abrir administración
-              </Link>
-            </article>
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Gestionar usuarios
+                </h3>
+                <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                  Creá cuentas, actualizá roles y organizaciones, restablecé
+                  contraseñas y administrá accesos.
+                </p>
+                <Link
+                  to="/usuarios"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                >
+                  Gestionar usuarios
+                </Link>
+              </article>
+              <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Gestionar organizaciones
+                </h3>
+                <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                  Registrá municipios, centros coordinadores y ONG para
+                  asignarlos a sus usuarios.
+                </p>
+                <Link
+                  to="/organizaciones"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                >
+                  Gestionar organizaciones
+                </Link>
+              </article>
+            </div>
           ) : esMunicipio ? (
             <div className="mt-5 space-y-8">
               <EmergenciaForm csrfToken={session.csrf_token} />

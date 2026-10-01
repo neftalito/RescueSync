@@ -12,6 +12,7 @@ import { LotesPage } from "./pages/LotesPage";
 import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
 import { MisOfertasPage } from "./pages/MisOfertasPage";
 import { NuevaOfertaPage } from "./pages/NuevaOfertaPage";
+import { OrganizationsPage } from "./pages/OrganizationsPage";
 import { UsersPage } from "./pages/UsersPage";
 
 function LoadingScreen(): ReactElement {
@@ -84,6 +85,16 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "ADMINISTRADOR" ? (
             <UsersPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/organizaciones"
+        element={
+          session.data.usuario.rol === "ADMINISTRADOR" ? (
+            <OrganizationsPage session={session.data} />
           ) : (
             <Navigate to="/" replace />
           )

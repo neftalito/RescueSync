@@ -1,3 +1,7 @@
+from dataclasses import dataclass
+from secrets import token_urlsafe
+
+from pydantic import SecretStr
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -25,6 +29,14 @@ class ProteccionAdministradorError(ValueError):
     """Impide que una operación deje al sistema sin administración."""
 
 
+@dataclass(frozen=True)
+class ResultadoAltaUsuario:
+    """Conserva la cuenta y su clave temporal solo durante el caso de uso."""
+
+    usuario: Usuario
+    password_temporal: SecretStr
+
+
 def listar_usuarios(session: Session) -> list[Usuario]:
     """Lista todas las cuentas, incluidas las inactivas, ordenadas por correo."""
 
@@ -33,18 +45,6 @@ def listar_usuarios(session: Session) -> list[Usuario]:
             select(Usuario)
             .options(joinedload(Usuario.organizacion))
             .order_by(func.lower(Usuario.email), Usuario.id)
-        )
-    )
-
-
-def listar_organizaciones_activas(session: Session) -> list[Organizacion]:
-    """Lista organizaciones habilitadas para asignarlas a usuarios operativos."""
-
-    return list(
-        session.scalars(
-            select(Organizacion)
-            .where(Organizacion.activa.is_(True))
-            .order_by(Organizacion.tipo, Organizacion.nombre)
         )
     )
 
@@ -82,7 +82,10 @@ def _resolver_organizacion(
             "El rol seleccionado requiere una organización."
         )
 
-    organizacion = session.get(Organizacion, organizacion_id)
+    # Serializa la asignación con cambios de tipo y bajas de organizaciones.
+    organizacion = session.scalar(
+        select(Organizacion).where(Organizacion.id == organizacion_id).with_for_update()
+    )
     if (
         organizacion is None
         or not organizacion.activa
@@ -102,24 +105,28 @@ def _flush_email_seguro(session: Session) -> None:
         raise EmailDuplicadoError from error
 
 
-def crear_usuario(session: Session, datos: UsuarioCreate) -> Usuario:
-    """Crea una cuenta activa con contraseña temporal y contexto validado."""
+def crear_usuario(session: Session, datos: UsuarioCreate) -> ResultadoAltaUsuario:
+    """Crea una cuenta activa y genera una contraseña temporal impredecible."""
 
     if datos.rol is RolUsuario.ADMINISTRADOR:
         bloquear_gestion_administradores(session)
     email = _normalizar_email(str(datos.email))
     _validar_email_disponible(session, email)
     organizacion = _resolver_organizacion(session, datos.rol, datos.organizacion_id)
+    password_temporal = SecretStr(token_urlsafe(24))
     usuario = Usuario(
         email=email,
-        password_hash=generar_password_hash(datos.password.get_secret_value()),
+        password_hash=generar_password_hash(password_temporal.get_secret_value()),
         rol=datos.rol,
         organizacion_id=organizacion.id if organizacion is not None else None,
         requiere_cambio_password=True,
     )
     session.add(usuario)
     _flush_email_seguro(session)
-    return usuario
+    return ResultadoAltaUsuario(
+        usuario=usuario,
+        password_temporal=password_temporal,
+    )
 
 
 def _obtener_usuario_bloqueado(session: Session, usuario_id: int) -> Usuario:

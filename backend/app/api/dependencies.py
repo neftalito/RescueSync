@@ -20,6 +20,7 @@ from app.core.security import leer_credencial_sesion, verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.integrations.bonita.cliente import ClienteBonita
+from app.integrations.email.cliente import ClienteSMTP
 from app.services.auth import obtener_usuario_vigente
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -165,6 +166,18 @@ def obtener_cliente_bonita(request: Request) -> ClienteBonita:
 
 
 ClienteBonitaDep = Annotated[ClienteBonita, Depends(obtener_cliente_bonita)]
+
+
+def obtener_cliente_email(request: Request) -> ClienteSMTP:
+    """Entrega el adaptador SMTP configurado durante el arranque de la API."""
+
+    cliente = getattr(request.app.state, "cliente_email", None)
+    if isinstance(cliente, ClienteSMTP):
+        return cliente
+    raise RuntimeError("El cliente de correo no fue inicializado en el lifespan.")
+
+
+ClienteEmailDep = Annotated[ClienteSMTP, Depends(obtener_cliente_email)]
 
 
 def obtener_gestor_tiempo_real(request: Request) -> GestorTiempoReal:

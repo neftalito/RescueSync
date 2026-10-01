@@ -13,7 +13,7 @@ from pydantic import (
 from app.db.models.enums import RolUsuario, TipoOrganizacion
 
 
-class OrganizacionResponse(BaseModel):
+class OrganizacionAsignadaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -27,7 +27,7 @@ class UsuarioResponse(BaseModel):
     id: int
     email: str
     rol: RolUsuario
-    organizacion: OrganizacionResponse | None
+    organizacion: OrganizacionAsignadaResponse | None
     activo: bool
     requiere_cambio_password: bool
     creado_en: datetime
@@ -36,7 +36,6 @@ class UsuarioResponse(BaseModel):
 
 class UsuarioCreate(BaseModel):
     email: EmailStr
-    password: SecretStr = Field(min_length=8, max_length=128)
     rol: RolUsuario
     organizacion_id: int | None = Field(default=None, gt=0)
 

@@ -3,12 +3,12 @@ from typing import Annotated, NoReturn
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import UsuarioAdministrador, validar_csrf
-from app.db.models import Organizacion, Usuario
+from app.api.dependencies import ClienteEmailDep, UsuarioAdministrador, validar_csrf
+from app.db.models import Usuario
 from app.db.session import get_db
+from app.integrations.email.cliente import EmailNoDisponibleError
 from app.schemas import ErrorResponse
 from app.schemas.usuarios import (
-    OrganizacionResponse,
     PasswordTemporalRequest,
     UsuarioCreate,
     UsuarioResponse,
@@ -22,13 +22,11 @@ from app.services.usuarios import (
     actualizar_usuario,
     crear_usuario,
     desactivar_usuario,
-    listar_organizaciones_activas,
     listar_usuarios,
     restablecer_password,
 )
 
 router = APIRouter()
-organizaciones_router = APIRouter()
 
 RESPUESTAS_GESTION = {
     status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
@@ -36,6 +34,7 @@ RESPUESTAS_GESTION = {
     status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
     status.HTTP_409_CONFLICT: {"model": ErrorResponse},
     status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
+    status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
 }
 
 
@@ -60,6 +59,14 @@ def _traducir_error(error: Exception) -> NoReturn:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(error),
         ) from error
+    if isinstance(error, EmailNoDisponibleError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "No pudimos enviar las credenciales. El usuario no fue creado; "
+                "intentá nuevamente."
+            ),
+        ) from error
     raise error
 
 
@@ -82,21 +89,30 @@ def obtener_usuarios(
     status_code=status.HTTP_201_CREATED,
     responses=RESPUESTAS_GESTION,
     summary="Crear un usuario",
-    description="Crea una cuenta activa con una contraseña temporal.",
+    description=(
+        "Genera una contraseña temporal, crea la cuenta y envía las credenciales "
+        "al correo del usuario."
+    ),
 )
 def alta_usuario(
     datos: UsuarioCreate,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
+    cliente_email: ClienteEmailDep,
     __: Annotated[None, Depends(validar_csrf)],
 ) -> Usuario:
     try:
-        usuario = crear_usuario(session, datos)
+        resultado = crear_usuario(session, datos)
+        cliente_email.enviar_alta_usuario(
+            resultado.usuario.email,
+            resultado.password_temporal.get_secret_value(),
+        )
         session.commit()
-        return usuario
+        return resultado.usuario
     except (
         ContextoUsuarioInvalidoError,
         EmailDuplicadoError,
+        EmailNoDisponibleError,
     ) as error:
         session.rollback()
         _traducir_error(error)
@@ -187,16 +203,3 @@ def cambiar_password_usuario(
     ) as error:
         session.rollback()
         _traducir_error(error)
-
-
-@organizaciones_router.get(
-    "",
-    response_model=list[OrganizacionResponse],
-    summary="Listar organizaciones activas",
-    description="Ofrece las organizaciones asignables desde la gestión de usuarios.",
-)
-def obtener_organizaciones(
-    _: UsuarioAdministrador,
-    session: Annotated[Session, Depends(get_db)],
-) -> list[Organizacion]:
-    return listar_organizaciones_activas(session)
