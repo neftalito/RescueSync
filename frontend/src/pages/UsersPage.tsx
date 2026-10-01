@@ -107,7 +107,9 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
             organizations={organizations.data}
             csrfToken={session.csrf_token}
             onCreated={async () => {
-              setFeedback("Usuario creado con contraseña temporal.");
+              setFeedback(
+                "Usuario creado. La contraseña temporal fue enviada por correo.",
+              );
               await queryClient.invalidateQueries({ queryKey: usersQueryKey });
             }}
           />
@@ -333,7 +335,6 @@ function CreateUserPanel({
     resolver: zodResolver(createUserSchema),
     defaultValues: {
       email: "",
-      password: "",
       rol: "AUDITOR_DIRECTIVO",
       organizacion_id: "",
     },
@@ -366,7 +367,8 @@ function CreateUserPanel({
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <h2 className="text-xl font-bold text-slate-950">Crear usuario</h2>
       <p className="mt-2 text-sm leading-6 text-slate-600">
-        La contraseña será temporal y deberá cambiarse en el primer acceso.
+        El sistema generará una contraseña temporal y la enviará al correo del
+        usuario. Deberá cambiarla en el primer acceso.
       </p>
       <form
         className="mt-5 grid gap-4 md:grid-cols-2"
@@ -379,14 +381,6 @@ function CreateUserPanel({
             autoComplete="off"
             className="form-input"
             {...register("email")}
-          />
-        </FormField>
-        <FormField label="Contraseña temporal" error={errors.password?.message}>
-          <input
-            type="password"
-            autoComplete="new-password"
-            className="form-input"
-            {...register("password")}
           />
         </FormField>
         <FormField label="Rol" error={errors.rol?.message}>

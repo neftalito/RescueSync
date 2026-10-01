@@ -26,13 +26,7 @@ const userFields = {
   organizacion_id: z.string(),
 };
 
-export const createUserSchema = z.object({
-  ...userFields,
-  password: z
-    .string()
-    .min(8, "La contraseña temporal debe tener al menos 8 caracteres.")
-    .max(128, "La contraseña no puede superar los 128 caracteres."),
-});
+export const createUserSchema = z.object(userFields);
 
 export const editUserSchema = z.object(userFields);
 

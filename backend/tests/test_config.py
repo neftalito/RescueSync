@@ -98,3 +98,21 @@ def test_password_inicial_del_administrador_respeta_la_politica() -> None:
         match="ADMIN_INITIAL_PASSWORD debe tener entre 8 y 128 caracteres",
     ):
         Settings(_env_file=None, admin_initial_password="corta")
+
+
+def test_smtp_acepta_configuracion_local_sin_credenciales() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.smtp_host == "mailpit"
+    assert settings.smtp_port == 1025
+    assert settings.smtp_username is None
+    assert settings.smtp_password is None
+    assert settings.smtp_starttls is False
+
+
+def test_smtp_exige_usuario_y_password_en_conjunto() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="SMTP_USERNAME y SMTP_PASSWORD deben configurarse juntos",
+    ):
+        Settings(_env_file=None, smtp_username="sandbox", smtp_password="")

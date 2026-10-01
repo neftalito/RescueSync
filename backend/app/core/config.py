@@ -3,6 +3,7 @@ from secrets import token_urlsafe
 from typing import Literal, Self
 
 from pydantic import (
+    AnyHttpUrl,
     EmailStr,
     Field,
     PrivateAttr,
@@ -68,7 +69,22 @@ class Settings(BaseSettings):
     admin_email: EmailStr = "admin@rescuesync.org"
     admin_initial_password: SecretStr = SecretStr(ADMIN_INITIAL_PASSWORD_DESARROLLO)
 
-    @field_validator("session_secret", "bonita_callback_token", mode="before")
+    smtp_host: str = "mailpit"
+    smtp_port: int = Field(default=1025, ge=1, le=65_535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = False
+    smtp_sender_email: EmailStr = "no-reply@rescuesync.org"
+    smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    frontend_public_url: AnyHttpUrl = "http://localhost:5173"
+
+    @field_validator(
+        "session_secret",
+        "bonita_callback_token",
+        "smtp_username",
+        "smtp_password",
+        mode="before",
+    )
     @classmethod
     def normalizar_secreto_vacio(cls, valor: object) -> object:
         """Interpreta una variable vacía como configuración no provista."""
@@ -133,6 +149,8 @@ class Settings(BaseSettings):
             )
         if self.session_cookie_samesite == "none" and not self.cookies_seguras:
             raise ValueError("SameSite=None requiere cookies Secure")
+        if (self.smtp_username is None) is not (self.smtp_password is None):
+            raise ValueError("SMTP_USERNAME y SMTP_PASSWORD deben configurarse juntos")
         return self
 
     @property

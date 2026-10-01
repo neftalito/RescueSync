@@ -33,7 +33,6 @@ export function createUser(
     headers: { "X-CSRF-Token": csrfToken },
     body: JSON.stringify({
       email: values.email,
-      password: values.password,
       rol: values.rol,
       organizacion_id: organizationId(values.organizacion_id, values.rol),
     }),

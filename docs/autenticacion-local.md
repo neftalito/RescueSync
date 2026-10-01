@@ -100,10 +100,24 @@ El frontend puede filtrar la navegación, pero cada endpoint debe volver a
 autorizar mediante `requerir_operacion`.
 
 El rol Administrador puede listar, crear, editar, desactivar/reactivar usuarios
-y asignar contraseñas temporales. Las cuentas operativas solo pueden asociarse a
-una organización activa del tipo compatible. La baja es lógica para conservar
-la trazabilidad y no se permite quitar el acceso propio ni dejar el sistema sin
-un administrador activo.
+y asignar contraseñas temporales. Al crear una cuenta, el backend genera una
+clave aleatoria y la envía al correo informado; el administrador no la ingresa
+ni la recibe en la respuesta. Las cuentas operativas solo pueden asociarse a una
+organización activa del tipo compatible. La baja es lógica para conservar la
+trazabilidad y no se permite quitar el acceso propio ni dejar el sistema sin un
+administrador activo.
+
+### Correo local y Mailtrap
+
+Docker Compose levanta Mailpit como buzón SMTP local. Los mensajes no salen a
+Internet y se consultan en <http://localhost:8025>. El backend se conecta a
+`mailpit:1025` por defecto.
+
+Para usar un sandbox alojado de Mailtrap, configurar `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USERNAME`, `SMTP_PASSWORD` y `SMTP_STARTTLS` con los valores del sandbox.
+`SMTP_SENDER_EMAIL`, `SMTP_TIMEOUT_SECONDS` y `FRONTEND_PUBLIC_URL` completan el
+remitente, timeout y enlace que aparece en el mensaje. Las credenciales reales
+solo deben guardarse en `.env`, que no se versiona.
 
 ## Contraseñas y sesiones
 
@@ -122,7 +136,7 @@ cookie renovada y puede continuar trabajando.
 | Método | Ruta | Resultado |
 | --- | --- | --- |
 | `GET` | `/api/v1/usuarios` | Lista cuentas activas e inactivas. |
-| `POST` | `/api/v1/usuarios` | Crea una cuenta con contraseña temporal. |
+| `POST` | `/api/v1/usuarios` | Genera una clave temporal, crea la cuenta y la envía por correo. |
 | `PATCH` | `/api/v1/usuarios/{id}` | Edita email, rol, organización o estado. |
 | `DELETE` | `/api/v1/usuarios/{id}` | Desactiva sin borrar la trazabilidad. |
 | `PUT` | `/api/v1/usuarios/{id}/password` | Asigna una contraseña temporal. |

@@ -36,7 +36,6 @@ class UsuarioResponse(BaseModel):
 
 class UsuarioCreate(BaseModel):
     email: EmailStr
-    password: SecretStr = Field(min_length=8, max_length=128)
     rol: RolUsuario
     organizacion_id: int | None = Field(default=None, gt=0)
 

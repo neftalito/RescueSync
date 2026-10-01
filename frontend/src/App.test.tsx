@@ -248,7 +248,7 @@ describe("autenticación", () => {
     expect(csrfHeader).toBe("csrf-firmado");
   });
 
-  it("permite al administrador crear una cuenta temporal", async () => {
+  it("permite al administrador crear una cuenta y enviar su clave por correo", async () => {
     const adminSession = sessionForRole("ADMINISTRADOR");
     let createdPayload: unknown;
     server.use(
@@ -295,20 +295,21 @@ describe("autenticación", () => {
       screen.getByLabelText("Correo electrónico"),
       "nuevo@rescuesync.org",
     );
-    await user.type(
-      screen.getByLabelText("Contraseña temporal"),
-      "Temporal-2026",
-    );
+    expect(
+      screen.getByText(/generará una contraseña temporal/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Contraseña temporal"),
+    ).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Rol"), "OPERADOR_MUNICIPAL");
     await user.selectOptions(screen.getByLabelText("Organización"), "3");
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     expect(await screen.findByText(
-      "Usuario creado con contraseña temporal.",
+      "Usuario creado. La contraseña temporal fue enviada por correo.",
     )).toBeInTheDocument();
     expect(createdPayload).toEqual({
       email: "nuevo@rescuesync.org",
-      password: "Temporal-2026",
       rol: "OPERADOR_MUNICIPAL",
       organizacion_id: 3,
     });
