@@ -1,11 +1,17 @@
 import "@testing-library/jest-dom/vitest";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router";
 
 import App from "./App";
@@ -256,7 +262,12 @@ describe("autenticación", () => {
       http.get(`${API_URL}/usuarios`, () => HttpResponse.json([])),
       http.get(`${API_URL}/organizaciones`, () =>
         HttpResponse.json([
-          { id: 3, nombre: "Municipio del Delta", tipo: "MUNICIPIO" },
+          {
+            id: 3,
+            nombre: "Municipio del Delta",
+            tipo: "MUNICIPIO",
+            activa: true,
+          },
         ]),
       ),
       http.post(`${API_URL}/usuarios`, async ({ request }) => {
@@ -315,6 +326,145 @@ describe("autenticación", () => {
     });
   });
 
+  it("permite crear, editar, desactivar y recuperar organizaciones", async () => {
+    const adminSession = sessionForRole("ADMINISTRADOR");
+    let organizations: Array<{
+      id: number;
+      nombre: string;
+      tipo: "MUNICIPIO" | "CENTRO_COORDINADOR" | "ONG";
+      activa: boolean;
+    }> = [
+      {
+        id: 8,
+        nombre: "Rescate Inicial",
+        tipo: "ONG" as const,
+        activa: true,
+      },
+    ];
+    let csrfHeader: string | null = null;
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(adminSession)),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json(organizations),
+      ),
+      http.post(`${API_URL}/organizaciones`, async ({ request }) => {
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        expect(await request.json()).toEqual({
+          nombre: "Nueva ONG",
+          tipo: "ONG",
+        });
+        const created = {
+          id: 9,
+          nombre: "Nueva ONG",
+          tipo: "ONG" as const,
+          activa: true,
+        };
+        organizations = [...organizations, created];
+        return HttpResponse.json(created, { status: 201 });
+      }),
+      http.patch(
+        `${API_URL}/organizaciones/:id`,
+        async ({ params, request }) => {
+          csrfHeader = request.headers.get("X-CSRF-Token");
+          const values = (await request.json()) as {
+            nombre?: string;
+            tipo?: "MUNICIPIO" | "CENTRO_COORDINADOR" | "ONG";
+            activa?: boolean;
+          };
+          const id = Number(params.id);
+          const current = organizations.find(
+            (organization) => organization.id === id,
+          );
+          if (!current) return new HttpResponse(null, { status: 404 });
+          const updated = { ...current, ...values };
+          organizations = organizations.map((organization) =>
+            organization.id === id ? updated : organization,
+          );
+          return HttpResponse.json(updated);
+        },
+      ),
+      http.delete(`${API_URL}/organizaciones/:id`, ({ params, request }) => {
+        csrfHeader = request.headers.get("X-CSRF-Token");
+        const id = Number(params.id);
+        organizations = organizations.map((organization) =>
+          organization.id === id
+            ? { ...organization, activa: false }
+            : organization,
+        );
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    renderApp("/organizaciones");
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Administración de organizaciones",
+      }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Nombre"), "Nueva ONG");
+    await user.selectOptions(screen.getByLabelText("Tipo"), "ONG");
+    await user.click(
+      screen.getByRole("button", { name: "Crear organización" }),
+    );
+
+    expect(await screen.findByText("Organización creada.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Nueva ONG" }),
+    ).toBeInTheDocument();
+    expect(csrfHeader).toBe("csrf-firmado");
+
+    const createdCard = screen
+      .getByRole("heading", { name: "Nueva ONG" })
+      .closest("article");
+    expect(createdCard).not.toBeNull();
+    await user.click(
+      within(createdCard!).getByRole("button", { name: "Editar" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Editar Nueva ONG" });
+    await user.clear(within(dialog).getByLabelText("Nombre"));
+    await user.type(within(dialog).getByLabelText("Nombre"), "ONG Actualizada");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Guardar cambios" }),
+    );
+
+    expect(
+      await screen.findByText("Organización actualizada."),
+    ).toBeInTheDocument();
+    const updatedCard = (await screen.findByRole("heading", {
+      name: "ONG Actualizada",
+    })).closest("article");
+    expect(updatedCard).not.toBeNull();
+    await user.click(
+      within(updatedCard!).getByRole("button", { name: "Eliminar" }),
+    );
+
+    expect(confirm).toHaveBeenCalledWith(
+      "¿Eliminar ONG Actualizada? La baja será lógica y también se desactivarán todos sus usuarios.",
+    );
+    expect(
+      await screen.findByText(
+        "Organización eliminada de forma lógica y usuarios relacionados desactivados.",
+      ),
+    ).toBeInTheDocument();
+    const inactiveCard = screen
+      .getByRole("heading", { name: "ONG Actualizada" })
+      .closest("article");
+    expect(inactiveCard).not.toBeNull();
+    await user.click(
+      within(inactiveCard!).getByRole("button", { name: "Recuperar" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Organización recuperada. Sus usuarios permanecen inactivos.",
+      ),
+    ).toBeInTheDocument();
+    expect(csrfHeader).toBe("csrf-firmado");
+    confirm.mockRestore();
+  });
+
   it("reactiva un usuario sin sobrescribir sus datos con valores de la caché", async () => {
     const adminSession = sessionForRole("ADMINISTRADOR");
     const inactiveUser = {
@@ -325,6 +475,7 @@ describe("autenticación", () => {
         id: 3,
         nombre: "Municipio del Delta",
         tipo: "MUNICIPIO",
+        activa: true,
       },
       activo: false,
       requiere_cambio_password: false,

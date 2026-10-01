@@ -49,18 +49,6 @@ def listar_usuarios(session: Session) -> list[Usuario]:
     )
 
 
-def listar_organizaciones_activas(session: Session) -> list[Organizacion]:
-    """Lista organizaciones habilitadas para asignarlas a usuarios operativos."""
-
-    return list(
-        session.scalars(
-            select(Organizacion)
-            .where(Organizacion.activa.is_(True))
-            .order_by(Organizacion.tipo, Organizacion.nombre)
-        )
-    )
-
-
 def _normalizar_email(email: str) -> str:
     return email.strip().lower()
 
@@ -94,7 +82,10 @@ def _resolver_organizacion(
             "El rol seleccionado requiere una organización."
         )
 
-    organizacion = session.get(Organizacion, organizacion_id)
+    # Serializa la asignación con cambios de tipo y bajas de organizaciones.
+    organizacion = session.scalar(
+        select(Organizacion).where(Organizacion.id == organizacion_id).with_for_update()
+    )
     if (
         organizacion is None
         or not organizacion.activa

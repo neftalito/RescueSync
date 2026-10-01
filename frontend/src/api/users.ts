@@ -1,11 +1,9 @@
 import {
-  organizationsSchema,
   userSchema,
   usersSchema,
   type CreateUserForm,
   type EditUserForm,
   type ManagedUser,
-  type Organization,
   type ResetPasswordForm,
 } from "../schemas/users";
 import type { Role } from "../schemas/auth";
@@ -18,10 +16,6 @@ function organizationId(value: string, role: Role): number | null {
 
 export function getUsers(): Promise<ManagedUser[]> {
   return apiRequest("/usuarios", usersSchema);
-}
-
-export function getOrganizations(): Promise<Organization[]> {
-  return apiRequest("/organizaciones", organizationsSchema);
 }
 
 export function createUser(

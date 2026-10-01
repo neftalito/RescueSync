@@ -4,12 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import ClienteEmailDep, UsuarioAdministrador, validar_csrf
-from app.db.models import Organizacion, Usuario
+from app.db.models import Usuario
 from app.db.session import get_db
 from app.integrations.email.cliente import EmailNoDisponibleError
 from app.schemas import ErrorResponse
 from app.schemas.usuarios import (
-    OrganizacionResponse,
     PasswordTemporalRequest,
     UsuarioCreate,
     UsuarioResponse,
@@ -23,13 +22,11 @@ from app.services.usuarios import (
     actualizar_usuario,
     crear_usuario,
     desactivar_usuario,
-    listar_organizaciones_activas,
     listar_usuarios,
     restablecer_password,
 )
 
 router = APIRouter()
-organizaciones_router = APIRouter()
 
 RESPUESTAS_GESTION = {
     status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
@@ -206,16 +203,3 @@ def cambiar_password_usuario(
     ) as error:
         session.rollback()
         _traducir_error(error)
-
-
-@organizaciones_router.get(
-    "",
-    response_model=list[OrganizacionResponse],
-    summary="Listar organizaciones activas",
-    description="Ofrece las organizaciones asignables desde la gestión de usuarios.",
-)
-def obtener_organizaciones(
-    _: UsuarioAdministrador,
-    session: Annotated[Session, Depends(get_db)],
-) -> list[Organizacion]:
-    return listar_organizaciones_activas(session)

@@ -6,9 +6,12 @@ import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
 import {
+  getOrganizations,
+  organizationsQueryKey,
+} from "../api/organizations";
+import {
   createUser,
   deactivateUser,
-  getOrganizations,
   getUsers,
   reactivateUser,
   resetUserPassword,
@@ -28,7 +31,6 @@ import {
 } from "../schemas/users";
 
 const usersQueryKey = ["users"] as const;
-const organizationsQueryKey = ["organizations"] as const;
 const organizationTypeByRole: Partial<Record<Role, Organization["tipo"]>> = {
   OPERADOR_MUNICIPAL: "MUNICIPIO",
   COORDINADOR_REGIONAL: "CENTRO_COORDINADOR",
@@ -104,7 +106,9 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
       <div className="mx-auto max-w-6xl space-y-8 px-5 py-8 sm:px-6">
         {organizations.data && (
           <CreateUserPanel
-            organizations={organizations.data}
+            organizations={organizations.data.filter(
+              (organization) => organization.activa,
+            )}
             csrfToken={session.csrf_token}
             onCreated={async () => {
               setFeedback(
@@ -234,7 +238,9 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
       {editingUser && organizations.data && (
         <EditUserPanel
           user={editingUser}
-          organizations={organizations.data}
+          organizations={organizations.data.filter(
+            (organization) => organization.activa,
+          )}
           currentUserId={session.usuario.id}
           csrfToken={session.csrf_token}
           onClose={() => setEditingUser(null)}

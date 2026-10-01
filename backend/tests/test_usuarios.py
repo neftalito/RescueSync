@@ -106,6 +106,7 @@ def test_administrador_lista_usuarios_y_organizaciones(
         "id": municipio.id,
         "nombre": municipio.nombre,
         "tipo": "MUNICIPIO",
+        "activa": True,
     } in organizaciones.json()
 
 

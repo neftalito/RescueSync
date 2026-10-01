@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { organizationSchema, roles } from "./auth";
+import type { Organization } from "./organizations";
 
 export const userSchema = z.object({
   id: z.number().int().positive(),
@@ -14,8 +15,6 @@ export const userSchema = z.object({
 });
 
 export const usersSchema = z.array(userSchema);
-export const organizationsSchema = z.array(organizationSchema);
-
 const userFields = {
   email: z
     .string()
@@ -43,7 +42,7 @@ export const resetPasswordSchema = z
     path: ["confirmacion"],
   });
 
-export type Organization = z.infer<typeof organizationSchema>;
+export type { Organization };
 export type ManagedUser = z.infer<typeof userSchema>;
 export type CreateUserForm = z.infer<typeof createUserSchema>;
 export type EditUserForm = z.infer<typeof editUserSchema>;

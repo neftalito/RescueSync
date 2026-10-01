@@ -92,7 +92,7 @@ recargan el usuario y aplican la matriz RBAC antes de responder.
 | Registrar una emergencia | Operador Municipal |
 | Gestionar y publicar lotes | Centro Coordinador Regional |
 | Presentar una oferta | Representante de ONG |
-| Gestionar usuarios | Administrador |
+| Gestionar usuarios y organizaciones | Administrador |
 
 Los cinco roles pueden consultar, cambiar su contraseña y cerrar su sesión. Auditor/Directivo queda
 autenticado y modelado, pero no recibe operaciones funcionales en esta entrega.
@@ -106,6 +106,14 @@ ni la recibe en la respuesta. Las cuentas operativas solo pueden asociarse a una
 organización activa del tipo compatible. La baja es lógica para conservar la
 trazabilidad y no se permite quitar el acceso propio ni dejar el sistema sin un
 administrador activo.
+
+También puede registrar, editar, desactivar y recuperar municipios, centros
+coordinadores y ONG desde el dashboard. La baja de una organización es lógica y
+desactiva en la misma transacción todas sus cuentas activas, invalidando sus
+sesiones. Recuperar la organización no reactiva automáticamente esas cuentas:
+el administrador debe revisar y reactivar cada una desde la gestión de usuarios.
+El tipo de una organización con usuarios relacionados no puede cambiarse, porque
+dejaría de coincidir con los roles asignados.
 
 ### Correo local y Mailtrap
 
@@ -140,7 +148,10 @@ cookie renovada y puede continuar trabajando.
 | `PATCH` | `/api/v1/usuarios/{id}` | Edita email, rol, organización o estado. |
 | `DELETE` | `/api/v1/usuarios/{id}` | Desactiva sin borrar la trazabilidad. |
 | `PUT` | `/api/v1/usuarios/{id}/password` | Asigna una contraseña temporal. |
-| `GET` | `/api/v1/organizaciones` | Lista organizaciones activas asignables. |
+| `GET` | `/api/v1/organizaciones` | Lista organizaciones activas e inactivas. |
+| `POST` | `/api/v1/organizaciones` | Crea un municipio, centro coordinador u ONG. |
+| `PATCH` | `/api/v1/organizaciones/{id}` | Edita o recupera una organización. |
+| `DELETE` | `/api/v1/organizaciones/{id}` | Desactiva la organización y sus usuarios. |
 
 Las operaciones mutables exigen `X-CSRF-Token`. Los controles del frontend son
 solo navegación; FastAPI vuelve a cargar y autorizar al administrador en cada
