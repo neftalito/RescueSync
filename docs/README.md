@@ -43,7 +43,11 @@ fuente de verdad.
 - [Modelo de base de datos](./modelo-base-datos-rescuesync.md), con el diagrama
   Mermaid vigente dentro del documento.
 - [División de tareas de la Entrega 2](./DIVISION_TAREAS_ENTREGA_2.md).
-- [Gantt de la Entrega 2](./generated/gantt-entrega-2.pdf).
+- [Gantt de ejecución real de la Entrega 2](./generated/gantt-entrega-2.pdf),
+  generado con las horas efectivas de `Grooming Etapa Actual.xlsx` y las
+  precedencias de T1–T21. Se regenera desde la raíz con
+  `python docs/generar_gantt.py`; requiere GitHub CLI autenticado y el
+  Playwright instalado en `frontend`.
 
 ## Fuentes de verdad funcionales
 
