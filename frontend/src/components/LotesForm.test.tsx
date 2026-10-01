@@ -175,6 +175,12 @@ describe("LotesForm", () => {
     });
     expect(publicaciones).toHaveLength(0);
     expect(screen.getAllByText("Borrador")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Cantidad requerida")[0]).toHaveValue(
+      "500,00",
+    );
+    expect(screen.getAllByLabelText("Cantidad requerida")[1]).toHaveValue(
+      "40,00",
+    );
   });
 
   it("publica explícitamente los lotes guardados y muestra el resultado", async () => {
@@ -335,7 +341,7 @@ describe("LotesForm", () => {
     expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
       "Agua potable",
     );
-    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500.000");
+    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500,00");
     expect(screen.getByText("Borrador")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Sin cambios para guardar" }),
@@ -392,7 +398,7 @@ describe("LotesForm", () => {
 
     const publicados = screen.getByRole("region", { name: "Lotes ya publicados" });
     expect(publicados).toHaveTextContent("Colchones");
-    expect(publicados).toHaveTextContent("40.000 unidades");
+    expect(publicados).toHaveTextContent("40,00 unidades");
     expect(publicados).toHaveTextContent("Publicado");
     expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("");
 

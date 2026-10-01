@@ -94,7 +94,7 @@ describe("LotesPublicadosPage", () => {
     renderPage("/emergencias/31/lotes");
 
     expect(await screen.findByText("Agua potable")).toBeInTheDocument();
-    expect(screen.getByText("1000.000 litros")).toBeInTheDocument();
+    expect(screen.getByText("1.000,00 litros")).toBeInTheDocument();
     expect(screen.getByText("Publicado")).toBeInTheDocument();
     expect(screen.getByText("Bidones de 5 litros")).toBeInTheDocument();
   });

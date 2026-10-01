@@ -15,6 +15,10 @@ import {
   tiposAporte,
   type OfertaFormData,
 } from "../schemas/oferta";
+import {
+  formatearCantidad,
+  formatearCantidadParaFormulario,
+} from "../utils/cantidades";
 
 interface OfertaFormProps {
   csrfToken: string;
@@ -23,12 +27,6 @@ interface OfertaFormProps {
 
 const inputClasses =
   "mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base shadow-sm outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100";
-
-function formatoCantidad(cantidad: string): string {
-  return new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 }).format(
-    Number(cantidad),
-  );
-}
 
 function nuevoItem(lote: LotePublicado): OfertaFormData["items"][number] {
   return {
@@ -127,7 +125,9 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
           lote_id: item.lote_id,
           tipo: item.tipo,
           descripcion: item.descripcion,
-          cantidad_ofrecida: item.cantidad_ofrecida,
+          cantidad_ofrecida: formatearCantidadParaFormulario(
+            item.cantidad_ofrecida,
+          ),
           cantidad_publicada: lote?.cantidad_publicada ?? "0",
           unidad: item.unidad,
         };
@@ -348,7 +348,7 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
                   {lotesSinAgregar.map((lote) => (
                     <option key={lote.lote_id} value={lote.lote_id}>
                       {lote.tipo_necesidad} · hasta{" "}
-                      {formatoCantidad(lote.cantidad_publicada)}{" "}
+                      {formatearCantidad(lote.cantidad_publicada)}{" "}
                       {lote.unidad_publicada}
                     </option>
                   ))}
@@ -386,7 +386,7 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
                     </legend>
                     {lote && (
                       <p className="mb-4 text-sm text-slate-600">
-                        Publicado: {formatoCantidad(lote.cantidad_publicada)}{" "}
+                        Publicado: {formatearCantidad(lote.cantidad_publicada)}{" "}
                         {lote.unidad_publicada}
                       </p>
                     )}

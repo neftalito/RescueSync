@@ -13,6 +13,10 @@ import {
   type LoteItemFormData,
   type LotesFormData,
 } from "../schemas/lote";
+import {
+  formatearCantidad,
+  formatearCantidadParaFormulario,
+} from "../utils/cantidades";
 
 interface LotesFormProps {
   emergenciaId: number;
@@ -39,7 +43,9 @@ function aFormulario(lote: Lote): LoteItemFormData {
     id: lote.id,
     version: lote.version,
     tipo_necesidad: lote.tipo_necesidad,
-    cantidad_requerida: lote.cantidad_requerida,
+    cantidad_requerida: formatearCantidadParaFormulario(
+      lote.cantidad_requerida,
+    ),
     unidad: lote.unidad,
     descripcion: lote.descripcion ?? "",
   };
@@ -176,7 +182,8 @@ export function LotesForm({
                     {lote.tipo_necesidad}
                   </p>
                   <p className="mt-1 text-slate-600">
-                    {lote.cantidad_requerida} {lote.unidad} · N.º {lote.id}
+                    {formatearCantidad(lote.cantidad_requerida)} {lote.unidad} ·
+                    N.º {lote.id}
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-700">

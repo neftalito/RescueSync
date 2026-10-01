@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import { useMisOfertas } from "../hooks/useMisOfertas";
 import { gravedadLabels } from "../schemas/emergencia";
 import { estadoOfertaLabels, tipoAporteLabels, type Oferta } from "../schemas/oferta";
+import { formatearCantidad } from "../utils/cantidades";
 
 function formatearFecha(iso: string): string {
   return new Date(iso).toLocaleString("es-AR", {
@@ -35,8 +36,8 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
         <ul className="space-y-1">
           {oferta.items.map((item) => (
             <li key={item.id}>
-              {item.descripcion} — {item.cantidad_ofrecida} {item.unidad} (
-              {tipoAporteLabels[item.tipo]})
+              {item.descripcion} — {formatearCantidad(item.cantidad_ofrecida)}{" "}
+              {item.unidad} ({tipoAporteLabels[item.tipo]})
             </li>
           ))}
         </ul>

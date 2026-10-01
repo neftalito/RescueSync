@@ -115,6 +115,7 @@ describe("LotesPage", () => {
     expect(screen.getByLabelText("Descripción (opcional)")).toHaveValue(
       "Bidones de 5 litros",
     );
+    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500,00");
   });
 
   it("deshabilita publicar si la emergencia ya tiene una convocatoria", async () => {

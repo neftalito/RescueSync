@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { formatearCantidad } from "../utils/cantidades";
 import { emergenciaResumenSchema } from "./convocatoria";
 
 export const estadosOferta = [
@@ -67,7 +68,7 @@ export const ofertaItemFormSchema = z
       context.addIssue({
         code: "custom",
         path: ["cantidad_ofrecida"],
-        message: `La cantidad ofrecida no puede superar ${item.cantidad_publicada} ${item.unidad}.`,
+        message: `La cantidad ofrecida no puede superar ${formatearCantidad(item.cantidad_publicada)} ${item.unidad}.`,
       });
     }
   });

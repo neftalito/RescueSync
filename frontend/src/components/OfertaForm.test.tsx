@@ -241,7 +241,7 @@ describe("OfertaForm", () => {
 
     expect(
       await screen.findByText(
-        "La cantidad ofrecida no puede superar 1000.000 litros.",
+        "La cantidad ofrecida no puede superar 1.000,00 litros.",
       ),
     ).toBeInTheDocument();
   });
@@ -265,7 +265,7 @@ describe("OfertaForm", () => {
     const user = userEvent.setup();
     renderForm(92);
 
-    expect(await screen.findByDisplayValue("250.500")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("250,50")).toBeInTheDocument();
     await user.clear(screen.getAllByLabelText("Cantidad ofrecida")[0]!);
     await user.type(screen.getAllByLabelText("Cantidad ofrecida")[0]!, "300");
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
@@ -288,7 +288,7 @@ describe("OfertaForm", () => {
           lote_id: 55,
           tipo: "PERSONAL",
           descripcion: "Paramédicos",
-          cantidad_ofrecida: "3.000",
+          cantidad_ofrecida: "3.00",
           unidad: "personas",
         },
       ],
