@@ -107,7 +107,7 @@ describe("MisOfertasPage", () => {
 
     expect(screen.getByText("Donación inicial")).toBeInTheDocument();
     expect(
-      screen.getByText(/Bidones de agua potable — 500\.000 litros \(Recurso\)/),
+      screen.getByText(/Bidones de agua potable — 500,00 litros \(Recurso\)/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/lote N/)).not.toBeInTheDocument();
     expect(

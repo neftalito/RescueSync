@@ -5,6 +5,7 @@ import { ApiError } from "../api/client";
 import { useConvocatoriasAbiertas } from "../hooks/useConvocatoriasAbiertas";
 import type { Convocatoria } from "../schemas/convocatoria";
 import { gravedadLabels } from "../schemas/emergencia";
+import { formatearCantidad } from "../utils/cantidades";
 
 function formatearFecha(iso: string): string {
   return new Date(iso).toLocaleString("es-AR", {
@@ -45,7 +46,7 @@ function TarjetaConvocatoria({
       <ul className="mt-3 space-y-1 text-sm text-slate-700">
         {convocatoria.lotes.map((lote) => (
           <li key={lote.lote_id}>
-            {lote.tipo_necesidad}: {lote.cantidad_publicada}{" "}
+            {lote.tipo_necesidad}: {formatearCantidad(lote.cantidad_publicada)}{" "}
             {lote.unidad_publicada}
           </li>
         ))}

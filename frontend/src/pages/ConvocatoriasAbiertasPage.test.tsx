@@ -105,7 +105,7 @@ describe("ConvocatoriasAbiertasPage", () => {
       screen.getByText("Inundación con familias evacuadas."),
     ).toBeInTheDocument();
     expect(screen.getByText("1 lote publicado")).toBeInTheDocument();
-    expect(screen.getByText(/1000\.000 litros/)).toBeInTheDocument();
+    expect(screen.getByText(/1\.000,00 litros/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ver lotes" })).toHaveAttribute(
       "href",
       "/emergencias/31/lotes",

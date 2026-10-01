@@ -7,6 +7,7 @@ import {
   estadoLoteLabels,
   type LotePublicadoPublico,
 } from "../schemas/lote";
+import { formatearCantidad } from "../utils/cantidades";
 
 function parsearId(valor: string | undefined): number | null {
   if (valor === undefined || !/^\d+$/.test(valor)) return null;
@@ -26,7 +27,7 @@ function TarjetaLote({ lote }: { lote: LotePublicadoPublico }): ReactElement {
         </span>
       </div>
       <p className="mt-2 text-sm text-slate-700">
-        {lote.cantidad_requerida} {lote.unidad}
+        {formatearCantidad(lote.cantidad_requerida)} {lote.unidad}
       </p>
       {lote.descripcion && (
         <p className="mt-2 text-sm leading-6 text-slate-600">
