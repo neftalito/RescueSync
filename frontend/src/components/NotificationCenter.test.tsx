@@ -45,6 +45,55 @@ function renderCenter(): void {
 }
 
 describe("NotificationCenter", () => {
+  it.each(["mouse", "touch"])(
+    "cierra el panel al pulsar fuera con %s y permite volver a abrirlo",
+    async (pointerType) => {
+      server.use(
+        http.get(`${API_URL}/notificaciones`, () => HttpResponse.json([])),
+      );
+      const user = userEvent.setup();
+      renderCenter();
+      const boton = screen.getByRole("button", { name: "Notificaciones" });
+      await user.click(boton);
+      const panel = screen.getByRole("region", { name: "Notificaciones" });
+
+      const keys = pointerType === "touch" ? "[TouchA]" : "[MouseLeft]";
+      await user.pointer({ keys, target: panel });
+      expect(panel).toBeInTheDocument();
+      await user.pointer({ keys, target: document.body });
+
+      expect(
+        screen.queryByRole("region", { name: "Notificaciones" }),
+      ).not.toBeInTheDocument();
+      expect(boton).toHaveAttribute("aria-expanded", "false");
+      await user.click(boton);
+      expect(
+        screen.getByRole("region", { name: "Notificaciones" }),
+      ).toBeInTheDocument();
+      await user.click(boton);
+      expect(
+        screen.queryByRole("region", { name: "Notificaciones" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("cierra con Escape y devuelve el foco al botón de notificaciones", async () => {
+    server.use(
+      http.get(`${API_URL}/notificaciones`, () => HttpResponse.json([])),
+    );
+    const user = userEvent.setup();
+    renderCenter();
+    const boton = screen.getByRole("button", { name: "Notificaciones" });
+    await user.click(boton);
+    await user.tab();
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("region", { name: "Notificaciones" }),
+    ).not.toBeInTheDocument();
+    expect(boton).toHaveFocus();
+  });
+
   it("muestra el contador y permite leer una novedad", async () => {
     let csrf: string | null = null;
     server.use(
