@@ -27,6 +27,10 @@ después del commit se envía al usuario conectado. Si estuvo desconectado, pued
 recuperarla mediante `GET /api/v1/notificaciones` y marcarla como leída con
 `PATCH /api/v1/notificaciones/{id}/leida`.
 
+El botón **Notificaciones** abre un panel adaptable a móviles y escritorio, con
+desplazamiento interno para listas largas. Se cierra al hacer clic o tocar fuera
+del panel, volver a pulsar el botón o presionar `Escape`.
+
 El mensaje WebSocket funciona como una señal: el frontend invalida la consulta
 TanStack Query afectada y vuelve a obtener el estado por REST. Bonita continúa
 siendo responsable de los temporizadores; sus callbacks producen las novedades
