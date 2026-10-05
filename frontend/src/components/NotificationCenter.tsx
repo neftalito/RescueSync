@@ -1,5 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import { Link } from "react-router";
 
 import {
@@ -28,6 +34,71 @@ export function NotificationCenter({
   csrfToken,
 }: NotificationCenterProps): ReactElement {
   const [abierto, setAbierto] = useState(false);
+  const contenedorRef = useRef<HTMLDivElement>(null);
+  const botonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    if (!abierto) return;
+
+    const posicionarPanel = (): void => {
+      const boton = botonRef.current;
+      const panel = panelRef.current;
+      if (!boton || !panel) return;
+
+      // Conserva el anclaje al botón sin salir de la ventana si el header se envuelve.
+      const rect = boton.getBoundingClientRect();
+      const left = Math.max(
+        16,
+        Math.min(
+          rect.right - panel.offsetWidth,
+          window.innerWidth - panel.offsetWidth - 16,
+        ),
+      );
+      const top = Math.max(16, Math.min(rect.bottom + 8, window.innerHeight - 160));
+      panel.style.setProperty("--notification-left", `${left}px`);
+      panel.style.setProperty("--notification-top", `${top}px`);
+      panel.style.setProperty(
+        "--notification-max-height",
+        `${window.innerHeight - top - 16}px`,
+      );
+    };
+
+    posicionarPanel();
+    window.addEventListener("resize", posicionarPanel);
+    window.addEventListener("scroll", posicionarPanel, true);
+    return () => {
+      window.removeEventListener("resize", posicionarPanel);
+      window.removeEventListener("scroll", posicionarPanel, true);
+    };
+  }, [abierto]);
+
+  useEffect(() => {
+    if (!abierto) return;
+
+    const cerrarFuera = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Node &&
+        !contenedorRef.current?.contains(event.target)
+      ) {
+        setAbierto(false);
+      }
+    };
+    const cerrarConEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") {
+        setAbierto(false);
+        botonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", cerrarFuera, true);
+    document.addEventListener("keydown", cerrarConEscape);
+    return () => {
+      document.removeEventListener("pointerdown", cerrarFuera, true);
+      document.removeEventListener("keydown", cerrarConEscape);
+    };
+  }, [abierto]);
+
   const query = useNotificaciones();
   const queryClient = useQueryClient();
   const marcarLeida = useMutation({
@@ -71,8 +142,9 @@ export function NotificationCenter({
   };
 
   return (
-    <div className="relative">
+    <div ref={contenedorRef} className="relative">
       <button
+        ref={botonRef}
         type="button"
         aria-expanded={abierto}
         aria-controls="panel-notificaciones"
@@ -89,11 +161,12 @@ export function NotificationCenter({
 
       {abierto && (
         <section
+          ref={panelRef}
           id="panel-notificaciones"
           aria-label="Notificaciones"
-          className="absolute right-0 z-20 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl"
+          className="fixed inset-x-4 bottom-4 z-20 flex max-h-[calc(100dvh-2rem)] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:inset-x-auto sm:top-[var(--notification-top)] sm:bottom-auto sm:left-[var(--notification-left)] sm:max-h-[min(32rem,var(--notification-max-height))] sm:w-[min(24rem,calc(100vw-2rem))]"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
             <h2 className="font-semibold text-slate-950">Novedades</h2>
             <div className="ml-auto flex items-center gap-2">
               <span className="text-xs text-slate-500">{noLeidas} sin leer</span>
@@ -142,11 +215,11 @@ export function NotificationCenter({
               No hay novedades todavía.
             </p>
           ) : (
-            <ul className="mt-3 max-h-96 space-y-2 overflow-y-auto">
+            <ul className="mt-3 min-h-0 space-y-2 overflow-y-auto overscroll-contain">
               {query.data.map((notificacion) => (
                 <li
                   key={notificacion.id}
-                  className={`rounded-xl border p-3 ${
+                  className={`rounded-xl border p-3 [overflow-wrap:anywhere] ${
                     notificacion.leida_en === null
                       ? "border-cyan-200 bg-cyan-50"
                       : "border-slate-200 bg-white"
@@ -158,7 +231,7 @@ export function NotificationCenter({
                   <p className="mt-1 text-sm leading-5 text-slate-600">
                     {notificacion.mensaje}
                   </p>
-                  <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
                     <time className="text-xs text-slate-500">
                       {formatearFecha(notificacion.creada_en)}
                     </time>
@@ -185,7 +258,7 @@ export function NotificationCenter({
             </ul>
           )}
           {errorMutacion && (
-            <p role="alert" className="mt-3 text-sm text-red-800">
+            <p role="alert" className="mt-3 shrink-0 text-sm text-red-800">
               {errorMutacion}
             </p>
           )}
