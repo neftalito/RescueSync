@@ -42,7 +42,7 @@ son ejemplos públicos de desarrollo.
 | Datos inválidos | Enviar login de sólo espacios o contraseña vacía | `422`, sin contraseña ni cuerpo enviado en la respuesta |
 | Bearer | Usar Authorize con el JWT y consultar `GET /api/v1/me` | Cuenta con rol `ONG` y el UUID nacional de Ayuda Sin Fronteras |
 | Sin token / token alterado | Quitar Authorize o cambiar un carácter de la firma del JWT | `401`; nunca datos del inventario |
-| Expiración | En desarrollo configurar `JWT_ACCESS_SECONDS=30`, recrear la API, conectar y esperar más de 30 segundos; consultar stock / Actualizar listado | La credencial deja de funcionar; la web pide reconectar y conserva la sesión local. Restaurar la duración después |
+| Expiración | En desarrollo configurar `JWT_ACCESS_SECONDS=60`, recrear la API, conectar y esperar más de 60 segundos; consultar stock / Actualizar listado | La credencial deja de funcionar; la web pide reconectar y conserva la sesión local. Restaurar la duración después |
 | ONG ajena | Con JWT de Ayuda Sin Fronteras intentar GET/POST/PATCH bajo el UUID de Red Médica Solidaria | `403`; sin lecturas ni cambios en la otra ONG |
 | Cuenta desactivada | En una base de prueba desactivar la cuenta después de emitir su JWT y volver a consultar `/me` | `401` con el JWT anterior |
 | ONG suspendida/de baja | En una base de prueba cambiar el estado institucional después de emitir el JWT y consultar `/me` o inventario | `403` con el JWT anterior; los roles/estados se consultan de nuevo |
