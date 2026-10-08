@@ -9,9 +9,11 @@ from pydantic import (
     AwareDatetime,
     BaseModel,
     ConfigDict,
+    EmailStr,
     Field,
     SecretStr,
     StringConstraints,
+    field_validator,
 )
 from pydantic.alias_generators import to_camel
 
@@ -25,6 +27,11 @@ class ContratoNacional(BaseModel):
 class ConexionRequest(ContratoNacional):
     identificador_login: str = Field(min_length=1, max_length=320)
     password: SecretStr = Field(min_length=1, max_length=128)
+
+    @field_validator("identificador_login", mode="before")
+    @classmethod
+    def normalizar_login(cls, valor: object) -> object:
+        return valor.strip().lower() if isinstance(valor, str) else valor
 
 
 class TokenNacional(BaseModel):
@@ -60,7 +67,7 @@ class CapacidadResponse(ContratoNacional):
 
 
 type Cantidad = Annotated[
-    Decimal, Field(ge=0, max_digits=14, decimal_places=3, allow_inf_nan=False)
+    Decimal, Field(gt=0, max_digits=14, decimal_places=3, allow_inf_nan=False)
 ]
 type Nombre = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)
@@ -68,6 +75,22 @@ type Nombre = Annotated[
 type Codigo = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)
 ]
+
+
+class RegistroNacionalRequest(ConexionRequest):
+    identificador_institucional: Codigo
+    email_contacto: EmailStr
+    password: SecretStr = Field(min_length=8, max_length=128)
+
+
+class OngNacionalCreate(RegistroNacionalRequest):
+    nombre: Nombre
+
+
+class OngNacionalResponse(ContratoNacional):
+    id: UUID
+    nombre: str
+    estado: Literal["PENDIENTE"]
 
 
 class RecursoCreate(ContratoNacional):

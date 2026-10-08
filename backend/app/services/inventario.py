@@ -13,7 +13,13 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import ConexionNacional, Organizacion, TipoOrganizacion, Usuario
 from app.integrations.nacional.cliente import ClienteNacional, ErrorNacional
-from app.schemas.inventario import ConexionRequest, EstadoConexion
+from app.schemas.inventario import (
+    ConexionRequest,
+    EstadoConexion,
+    OngNacionalCreate,
+    OngNacionalResponse,
+    RegistroNacionalRequest,
+)
 
 
 def _cifrador() -> Fernet:
@@ -39,6 +45,19 @@ def desconectar(session: Session, usuario_id: int) -> None:
         delete(ConexionNacional).where(ConexionNacional.usuario_id == usuario_id)
     )
     session.commit()
+
+
+def registrar_ong_nacional(
+    usuario: Usuario, cliente: ClienteNacional, datos: RegistroNacionalRequest
+) -> OngNacionalResponse:
+    """Crea la identidad pendiente sin autoasignar el vínculo institucional local."""
+
+    ong = _ong(usuario)
+    if ong.ong_nacional_id is not None:
+        raise ErrorNacional(409, "Tu ONG ya tiene un registro nacional vinculado.")
+    return cliente.registrar_ong(
+        OngNacionalCreate(nombre=ong.nombre, **datos.model_dump())
+    )
 
 
 def estado_conexion(session: Session, usuario: Usuario) -> EstadoConexion:

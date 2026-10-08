@@ -3,10 +3,13 @@ import { apiRequest, apiRequestVoid } from "./client";
 import {
   capacidadSchema,
   conexionSchema,
+  ongNacionalSchema,
   recursoSchema,
   type ConexionForm,
   type RecursoForm,
   type Recurso,
+  type RegistroNacionalForm,
+  type OngNacional,
 } from "../schemas/inventario";
 
 export const consultarConexion = (): Promise<z.infer<typeof conexionSchema>> =>
@@ -19,6 +22,17 @@ export const consultarCapacidades = (): Promise<
 const cabeceras = (csrfToken: string): HeadersInit => ({
   "X-CSRF-Token": csrfToken,
 });
+
+export function registrarOngNacional(
+  datos: RegistroNacionalForm,
+  csrfToken: string,
+): Promise<OngNacional> {
+  return apiRequest("/mi-ong/registro-nacional", ongNacionalSchema, {
+    method: "POST",
+    headers: cabeceras(csrfToken),
+    body: JSON.stringify(datos),
+  });
+}
 
 export function conectarCuenta(
   datos: ConexionForm,

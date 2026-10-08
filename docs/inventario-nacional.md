@@ -38,8 +38,13 @@ las credenciales nacionales de esa misma ONG. Registrar un recurso y editar su
 total; comprobar luego el stock en `/docs` de RescueSyncAPI. Cambiar de ONG local
 requiere usar su propia cuenta nacional. Las cuentas demo no otorgan certificaciones.
 
-Para una ONG fuera del seed, registrar su cuenta nacional con `POST /api/v1/ongs`
-de RescueSyncAPI. Como administrador local, ir a **Gestionar organizaciones →
+Para una ONG fuera del seed y sin vínculo, abrir **Mis recursos → Registrar ONG
+en el Sistema Nacional**. Ingresar identificador institucional, email de contacto
+y credenciales nuevas. Se toma el nombre de la organización local y se crea la
+ONG nacional en estado `PENDIENTE`. La pantalla muestra el UUID que se debe
+compartir con el administrador. No inicia una conexión ni establece el vínculo.
+También se puede registrar directamente con `POST /api/v1/ongs` de RescueSyncAPI.
+Como administrador local, ir a **Gestionar organizaciones →
 Editar → UUID de la ONG nacional** y guardar el UUID verificado. Vacío elimina la
 vinculación. Guardar desconecta las cuentas nacionales de sus representantes.
 El representante no puede establecer esta relación por sí mismo.
@@ -67,6 +72,7 @@ PostgreSQL nacional. No se reutiliza el token de Bonita ni se modifica el BPM.
 | `GET /api/v1/mi-ong/conexion` | Estado de vinculación y conexión, sin JWT |
 | `POST /api/v1/mi-ong/conexion` | Login nacional y verificación de pertenencia |
 | `DELETE /api/v1/mi-ong/conexion` | Eliminar credencial temporal |
+| `POST /api/v1/mi-ong/registro-nacional` | Registrar la ONG local sin vínculo y su cuenta nacional pendiente; sólo representante ONG |
 | `GET /api/v1/mi-ong/capacidades` | Catálogo nacional |
 | `GET /api/v1/mi-ong/recursos` | Inventario de la ONG del usuario |
 | `POST /api/v1/mi-ong/recursos` | Registrar recurso propio |
@@ -83,6 +89,20 @@ Rotarlo invalida conexiones anteriores y exige reconectar. Cerrar la sesión loc
 elimina la conexión nacional de ese usuario; el cambio de contraseña invalida su
 versión. No hay refresh automático.
 
+El formulario de registro y su adaptador validan contraseña de al menos ocho
+caracteres, contacto e identificador institucional. No aceptan un nombre ajeno,
+rol, habilitación ni certificación desde el navegador. El administrador conserva
+el control del mapping institucional. Contraseñas de registro/conexión se
+eliminan del estado de mutaciones al terminar y se limpia el campo tras un error.
+Un login o identificador institucional repetido devuelve `409` y conserva los
+datos existentes. El registro no se reintenta automáticamente: ante `504`, puede
+haberse confirmado nacionalmente; comprobar con el login y `/me` en Swagger antes
+de repetirlo. El vínculo administrativo es un paso separado entre ambas bases.
+
+Registrar y editar recursos exige total mayor que cero, hasta tres decimales y
+once dígitos enteros. La disponibilidad puede ser cero cuando el total está
+comprometido. Personal y vehículos sólo admiten enteros.
+
 La API nacional vuelve a autorizar cada operación y serializa las ediciones con
 los compromisos mediante locking. Un `409` exige revisar stock, código o versión.
 Ante timeout, no se reintenta una escritura automáticamente: actualizar el listado
@@ -97,3 +117,6 @@ y `MisRecursosPage.test.tsx` cubre conexión, altas, unidades, edición, conflic
 reconexión. La API nacional prueba edición concurrente con una reserva real.
 
 Referencia del cifrado: [Fernet](https://cryptography.io/en/latest/fernet/).
+
+La [lista de pruebas manuales T25–T27](./pruebas-manuales-t25-t27.md) detalla la
+preparación, los casos y el resultado esperado para los dos PR.

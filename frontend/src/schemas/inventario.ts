@@ -15,6 +15,19 @@ export const conexionFormSchema = z.object({
   password: z.string().min(1, "Ingresá tu contraseña nacional.").max(128),
 });
 
+export const registroNacionalFormSchema = conexionFormSchema.extend({
+  identificadorInstitucional: z.string().trim()
+    .min(1, "Ingresá el identificador institucional.").max(80),
+  emailContacto: z.email("Ingresá un email de contacto válido."),
+  password: z.string()
+    .min(8, "La contraseña debe tener al menos 8 caracteres.").max(128),
+});
+export const ongNacionalSchema = z.object({
+  id: z.uuid(),
+  nombre: z.string(),
+  estado: z.literal("PENDIENTE"),
+});
+
 export const capacidadSchema = z.object({
   id: z.uuid(),
   codigo: z.string(),
@@ -30,6 +43,12 @@ export const cantidadSchema = z
     /^(?:0|[1-9]\d{0,10})(?:\.\d{1,3})?$/,
     "Ingresá una cantidad válida con hasta 3 decimales y punto decimal.",
   );
+const cantidadPositivaSchema = cantidadSchema.pipe(
+  z.string().refine(
+    (valor) => cantidadEnMiles(valor) > 0n,
+    "La cantidad debe ser mayor que cero.",
+  ),
+);
 export const recursoSchema = z.object({
   id: z.uuid(),
   ongId: z.uuid(),
@@ -49,14 +68,16 @@ export const recursoFormSchema = z.object({
   capacidadId: z.uuid("Seleccioná una capacidad."),
   codigoInterno: z.string().trim().min(1, "Ingresá un código interno.").max(80),
   nombre: z.string().trim().min(1, "Ingresá el nombre del recurso.").max(160),
-  cantidadTotal: cantidadSchema,
+  cantidadTotal: cantidadPositivaSchema,
 });
-export const cantidadFormSchema = z.object({ cantidadTotal: cantidadSchema });
+export const cantidadFormSchema = recursoFormSchema.pick({ cantidadTotal: true });
 export const vinculoFormSchema = z.object({
   ong_nacional_id: z.union([z.uuid("Ingresá un UUID válido."), z.literal("")]),
 });
 
 export type ConexionForm = z.infer<typeof conexionFormSchema>;
+export type RegistroNacionalForm = z.infer<typeof registroNacionalFormSchema>;
+export type OngNacional = z.infer<typeof ongNacionalSchema>;
 export type ConexionEstado = z.infer<typeof conexionSchema>;
 export type Recurso = z.infer<typeof recursoSchema>;
 export type Capacidad = z.infer<typeof capacidadSchema>;

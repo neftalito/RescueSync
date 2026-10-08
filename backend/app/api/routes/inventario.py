@@ -21,9 +21,11 @@ from app.schemas.inventario import (
     CapacidadResponse,
     ConexionRequest,
     EstadoConexion,
+    OngNacionalResponse,
     RecursoCreate,
     RecursoResponse,
     RecursoUpdate,
+    RegistroNacionalRequest,
     VinculoRequest,
 )
 from app.schemas.organizaciones import OrganizacionResponse
@@ -32,6 +34,7 @@ from app.services.inventario import (
     credencial,
     desconectar,
     estado_conexion,
+    registrar_ong_nacional,
     vincular_ong,
 )
 
@@ -107,6 +110,29 @@ def conexion(
 )
 def desconexion(usuario: UsuarioInventario, session: Db) -> None:
     desconectar(session, usuario.id)
+
+
+@router.post(
+    "/registro-nacional",
+    response_model=OngNacionalResponse,
+    status_code=201,
+    responses=errores,
+    summary="Registrar mi ONG y su cuenta nacional",
+    description=(
+        "Crea una ONG PENDIENTE usando el nombre local. "
+        "Un administrador debe verificar y guardar luego el vínculo por UUID."
+    ),
+    dependencies=[Depends(validar_csrf)],
+)
+def registro_nacional(
+    datos: RegistroNacionalRequest,
+    usuario: UsuarioInventario,
+    session: Db,
+    cliente: ClienteNacionalDep,
+    response: Response,
+) -> OngNacionalResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return _ejecutar(session, lambda: registrar_ong_nacional(usuario, cliente, datos))
 
 
 @router.get(

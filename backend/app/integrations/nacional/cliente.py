@@ -9,6 +9,8 @@ from app.schemas.inventario import (
     CapacidadResponse,
     ConexionRequest,
     CuentaNacional,
+    OngNacionalCreate,
+    OngNacionalResponse,
     RecursoCreate,
     RecursoResponse,
     RecursoUpdate,
@@ -46,19 +48,19 @@ class ClienteNacional:
     ) -> T:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         # Sólo el límite HTTP obtiene la contraseña sin cifrar, nunca repr/logs.
-        if isinstance(datos, ConexionRequest):
-            payload = {
-                "identificadorLogin": datos.identificador_login,
-                "password": datos.password.get_secret_value(),
-            }
-        else:
-            payload = datos.model_dump(mode="json", by_alias=True) if datos else None
+        payload = datos.model_dump(mode="json", by_alias=True) if datos else None
+        if isinstance(datos, ConexionRequest) and payload is not None:
+            payload["password"] = datos.password.get_secret_value()
         try:
             response = self.http.request(method, path, headers=headers, json=payload)
         except httpx.TimeoutException as error:
             raise ErrorNacional(
                 504,
-                "El Sistema Nacional demoró en responder. Actualizá el listado para comprobar el resultado antes de repetir la operación.",
+                (
+                    "El registro nacional demoró en responder y podría haberse creado. Verificá con tus credenciales nacionales antes de repetirlo."
+                    if path == "ongs"
+                    else "El Sistema Nacional demoró en responder. Actualizá el listado para comprobar el resultado antes de repetir la operación."
+                ),
             ) from error
         except httpx.RequestError as error:
             raise ErrorNacional(
@@ -69,8 +71,16 @@ class ClienteNacional:
                 401: "La credencial nacional no es válida o expiró. Volvé a conectar tu cuenta.",
                 403: "La cuenta nacional no tiene permisos para esta operación.",
                 404: "La ONG, capacidad o recurso no existe en el Sistema Nacional.",
-                409: "Hay un conflicto: el código puede estar repetido, el recurso cambió o el total es menor que lo comprometido. Actualizá el listado.",
-                422: "Revisá los datos, cantidades y unidades del recurso.",
+                409: (
+                    "El identificador nacional o institucional ya está registrado. Si ya tenés cuenta, usala y pedí al administrador la vinculación."
+                    if path == "ongs"
+                    else "Hay un conflicto: el código puede estar repetido, el recurso cambió o el total es menor que lo comprometido. Actualizá el listado."
+                ),
+                422: (
+                    "Revisá los datos institucionales y las credenciales del registro."
+                    if path == "ongs"
+                    else "Revisá los datos, cantidades y unidades del recurso."
+                ),
             }
             raise ErrorNacional(
                 response.status_code if response.status_code in mensajes else 502,
@@ -91,6 +101,11 @@ class ClienteNacional:
 
     def cuenta(self, token: str) -> CuentaNacional:
         return self._request("GET", "me", TypeAdapter(CuentaNacional), token=token)
+
+    def registrar_ong(self, datos: OngNacionalCreate) -> OngNacionalResponse:
+        return self._request(
+            "POST", "ongs", TypeAdapter(OngNacionalResponse), datos=datos
+        )
 
     def capacidades(self, token: str) -> list[CapacidadResponse]:
         return self._request(

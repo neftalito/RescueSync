@@ -1,5 +1,6 @@
 """Adaptador nacional con permisos locales, CSRF y credenciales cifradas."""
 
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -75,7 +76,9 @@ def client(db_session: Session, representante: Usuario) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = database
     with TestClient(app) as test_client:
         test_client.cookies.set(
-            "rescuesync_session", crear_valor_sesion(representante.id), path="/api/v1"
+            "rescuesync_session",
+            crear_valor_sesion(representante.id, representante.version_sesion),
+            path="/api/v1",
         )
         yield test_client
     app.dependency_overrides.clear()
@@ -241,6 +244,14 @@ def test_csrf_roles_y_logout(
         "rescuesync_session", crear_valor_sesion(representante.id), path="/api/v1"
     )
     assert client.get("/api/v1/mi-ong/conexion").status_code == 403
+    assert (
+        client.post(
+            "/api/v1/mi-ong/registro-nacional",
+            headers=csrf(representante),
+            json=REGISTRO,
+        ).status_code
+        == 403
+    )
 
 
 def test_solo_admin_vincula_y_revoca_conexiones(
@@ -315,3 +326,152 @@ def test_respuesta_nacional_malformada_se_traduce_sin_exponerla(
         response = client.get("/api/v1/mi-ong/recursos")
         assert response.status_code == 502
         assert TOKEN not in response.text
+
+
+REGISTRO = {
+    "identificadorLogin": "nueva@nacional.org",
+    "password": "password-nacional123",
+    "identificadorInstitucional": "registro:123",
+    "emailContacto": "contacto@example.org",
+}
+
+
+def test_registro_usa_nombre_local_y_no_autovincula_ni_guarda_credenciales(
+    client: TestClient, representante: Usuario, db_session: Session
+) -> None:
+    representante.organizacion.ong_nacional_id = None
+    db_session.commit()
+    with respx.mock as mock:
+        ruta = mock.post(f"{NACIONAL}/ongs").respond(
+            201,
+            json={
+                "id": str(ONG_ID),
+                "nombre": "Inventario ONG",
+                "estado": "PENDIENTE",
+            },
+        )
+        response = client.post(
+            "/api/v1/mi-ong/registro-nacional",
+            headers=csrf(representante),
+            json=REGISTRO,
+        )
+        assert response.status_code == 201 and response.json()["id"] == str(ONG_ID)
+        assert response.headers["cache-control"] == "no-store"
+        assert json.loads(ruta.calls[0].request.content) == {
+            **REGISTRO,
+            "nombre": "Inventario ONG",
+        }
+        assert "authorization" not in ruta.calls[0].request.headers
+        assert "password" not in response.text
+        assert representante.organizacion.ong_nacional_id is None
+        assert db_session.get(ConexionNacional, representante.id) is None
+
+
+def test_registro_exige_csrf_y_ong_sin_vinculo(
+    client: TestClient, representante: Usuario
+) -> None:
+    with respx.mock:
+        assert (
+            client.post("/api/v1/mi-ong/registro-nacional", json=REGISTRO).status_code
+            == 403
+        ), client.get("/api/v1/auth/me").text
+        assert (
+            client.post(
+                "/api/v1/mi-ong/registro-nacional",
+                headers=csrf(representante),
+                json=REGISTRO,
+            ).status_code
+            == 409
+        )
+
+
+@pytest.mark.parametrize(
+    "campo,valor",
+    [
+        ("nombre", "Otro nombre"),
+        ("rol", "ADMIN_NACIONAL"),
+        ("identificadorLogin", "   "),
+        ("password", "corta"),
+        ("emailContacto", "inválido"),
+    ],
+)
+def test_registro_rechaza_datos_invalidos_sin_llamada_remota(
+    client: TestClient, representante: Usuario, campo: str, valor: str
+) -> None:
+    with respx.mock:
+        response = client.post(
+            "/api/v1/mi-ong/registro-nacional",
+            headers=csrf(representante),
+            json={**REGISTRO, campo: valor},
+        )
+        assert response.status_code == 422
+        assert REGISTRO["password"] not in response.text
+
+
+@pytest.mark.parametrize("status", [409, 422, 500])
+def test_registro_traduce_fallos_sin_vincular_ong(
+    client: TestClient, representante: Usuario, db_session: Session, status: int
+) -> None:
+    representante.organizacion.ong_nacional_id = None
+    db_session.commit()
+    with respx.mock as mock:
+        mock.post(f"{NACIONAL}/ongs").respond(
+            status, json={"detail": "sql interno " + REGISTRO["password"]}
+        )
+        response = client.post(
+            "/api/v1/mi-ong/registro-nacional",
+            headers=csrf(representante),
+            json=REGISTRO,
+        )
+        assert response.status_code == (502 if status == 500 else status)
+        assert REGISTRO["password"] not in response.text
+        assert "sql interno" not in response.text
+        assert representante.organizacion.ong_nacional_id is None
+
+
+def test_timeout_registro_no_reintenta_ni_autovincula(
+    client: TestClient, representante: Usuario, db_session: Session
+) -> None:
+    representante.organizacion.ong_nacional_id = None
+    db_session.commit()
+    with respx.mock as mock:
+        ruta = mock.post(f"{NACIONAL}/ongs").mock(
+            side_effect=httpx.ReadTimeout("secreto")
+        )
+        response = client.post(
+            "/api/v1/mi-ong/registro-nacional",
+            headers=csrf(representante),
+            json=REGISTRO,
+        )
+        assert response.status_code == 504 and ruta.call_count == 1
+        assert representante.organizacion.ong_nacional_id is None
+
+
+@pytest.mark.parametrize("cantidad", ["0", "0.000", "-1", "NaN", "1.0001"])
+def test_cantidad_no_positiva_o_invalida_se_rechaza_localmente(
+    client: TestClient, representante: Usuario, cantidad: str
+) -> None:
+    with respx.mock:
+        alta = {
+            "capacidadId": str(CAPACIDAD_ID),
+            "codigoInterno": "INVALIDO",
+            "nombre": "Inválido",
+            "cantidadTotal": cantidad,
+        }
+        assert (
+            client.post(
+                "/api/v1/mi-ong/recursos", headers=csrf(representante), json=alta
+            ).status_code
+            == 422
+        )
+        assert (
+            client.patch(
+                f"/api/v1/mi-ong/recursos/{RECURSO_ID}",
+                headers=csrf(representante),
+                json={
+                    "cantidadTotal": cantidad,
+                    "actualizadoEn": RECURSO["actualizadoEn"],
+                },
+            ).status_code
+            == 422
+        )

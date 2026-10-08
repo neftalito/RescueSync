@@ -13,6 +13,7 @@ import {
   consultarRecursos,
   crearRecurso,
   desconectarCuenta,
+  registrarOngNacional,
 } from "../api/inventario";
 import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
@@ -22,6 +23,8 @@ import type {
   ConexionForm,
   Recurso,
   RecursoForm,
+  OngNacional,
+  RegistroNacionalForm,
 } from "../schemas/inventario";
 
 interface InventarioNacional {
@@ -29,6 +32,7 @@ interface InventarioNacional {
   recursos: UseQueryResult<Recurso[]>;
   capacidades: UseQueryResult<Capacidad[]>;
   conectar: UseMutationResult<ConexionEstado, Error, ConexionForm>;
+  registrar: UseMutationResult<OngNacional, Error, RegistroNacionalForm>;
   desconectar: UseMutationResult<void, Error, void>;
   crear: UseMutationResult<Recurso, Error, RecursoForm>;
   editar: UseMutationResult<
@@ -86,6 +90,17 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     mutationFn: (datos: ConexionForm) =>
       conectarCuenta(datos, session.csrf_token),
     onSuccess: actualizar,
+    onSettled: (_data, _error, datos) => {
+      datos.password = "";
+    },
+  });
+  const registrar = useMutation({
+    mutationFn: (datos: RegistroNacionalForm) =>
+      registrarOngNacional(datos, session.csrf_token),
+    retry: false,
+    onSettled: (_data, _error, datos) => {
+      datos.password = "";
+    },
   });
   const desconectar = useMutation({
     mutationFn: () => desconectarCuenta(session.csrf_token),
@@ -116,6 +131,7 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     recursos,
     capacidades,
     conectar,
+    registrar,
     desconectar,
     crear,
     editar,

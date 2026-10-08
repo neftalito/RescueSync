@@ -10,11 +10,13 @@ import {
   cantidadFormSchema,
   conexionFormSchema,
   recursoFormSchema,
+  registroNacionalFormSchema,
   type CantidadForm,
   type Capacidad,
   type ConexionForm,
   type Recurso,
   type RecursoForm,
+  type RegistroNacionalForm,
 } from "../schemas/inventario";
 
 const boton =
@@ -41,6 +43,7 @@ export function MisRecursosPage({
   const inventario = useInventarioNacional(session);
   const [feedback, setFeedback] = useState("");
   const [editando, setEditando] = useState<Recurso | null>(null);
+  const [mostrarRegistro, setMostrarRegistro] = useState(false);
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -87,6 +90,50 @@ export function MisRecursosPage({
               Pedile a un administrador que vincule tu ONG local con su registro
               nacional desde Gestionar organizaciones.
             </p>
+            {inventario.registrar.data ? (
+              <div
+                role="status"
+                className="mt-4 rounded-xl bg-emerald-50 p-4 text-emerald-900"
+              >
+                <p className="font-semibold">ONG registrada en estado pendiente.</p>
+                <p className="mt-2">
+                  Compartí este UUID con el administrador para que verifique la
+                  vinculación:
+                </p>
+                <p className="mt-2 break-all font-mono">
+                  {inventario.registrar.data.id}
+                </p>
+                <p className="mt-2">
+                  El registro no otorga certificaciones ni habilitaciones. Una vez
+                  vinculada, conectá tu cuenta con las credenciales que elegiste.
+                </p>
+              </div>
+            ) : mostrarRegistro ? (
+              <RegistroNacionalFormView
+                pendiente={inventario.registrar.isPending}
+                error={inventario.registrar.error}
+                onSubmit={async (datos) => {
+                  await inventario.registrar.mutateAsync(datos);
+                }}
+                onCancel={() => setMostrarRegistro(false)}
+              />
+            ) : (
+              <button
+                type="button"
+                className={`${boton} mt-4`}
+                onClick={() => setMostrarRegistro(true)}
+              >
+                Registrar ONG en el Sistema Nacional
+              </button>
+            )}
+            <button
+              type="button"
+              className="mt-4 block rounded-xl border border-slate-300 px-4 py-2.5"
+              disabled={inventario.conexion.isFetching}
+              onClick={() => void inventario.conexion.refetch()}
+            >
+              Volver a consultar vinculación
+            </button>
           </section>
         ) : !inventario.conexion.data.conectada ? (
           <section className={panel}>
@@ -264,6 +311,87 @@ export function MisRecursosPage({
   );
 }
 
+function RegistroNacionalFormView({
+  pendiente,
+  error,
+  onSubmit,
+  onCancel,
+}: {
+  pendiente: boolean;
+  error: unknown;
+  onSubmit: (datos: RegistroNacionalForm) => Promise<void>;
+  onCancel: () => void;
+}): ReactElement {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    resetField,
+    formState: { errors },
+  } = useForm<RegistroNacionalForm>({
+    resolver: zodResolver(registroNacionalFormSchema),
+  });
+  return (
+    <form
+      className="mt-4 space-y-4"
+      noValidate
+      onSubmit={(event) =>
+        void handleSubmit(async (datos) => {
+          try {
+            await onSubmit(datos);
+            reset();
+          } catch {
+            resetField("password");
+          }
+        })(event)
+      }
+    >
+      <h3 className="text-lg font-bold">Registrar mi ONG</h3>
+      <p className="text-slate-600">
+        Si tu ONG ya está registrada, pedí la vinculación al administrador. Para un
+        registro nuevo se usará el nombre de tu organización local.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {([
+          ["identificadorInstitucional", "Identificador institucional", "text"],
+          ["emailContacto", "Email de contacto", "email"],
+          ["identificadorLogin", "Nuevo identificador nacional", "text"],
+          ["password", "Nueva contraseña nacional", "password"],
+        ] as const).map(([campo, label, tipo]) => (
+          <label key={campo} className="text-sm font-semibold">
+            {label}
+            <input
+              className="form-input mt-2"
+              type={tipo}
+              autoComplete={
+                campo === "password" ? "new-password"
+                  : campo === "identificadorLogin" ? "username"
+                    : campo === "emailContacto" ? "email" : "off"
+              }
+              {...register(campo)}
+            />
+            {errors[campo] && <span role="alert">{errors[campo].message}</span>}
+          </label>
+        ))}
+      </div>
+      <ErrorMensaje error={error} />
+      <div className="flex flex-wrap gap-3">
+        <button className={boton} disabled={pendiente}>
+          {pendiente ? "Registrando…" : "Crear registro nacional"}
+        </button>
+        <button
+          type="button"
+          className="rounded-xl border border-slate-300 px-4 py-2.5"
+          disabled={pendiente}
+          onClick={onCancel}
+        >
+          Cancelar registro
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function ConexionFormView({
   pendiente,
   error,
@@ -277,6 +405,7 @@ function ConexionFormView({
     register,
     handleSubmit,
     reset,
+    resetField,
     formState: { errors },
   } = useForm<ConexionForm>({ resolver: zodResolver(conexionFormSchema) });
   return (
@@ -289,7 +418,7 @@ function ConexionFormView({
             await onSubmit(datos);
             reset();
           } catch {
-            /* La mutación presenta el error. */
+            resetField("password");
           }
         })(event)
       }
@@ -348,7 +477,7 @@ function RecursoFormView({
       capacidadId: "",
       codigoInterno: "",
       nombre: "",
-      cantidadTotal: "0",
+      cantidadTotal: "",
     },
   });
   return (

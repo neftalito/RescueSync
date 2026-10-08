@@ -176,6 +176,10 @@ describe("Mis recursos nacionales", () => {
     );
     await user.type(screen.getByLabelText("Código interno"), "AMB-01");
     await user.type(screen.getByLabelText("Nombre del recurso"), "Ambulancias");
+    await user.type(screen.getByLabelText(/Cantidad total/), "0");
+    await user.click(screen.getByRole("button", { name: "Registrar recurso" }));
+    expect(await screen.findByText("La cantidad debe ser mayor que cero.")).toBeInTheDocument();
+    expect(llamadas).toBe(0);
     await user.clear(screen.getByLabelText(/Cantidad total/));
     await user.type(screen.getByLabelText(/Cantidad total/), "2.5");
     await user.click(screen.getByRole("button", { name: "Registrar recurso" }));
@@ -257,5 +261,46 @@ describe("Mis recursos nacionales", () => {
       expect(screen.getByRole("alert")).toHaveTextContent("El recurso cambió."),
     );
     expect(screen.getByLabelText(/Nuevo total/)).toBeInTheDocument();
+  });
+
+  it("registra una ONG pendiente y muestra el UUID para vinculación administrativa", async () => {
+    server.use(
+      http.get(`${base}/conexion`, () => HttpResponse.json({ vinculada: false, conectada: false, ongId: null, expiraEn: null })),
+      http.post(`${base}/registro-nacional`, async ({ request }) => {
+        expect(request.headers.get("X-CSRF-Token")).toBe("csrf-demo");
+        expect(await request.json()).toEqual({ identificadorInstitucional: "registro:123", emailContacto: "contacto@example.org", identificadorLogin: "nueva@nacional.org", password: "clave-nacional123" });
+        return HttpResponse.json({ id: ong, nombre: "ONG de prueba", estado: "PENDIENTE" }, { status: 201 });
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Registrar ONG en el Sistema Nacional" }));
+    await user.type(screen.getByLabelText("Identificador institucional"), "registro:123");
+    await user.type(screen.getByLabelText("Email de contacto"), "contacto@example.org");
+    await user.type(screen.getByLabelText("Nuevo identificador nacional"), "nueva@nacional.org");
+    await user.type(screen.getByLabelText("Nueva contraseña nacional"), "clave-nacional123");
+    await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
+    expect(await screen.findByText("ONG registrada en estado pendiente.")).toBeInTheDocument();
+    expect(screen.getByText(ong)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nueva contraseña nacional")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cuenta nacional conectada" })).not.toBeInTheDocument();
+  });
+
+  it("presenta un duplicado de registro y borra la contraseña para un nuevo intento", async () => {
+    server.use(
+      http.get(`${base}/conexion`, () => HttpResponse.json({ vinculada: false, conectada: false, ongId: null, expiraEn: null })),
+      http.post(`${base}/registro-nacional`, () => HttpResponse.json({ detail: "La ONG ya está registrada." }, { status: 409 })),
+    );
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Registrar ONG en el Sistema Nacional" }));
+    await user.type(screen.getByLabelText("Identificador institucional"), "registro:123");
+    await user.type(screen.getByLabelText("Email de contacto"), "contacto@example.org");
+    await user.type(screen.getByLabelText("Nuevo identificador nacional"), "nueva@nacional.org");
+    await user.type(screen.getByLabelText("Nueva contraseña nacional"), "clave-nacional123");
+    await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
+    expect(await screen.findByText("La ONG ya está registrada.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Nueva contraseña nacional")).toHaveValue("");
+    expect(screen.getByLabelText("Identificador institucional")).toHaveValue("registro:123");
   });
 });
