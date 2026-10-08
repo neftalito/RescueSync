@@ -120,7 +120,7 @@ def editar_organizacion(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "No se puede cambiar el tipo de una organización que tiene "
-                "usuarios relacionados."
+                "usuarios relacionados o una vinculación nacional."
             ),
         ) from error
 

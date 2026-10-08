@@ -18,6 +18,7 @@ export const organizationTypeLabels: Record<OrganizationType, string> = {
 
 export const managedOrganizationSchema = organizationSchema.extend({
   activa: z.boolean(),
+  ong_nacional_id: z.uuid().nullable().optional(),
 });
 
 export const organizationsSchema = z.array(managedOrganizationSchema);

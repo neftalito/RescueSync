@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.db.models.enums import TipoOrganizacion
@@ -46,3 +48,4 @@ class OrganizacionResponse(BaseModel):
     nombre: str
     tipo: TipoOrganizacion
     activa: bool
+    ong_nacional_id: UUID | None = None

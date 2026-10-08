@@ -58,8 +58,9 @@ Para crear un escenario completo:
 docker compose run --rm backend python -m app.scripts.seed
 ```
 
-El seed es idempotente y no duplica registros. Crea cuatro organizaciones, una
-cuenta activa por rol, una emergencia registrada, otra publicada, lotes, una
+El seed es idempotente y no duplica registros. Crea cuatro organizaciones y
+cuentas para cada rol, con dos representantes de ONG. Incluye una emergencia
+registrada, otra publicada, lotes, una
 convocatoria abierta y una oferta parcial.
 
 | Rol | Correo | Contraseña de desarrollo |
@@ -67,6 +68,7 @@ convocatoria abierta y una oferta parcial.
 | Operador municipal | `municipio@rescuesync.org` | `municipio123` |
 | Coordinador regional | `coordinador@rescuesync.org` | `coordinador123` |
 | Representante de ONG | `ong@rescuesync.org` | `ong123` |
+| Representante de Red Médica Solidaria | `redmedica@rescuesync.org` | `redmedica123` |
 | Auditor / Directivo | `auditor@rescuesync.org` | `auditor123` |
 | Administrador | `admin@rescuesync.org` | `administrador123` |
 
@@ -92,6 +94,7 @@ recargan el usuario y aplican la matriz RBAC antes de responder.
 | Registrar una emergencia | Operador Municipal |
 | Gestionar y publicar lotes | Centro Coordinador Regional |
 | Presentar una oferta | Representante de ONG |
+| Gestionar inventario nacional (Entrega 3) | Representante de ONG |
 | Gestionar usuarios y organizaciones | Administrador |
 
 Los cinco roles pueden consultar, cambiar su contraseña y cerrar su sesión. Auditor/Directivo queda

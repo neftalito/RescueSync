@@ -17,6 +17,7 @@ EMAILS = (
     "municipio@rescuesync.org",
     "coordinador@rescuesync.org",
     "ong@rescuesync.org",
+    "redmedica@rescuesync.org",
     "auditor@rescuesync.org",
     "admin@rescuesync.org",
 )
@@ -45,7 +46,7 @@ def test_seed_es_idempotente_y_crea_un_usuario_vigente_por_rol(
     segundo_resultado = seed_development_data(db_session)
 
     assert primer_resultado == segundo_resultado
-    assert _contar(db_session, Usuario, Usuario.email.in_(EMAILS)) == 5
+    assert _contar(db_session, Usuario, Usuario.email.in_(EMAILS)) == 6
     assert (
         _contar(db_session, Organizacion, Organizacion.nombre.in_(ORGANIZACIONES)) == 4
     )
@@ -128,3 +129,20 @@ def test_seed_deja_convocatoria_lotes_y_oferta_para_pruebas(
         )
         == 1
     )
+
+
+def test_seed_vincula_las_dos_ongs_a_sus_uuid_nacionales(db_session: Session) -> None:
+    from uuid import NAMESPACE_URL, uuid5
+
+    seed_development_data(db_session)
+    for nombre, referencia in (
+        ("Ayuda Sin Fronteras", "ayuda-sin-fronteras"),
+        ("Red Médica Solidaria", "red-medica-solidaria"),
+    ):
+        ong = db_session.scalar(
+            select(Organizacion).where(Organizacion.nombre == nombre)
+        )
+        assert ong is not None
+        assert ong.ong_nacional_id == uuid5(
+            NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}"
+        )

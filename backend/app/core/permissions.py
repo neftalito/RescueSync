@@ -20,6 +20,7 @@ class OperacionProtegida(StrEnum):
     CONSULTAR_CONVOCATORIAS = "CONSULTAR_CONVOCATORIAS"
     PRESENTAR_OFERTA = "PRESENTAR_OFERTA"
     CONSULTAR_OFERTAS_PROPIAS = "CONSULTAR_OFERTAS_PROPIAS"
+    GESTIONAR_INVENTARIO = "GESTIONAR_INVENTARIO"
     CONSULTAR_NOTIFICACIONES = "CONSULTAR_NOTIFICACIONES"
     MARCAR_NOTIFICACION_LEIDA = "MARCAR_NOTIFICACION_LEIDA"
 
@@ -57,6 +58,9 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
                 {RolUsuario.REPRESENTANTE_ONG}
             ),
             OperacionProtegida.CONSULTAR_OFERTAS_PROPIAS: frozenset(
+                {RolUsuario.REPRESENTANTE_ONG}
+            ),
+            OperacionProtegida.GESTIONAR_INVENTARIO: frozenset(
                 {RolUsuario.REPRESENTANTE_ONG}
             ),
             OperacionProtegida.CONSULTAR_NOTIFICACIONES: ROLES_AUTENTICADOS,

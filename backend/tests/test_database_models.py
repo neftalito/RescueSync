@@ -183,6 +183,7 @@ def _assert_restriccion(
 
 def test_metadata_registra_todo_el_esquema() -> None:
     assert set(Base.metadata.tables) == {
+        "conexion_nacional",
         "organizacion",
         "usuario",
         "emergencia",

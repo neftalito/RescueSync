@@ -9,11 +9,13 @@ import {
   createOrganization,
   deactivateOrganization,
   getOrganizations,
+  linkNationalOrganization,
   organizationsQueryKey,
   reactivateOrganization,
   updateOrganization,
 } from "../api/organizations";
 import type { Session } from "../schemas/auth";
+import { vinculoFormSchema, type VinculoForm } from "../schemas/inventario";
 import {
   createOrganizationSchema,
   editOrganizationSchema,
@@ -66,10 +68,7 @@ export function OrganizationsPage({
       active: boolean;
     }) => {
       if (active) {
-        return reactivateOrganization(
-          organization.id,
-          session.csrf_token,
-        );
+        return reactivateOrganization(organization.id, session.csrf_token);
       }
       await deactivateOrganization(organization.id, session.csrf_token);
       return null;
@@ -253,6 +252,13 @@ export function OrganizationsPage({
                   <p className="mt-2 text-sm text-slate-600">
                     {organization.activa ? "Activa" : "Inactiva"}
                   </p>
+                  {organization.tipo === "ONG" && (
+                    <p className="mt-2 break-all text-xs text-slate-500">
+                      {organization.ong_nacional_id
+                        ? `UUID nacional: ${organization.ong_nacional_id}`
+                        : "Sin vinculación nacional"}
+                    </p>
+                  )}
                   <div className="mt-5 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -403,6 +409,13 @@ function EditOrganizationPanel({
             </button>
           </div>
         </form>
+        {organization.tipo === "ONG" && (
+          <NationalLinkForm
+            organization={organization}
+            csrfToken={csrfToken}
+            onUpdated={onUpdated}
+          />
+        )}
       </section>
     </div>
   );
@@ -412,4 +425,67 @@ function errorMessage(error: unknown): string {
   return error instanceof ApiError
     ? error.message
     : "No pudimos completar la operación. Intentá nuevamente.";
+}
+
+function NationalLinkForm({
+  organization,
+  csrfToken,
+  onUpdated,
+}: {
+  organization: Organization;
+  csrfToken: string;
+  onUpdated: () => Promise<void>;
+}): ReactElement {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<VinculoForm>({
+    resolver: zodResolver(vinculoFormSchema),
+    defaultValues: { ong_nacional_id: organization.ong_nacional_id ?? "" },
+  });
+  const mutation = useMutation({
+    mutationFn: (datos: VinculoForm) =>
+      linkNationalOrganization(
+        organization.id,
+        datos.ong_nacional_id,
+        csrfToken,
+      ),
+    onSuccess: onUpdated,
+  });
+  return (
+    <form
+      className="mt-6 space-y-3 border-t border-slate-200 pt-5"
+      noValidate
+      onSubmit={(event) =>
+        void handleSubmit((datos) => mutation.mutate(datos))(event)
+      }
+    >
+      <label className="block text-sm font-semibold">
+        UUID de la ONG nacional
+        <input className="form-input mt-2" {...register("ong_nacional_id")} />
+        {errors.ong_nacional_id && (
+          <span role="alert" className="text-red-800">
+            {errors.ong_nacional_id.message}
+          </span>
+        )}
+      </label>
+      <p className="text-sm text-slate-600">
+        Ingresá el UUID del registro nacional verificado. Vacío elimina la
+        vinculación. Guardar desconecta las cuentas nacionales de sus
+        representantes.
+      </p>
+      {mutation.isError && (
+        <p role="alert" className="text-red-800">
+          {errorMessage(mutation.error)}
+        </p>
+      )}
+      <button
+        className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+        disabled={mutation.isPending}
+      >
+        {mutation.isPending ? "Guardando…" : "Guardar vinculación nacional"}
+      </button>
+    </form>
+  );
 }

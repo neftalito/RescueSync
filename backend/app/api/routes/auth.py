@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     UsuarioCambioPassword,
+    UsuarioCierreSesion,
     UsuarioConsultaSesion,
     validar_csrf,
 )
@@ -25,6 +26,7 @@ from app.services.auth import (
     autenticar_usuario,
     cambiar_password_propia,
 )
+from app.services.inventario import desconectar
 
 router = APIRouter()
 settings = get_settings()
@@ -165,8 +167,11 @@ def cambiar_password(
 )
 def cerrar_sesion(
     response: Response,
+    usuario: UsuarioCierreSesion,
+    session: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validar_csrf)],
 ) -> None:
+    desconectar(session, usuario.id)
     response.delete_cookie(
         key=settings.session_cookie_name,
         httponly=True,

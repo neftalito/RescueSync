@@ -117,6 +117,8 @@ def actualizar_organizacion(
     assert nueva_activa is not None
 
     if nuevo_tipo is not organizacion.tipo:
+        if organizacion.ong_nacional_id is not None:
+            raise TipoOrganizacionEnUsoError
         usuario_relacionado = session.scalar(
             select(Usuario.id)
             .where(Usuario.organizacion_id == organizacion.id)
