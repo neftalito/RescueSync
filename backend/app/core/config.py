@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     smtp_sender_email: EmailStr = "no-reply@rescuesync.org"
     smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     frontend_public_url: AnyHttpUrl = "http://localhost:5173"
+    nacional_base_url: AnyHttpUrl = "http://host.docker.internal:8001/api/v1"
+    nacional_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
     @field_validator(
         "session_secret",

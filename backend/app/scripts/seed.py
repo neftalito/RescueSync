@@ -2,6 +2,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -321,7 +322,15 @@ def seed_development_data(session: Session) -> SeedResult:
         "Centro Coordinador Litoral",
     )
     ong = _organizacion(session, TipoOrganizacion.ONG, "Ayuda Sin Fronteras")
-    _organizacion(session, TipoOrganizacion.ONG, "Red Médica Solidaria")
+    red_medica = _organizacion(session, TipoOrganizacion.ONG, "Red Médica Solidaria")
+    for organizacion, referencia in (
+        (ong, "ayuda-sin-fronteras"),
+        (red_medica, "red-medica-solidaria"),
+    ):
+        ong_id = uuid5(NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}")
+        if organizacion.ong_nacional_id not in {None, ong_id}:
+            raise ValueError("La ONG demo ya tiene otra vinculación nacional.")
+        organizacion.ong_nacional_id = ong_id
 
     operador = _usuario(
         session,
@@ -343,6 +352,13 @@ def seed_development_data(session: Session) -> SeedResult:
         "ong@demo.rescuesync.org",
         RolUsuario.REPRESENTANTE_ONG,
         ong,
+    )
+    _usuario(
+        session,
+        "redmedica@rescuesync.org",
+        "redmedica@demo.rescuesync.org",
+        RolUsuario.REPRESENTANTE_ONG,
+        red_medica,
     )
     _usuario(
         session,
@@ -432,6 +448,11 @@ def seed_development_data(session: Session) -> SeedResult:
                 "ong@rescuesync.org",
                 RolUsuario.REPRESENTANTE_ONG,
                 ong.nombre,
+            ),
+            CuentaSeed(
+                "redmedica@rescuesync.org",
+                RolUsuario.REPRESENTANTE_ONG,
+                red_medica.nombre,
             ),
             CuentaSeed(
                 "auditor@rescuesync.org",

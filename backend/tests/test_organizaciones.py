@@ -80,6 +80,7 @@ def test_administrador_crea_cada_tipo_de_organizacion(
         "nombre": nombre,
         "tipo": tipo,
         "activa": True,
+        "ong_nacional_id": None,
     }
     organizacion = db_session.get(Organizacion, response.json()["id"])
     assert organizacion is not None
@@ -192,6 +193,7 @@ def test_listado_incluye_organizaciones_inactivas(
         "nombre": "ONG Inactiva",
         "tipo": "ONG",
         "activa": False,
+        "ong_nacional_id": None,
     } in response.json()
 
 

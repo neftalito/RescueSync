@@ -184,7 +184,22 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
               <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
             </div>
           ) : esOng ? (
-            <div className="mt-5 grid gap-5 md:grid-cols-3">
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Mis recursos
+                </h3>
+                <p className="mt-3 leading-7 text-slate-600">
+                  Registrá recursos y actualizá el inventario nacional de tu
+                  ONG.
+                </p>
+                <Link
+                  to="/mis-recursos"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                >
+                  Gestionar mis recursos
+                </Link>
+              </article>
               <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h3 className="text-xl font-semibold text-slate-950">
                   Convocatorias abiertas
@@ -236,7 +251,8 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
               </h3>
               <p className="mt-3 max-w-2xl leading-7 text-slate-600">
                 Este perfil no tiene operaciones funcionales en la Entrega 2.
-                Las consultas e indicadores se incorporarán en etapas posteriores.
+                Las consultas e indicadores se incorporarán en etapas
+                posteriores.
               </p>
             </article>
           )}

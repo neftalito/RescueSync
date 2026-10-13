@@ -71,6 +71,9 @@ persistencia del buzón no depende de ese bus.
    docker compose run --rm backend python -m app.scripts.seed
    ```
 
+   Para probar inventario, ejecutar también el seed de RescueSyncAPI. El recorrido,
+   credenciales y configuración están en [Inventario nacional](docs/inventario-nacional.md).
+
 4. Abrir los servicios:
 
    - Frontend: <http://localhost:5173>

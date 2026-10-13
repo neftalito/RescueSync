@@ -1,5 +1,6 @@
 import { type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
+import { MisRecursosPage } from "./pages/MisRecursosPage";
 
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
@@ -76,6 +77,16 @@ function ProtectedApp(): ReactElement {
   return (
     <Routes>
       <Route path="/" element={<DashboardPage session={session.data} />} />
+      <Route
+        path="/mis-recursos"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <MisRecursosPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
       <Route
         path="/cambiar-password"
         element={<ChangePasswordPage session={session.data} />}

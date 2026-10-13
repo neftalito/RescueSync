@@ -9,6 +9,22 @@ import { apiRequest, apiRequestVoid } from "./client";
 
 export const organizationsQueryKey = ["organizations"] as const;
 
+export function linkNationalOrganization(
+  organizationId: number,
+  nationalId: string,
+  csrfToken: string,
+): Promise<Organization> {
+  return apiRequest(
+    `/organizaciones/${organizationId}/vinculo-nacional`,
+    managedOrganizationSchema,
+    {
+      method: "PATCH",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ ong_nacional_id: nationalId || null }),
+    },
+  );
+}
+
 export function getOrganizations(): Promise<Organization[]> {
   return apiRequest("/organizaciones", organizationsSchema);
 }

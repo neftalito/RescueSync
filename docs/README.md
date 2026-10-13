@@ -8,6 +8,10 @@ referencia.
 
 - [Autenticación local](./autenticacion-local.md): administrador inicial,
   gestión de usuarios, contraseñas, seed, sesiones, CSRF y matriz RBAC.
+- [Inventario nacional](./inventario-nacional.md): Mis recursos, vinculación de
+  ONGs, conexión nacional, seeds coordinados y pruebas manuales.
+- [Pruebas manuales T25–T27](./pruebas-manuales-t25-t27.md): login nacional,
+  onboarding, inventario, permisos, concurrencia y fallos de integración.
 - [Migraciones](./desarrollo/migraciones.md): modelos SQLAlchemy y flujo de
   trabajo con Alembic.
 - [Calidad y pruebas](./desarrollo/calidad-y-pruebas.md): comandos, hooks,
