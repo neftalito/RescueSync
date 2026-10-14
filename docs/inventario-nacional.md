@@ -36,7 +36,9 @@ ya fueron editados. Una vinculación local demo distinta no se sobrescribe.
 Ingresar a RescueSync con una cuenta local y abrir **Mis recursos**. Conectar con
 las credenciales nacionales de esa misma ONG. Registrar un recurso y editar su
 total; comprobar luego el stock en `/docs` de RescueSyncAPI. Cambiar de ONG local
-requiere usar su propia cuenta nacional. Las cuentas demo no otorgan certificaciones.
+requiere usar su propia cuenta nacional. El escenario T28 y la nueva consulta
+personal se describen en [Mis certificaciones](./certificaciones-nacionales.md).
+La ONG no puede emitir acreditaciones desde la pantalla.
 
 Para una ONG fuera del seed y sin vínculo, abrir **Mis recursos → Registrar ONG
 en el Sistema Nacional**. Ingresar identificador institucional, email de contacto

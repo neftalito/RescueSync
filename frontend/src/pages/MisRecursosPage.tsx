@@ -3,6 +3,7 @@ import { useState, type ReactElement } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router";
 import { ApiError } from "../api/client";
+import { CertificacionesOngPanel } from "../components/CertificacionesOng";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
 import type { Session } from "../schemas/auth";
 import {
@@ -59,7 +60,7 @@ export function MisRecursosPage({
           </h1>
           <p className="mt-2 text-slate-600">
             Registrá recursos y actualizá el inventario de tu ONG en el Sistema
-            Nacional.
+            Nacional y consultá tus certificaciones y capacidades habilitadas.
           </p>
         </header>
         {feedback && (
@@ -179,6 +180,10 @@ export function MisRecursosPage({
               </button>
               <ErrorMensaje error={inventario.desconectar.error} />
             </section>
+            <CertificacionesOngPanel
+              perfil={inventario.certificaciones}
+              catalogo={inventario.catalogoCertificaciones}
+            />
             <section aria-labelledby="nuevo-recurso" className={panel}>
               <h2 id="nuevo-recurso" className="text-xl font-bold">
                 Registrar recurso

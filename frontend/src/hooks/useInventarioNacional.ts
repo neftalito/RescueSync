@@ -16,6 +16,14 @@ import {
   registrarOngNacional,
 } from "../api/inventario";
 import { ApiError } from "../api/client";
+import {
+  consultarCertificaciones,
+  consultarCatalogoCertificaciones,
+} from "../api/certificaciones";
+import type {
+  Certificacion,
+  CertificacionesOng,
+} from "../schemas/certificaciones";
 import type { Session } from "../schemas/auth";
 import type {
   Capacidad,
@@ -31,6 +39,8 @@ interface InventarioNacional {
   conexion: UseQueryResult<ConexionEstado>;
   recursos: UseQueryResult<Recurso[]>;
   capacidades: UseQueryResult<Capacidad[]>;
+  certificaciones: UseQueryResult<CertificacionesOng>;
+  catalogoCertificaciones: UseQueryResult<Certificacion[]>;
   conectar: UseMutationResult<ConexionEstado, Error, ConexionForm>;
   registrar: UseMutationResult<OngNacional, Error, RegistroNacionalForm>;
   desconectar: UseMutationResult<void, Error, void>;
@@ -46,11 +56,19 @@ interface InventarioNacional {
 export function useInventarioNacional(session: Session): InventarioNacional {
   const client = useQueryClient();
   const key = ["inventario", session.usuario.id] as const;
+  const limpiarCertificaciones = (): void => {
+    client.removeQueries({ queryKey: [...key, "certificaciones"] });
+    client.removeQueries({ queryKey: [...key, "catalogo-certificaciones"] });
+  };
   const consultar = async <T>(operacion: () => Promise<T>): Promise<T> => {
     try {
       return await operacion();
     } catch (error: unknown) {
       if (error instanceof ApiError && [401, 403].includes(error.status)) {
+        limpiarCertificaciones();
+        client.setQueryData<ConexionEstado>([...key, "conexion"], (actual) =>
+          actual ? { ...actual, conectada: false } : actual,
+        );
         await client.invalidateQueries({ queryKey: [...key, "conexion"] });
       }
       throw error;
@@ -74,6 +92,19 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     enabled: conexion.data?.conectada === true,
     retry: false,
   });
+  const certificaciones = useQuery({
+    queryKey: [...key, "certificaciones", conexion.data?.ongId],
+    queryFn: () => consultar(consultarCertificaciones),
+    enabled: conexion.data?.conectada === true,
+    retry: false,
+    refetchInterval: 60_000,
+  });
+  const catalogoCertificaciones = useQuery({
+    queryKey: [...key, "catalogo-certificaciones", conexion.data?.ongId],
+    queryFn: () => consultar(consultarCatalogoCertificaciones),
+    enabled: conexion.data?.conectada === true,
+    retry: false,
+  });
   const actualizar = async (): Promise<void> => {
     await client.invalidateQueries({ queryKey: key });
   };
@@ -81,6 +112,7 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     if (error instanceof ApiError && [401, 403].includes(error.status)) {
       client.removeQueries({ queryKey: [...key, "recursos"] });
       client.removeQueries({ queryKey: [...key, "capacidades"] });
+      limpiarCertificaciones();
       await client.invalidateQueries({ queryKey: [...key, "conexion"] });
     } else {
       await client.invalidateQueries({ queryKey: [...key, "recursos"] });
@@ -107,6 +139,7 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     onSuccess: async () => {
       client.removeQueries({ queryKey: [...key, "recursos"] });
       client.removeQueries({ queryKey: [...key, "capacidades"] });
+      limpiarCertificaciones();
       await actualizar();
     },
   });
@@ -130,6 +163,8 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     conexion,
     recursos,
     capacidades,
+    certificaciones,
+    catalogoCertificaciones,
     conectar,
     registrar,
     desconectar,
