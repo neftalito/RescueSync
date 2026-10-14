@@ -108,6 +108,138 @@ def conexion(client: TestClient, usuario: Usuario) -> httpx.Response:
     )
 
 
+CERTIFICACION = {
+    "id": str(uuid4()),
+    "codigo": "SANITARIA",
+    "revision": 1,
+    "nombre": "Respuesta sanitaria",
+    "activa": True,
+    "alcances": [
+        {
+            "capacidadId": str(CAPACIDAD_ID),
+            "codigo": "PARAMEDICOS",
+            "nombre": "Personal paramédico",
+            "tipo": "PERSONAL",
+            "unidad": "personas",
+            "admiteFracciones": False,
+            "activa": True,
+            "riesgoMaximo": "ALTA",
+        }
+    ],
+}
+PERFIL = {
+    "ongId": str(ONG_ID),
+    "estadoOng": "HABILITADA",
+    "evaluadoEn": "2026-10-14T12:00:00Z",
+    "acreditaciones": [
+        {
+            "id": str(uuid4()),
+            "certificacion": CERTIFICACION,
+            "emisor": "Autoridad",
+            "numeroCredencial": "OFICIAL-1",
+            "vigenteDesde": "2025-01-01T00:00:00Z",
+            "vigenteHasta": "2026-01-01T00:00:00Z",
+            "estado": "OTORGADA",
+            "estadoVigencia": "VENCIDA",
+            "revocadaEn": None,
+            "motivoRevocacion": None,
+            "motivos": [
+                {
+                    "codigo": "ACREDITACION_VENCIDA",
+                    "mensaje": "La acreditación venció.",
+                    "capacidadId": None,
+                }
+            ],
+        }
+    ],
+    "capacidadesHabilitadas": [],
+    "motivosInstitucionales": [],
+}
+
+
+def test_consulta_certificaciones_de_la_ong_vinculada_sin_exponer_token(
+    client: TestClient,
+    representante: Usuario,
+) -> None:
+    with respx.mock as mock:
+        remoto(mock)
+        assert conexion(client, representante).status_code == 200
+        perfil = mock.get(f"{NACIONAL}/ongs/{ONG_ID}/certificaciones").respond(
+            200, json=PERFIL
+        )
+        catalogo = mock.get(f"{NACIONAL}/certificaciones").respond(
+            200, json=[CERTIFICACION]
+        )
+        response = client.get(
+            "/api/v1/mi-ong/certificaciones", params={"ongId": str(uuid4())}
+        )
+        assert response.status_code == 200 and response.json() == PERFIL
+        assert (
+            response.headers["cache-control"] == "no-store"
+            and TOKEN not in response.text
+        )
+        assert perfil.calls[0].request.headers["authorization"] == f"Bearer {TOKEN}"
+        response = client.get("/api/v1/mi-ong/catalogo-certificaciones")
+        assert response.json() == [CERTIFICACION] and catalogo.called
+        assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize(
+    "modo,esperado",
+    [
+        ("timeout", 504),
+        ("caida", 503),
+        ("json", 502),
+        ("ong-ajena", 502),
+        ("401", 401),
+        ("403", 403),
+        ("404", 404),
+    ],
+)
+def test_certificaciones_traduce_fallos_y_desconecta_credenciales_rechazadas(
+    client: TestClient,
+    representante: Usuario,
+    db_session: Session,
+    modo: str,
+    esperado: int,
+) -> None:
+    with respx.mock as mock:
+        remoto(mock)
+        assert conexion(client, representante).status_code == 200
+        ruta = mock.get(f"{NACIONAL}/ongs/{ONG_ID}/certificaciones")
+        if modo == "timeout":
+            ruta.side_effect = httpx.ReadTimeout("dato-interno-confidencial")
+        elif modo == "caida":
+            ruta.side_effect = httpx.ConnectError("dato-interno-confidencial")
+        elif modo == "json":
+            ruta.respond(200, json={"sql": "dato-interno-confidencial"})
+        elif modo == "ong-ajena":
+            ruta.respond(200, json={**PERFIL, "ongId": str(uuid4())})
+        else:
+            ruta.respond(int(modo), json={"detail": "dato-interno-confidencial"})
+        response = client.get("/api/v1/mi-ong/certificaciones")
+        assert response.status_code == esperado
+        assert (
+            "dato-interno-confidencial" not in response.text
+            and TOKEN not in response.text
+        )
+        assert (db_session.get(ConexionNacional, representante.id) is None) == (
+            modo in {"401", "403"}
+        )
+
+
+def test_certificaciones_exigen_conexion_y_rol_local(
+    client: TestClient,
+    representante: Usuario,
+    db_session: Session,
+) -> None:
+    assert client.get("/api/v1/mi-ong/certificaciones").status_code == 401
+    representante.rol = RolUsuario.AUDITOR_DIRECTIVO
+    representante.organizacion_id = None
+    db_session.commit()
+    assert client.get("/api/v1/mi-ong/certificaciones").status_code == 403
+
+
 def test_conecta_sin_exponer_jwt_y_proxya_stock(
     client: TestClient, representante: Usuario, db_session: Session
 ) -> None:

@@ -16,6 +16,10 @@ from app.api.dependencies import (
 from app.db.models import Organizacion
 from app.db.session import get_db
 from app.integrations.nacional.cliente import ErrorNacional
+from app.schemas.certificaciones import (
+    CertificacionesOngResponse,
+    CertificacionResponse,
+)
 from app.schemas.errors import ErrorResponse
 from app.schemas.inventario import (
     CapacidadResponse,
@@ -145,6 +149,42 @@ def capacidades(
     usuario: UsuarioInventario, session: Db, cliente: ClienteNacionalDep
 ) -> list[CapacidadResponse]:
     return _remoto(session, usuario, lambda _ong, token: cliente.capacidades(token))
+
+
+@router.get(
+    "/catalogo-certificaciones",
+    response_model=list[CertificacionResponse],
+    responses=errores,
+    summary="Consultar catálogo nacional de certificaciones",
+    description="Catálogo de referencia; no significa que tu ONG esté acreditada.",
+)
+def catalogo_certificaciones(
+    usuario: UsuarioInventario,
+    session: Db,
+    cliente: ClienteNacionalDep,
+    response: Response,
+) -> list[CertificacionResponse]:
+    response.headers["Cache-Control"] = "no-store"
+    return _remoto(session, usuario, lambda _ong, token: cliente.certificaciones(token))
+
+
+@router.get(
+    "/certificaciones",
+    response_model=CertificacionesOngResponse,
+    responses=errores,
+    summary="Consultar las acreditaciones de mi ONG",
+    description="La ONG se obtiene del usuario y del vínculo verificado, sin recibir IDs del navegador.",
+)
+def certificaciones(
+    usuario: UsuarioInventario,
+    session: Db,
+    cliente: ClienteNacionalDep,
+    response: Response,
+) -> CertificacionesOngResponse:
+    response.headers["Cache-Control"] = "no-store"
+    return _remoto(
+        session, usuario, lambda ong, token: cliente.certificaciones_ong(token, ong)
+    )
 
 
 @router.get(

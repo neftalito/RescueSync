@@ -5,6 +5,10 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from app.schemas.certificaciones import (
+    CertificacionesOngResponse,
+    CertificacionResponse,
+)
 from app.schemas.inventario import (
     CapacidadResponse,
     ConexionRequest,
@@ -70,7 +74,7 @@ class ClienteNacional:
             mensajes = {
                 401: "La credencial nacional no es válida o expiró. Volvé a conectar tu cuenta.",
                 403: "La cuenta nacional no tiene permisos para esta operación.",
-                404: "La ONG, capacidad o recurso no existe en el Sistema Nacional.",
+                404: "La referencia solicitada no existe en el Sistema Nacional.",
                 409: (
                     "El identificador nacional o institucional ya está registrado. Si ya tenés cuenta, usala y pedí al administrador la vinculación."
                     if path == "ongs"
@@ -95,6 +99,29 @@ class ClienteNacional:
             raise ErrorNacional(
                 502, "El Sistema Nacional devolvió una respuesta inválida."
             ) from error
+
+    def certificaciones(self, token: str) -> list[CertificacionResponse]:
+        """Consulta el catálogo, que no acredita a la ONG consultante."""
+        return self._request(
+            "GET",
+            "certificaciones",
+            TypeAdapter(list[CertificacionResponse]),
+            token=token,
+        )
+
+    def certificaciones_ong(
+        self, token: str, ong_id: UUID
+    ) -> CertificacionesOngResponse:
+        """Obtiene historia y competencia efectiva desde su fuente nacional."""
+        respuesta = self._request(
+            "GET",
+            f"ongs/{ong_id}/certificaciones",
+            TypeAdapter(CertificacionesOngResponse),
+            token=token,
+        )
+        if respuesta.ong_id != ong_id:
+            raise ErrorNacional(502, "El Sistema Nacional devolvió una ONG diferente.")
+        return respuesta
 
     def login(self, datos: ConexionRequest) -> TokenNacional:
         return self._request("POST", "login", TypeAdapter(TokenNacional), datos=datos)

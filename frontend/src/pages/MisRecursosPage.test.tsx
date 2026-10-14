@@ -45,6 +45,33 @@ const session: Session = {
   },
   csrf_token: "csrf-demo",
 };
+const certificacion = {
+  id: "00000000-0000-4000-8000-000000000010",
+  codigo: "SANITARIA",
+  revision: 1,
+  nombre: "Respuesta sanitaria",
+  activa: true,
+  alcances: [
+    {
+      capacidadId,
+      codigo: "AMBULANCIAS",
+      nombre: "Ambulancias",
+      tipo: "VEHICULO",
+      unidad: "vehículos",
+      admiteFracciones: false,
+      activa: true,
+      riesgoMaximo: "MEDIA",
+    },
+  ],
+};
+const perfil = {
+  ongId: ong,
+  estadoOng: "HABILITADA",
+  evaluadoEn: "2026-10-14T12:00:00Z",
+  acreditaciones: [],
+  capacidadesHabilitadas: [],
+  motivosInstitucionales: [],
+};
 const server = setupServer();
 let conectada = true;
 let recursos = [recurso];
@@ -54,6 +81,10 @@ beforeEach(() => {
   conectada = true;
   recursos = [recurso];
   server.use(
+    http.get(`${base}/certificaciones`, () => HttpResponse.json(perfil)),
+    http.get(`${base}/catalogo-certificaciones`, () =>
+      HttpResponse.json([certificacion]),
+    ),
     http.get(`${base}/conexion`, () =>
       HttpResponse.json({
         vinculada: true,
@@ -96,6 +127,136 @@ function renderPage(): void {
 }
 
 describe("Mis recursos nacionales", () => {
+  it("muestra vigencia, vencimiento y niveles de competencia por capacidad", async () => {
+    const credencial = {
+      id: "00000000-0000-4000-8000-000000000011",
+      certificacion,
+      emisor: "Autoridad demo",
+      numeroCredencial: "DEMO-VIGENTE",
+      vigenteDesde: "2026-01-01T00:00:00Z",
+      vigenteHasta: "2027-01-01T00:00:00Z",
+      estado: "OTORGADA",
+      estadoVigencia: "VIGENTE",
+      revocadaEn: null,
+      motivoRevocacion: null,
+      motivos: [],
+    };
+    server.use(
+      http.get(`${base}/certificaciones`, () =>
+        HttpResponse.json({
+          ...perfil,
+          acreditaciones: [
+            credencial,
+            {
+              ...credencial,
+              id: "00000000-0000-4000-8000-000000000012",
+              numeroCredencial: "DEMO-VENCIDA",
+              estadoVigencia: "VENCIDA",
+              vigenteHasta: "2026-10-01T00:00:00Z",
+              motivos: [
+                {
+                  codigo: "ACREDITACION_VENCIDA",
+                  mensaje: "La acreditación venció.",
+                  capacidadId: null,
+                },
+              ],
+            },
+          ],
+          capacidadesHabilitadas: [
+            {
+              capacidadId,
+              codigo: "AMBULANCIAS",
+              nombre: "Ambulancias",
+              unidad: "vehículos",
+              riesgoMaximo: "MEDIA",
+              nivelesRiesgoPermitidos: ["BAJA", "MEDIA"],
+              acreditacionIds: [credencial.id],
+            },
+          ],
+        }),
+      ),
+    );
+    renderPage();
+    expect(
+      await screen.findByText("Vigente · DEMO-VIGENTE"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Vencida · DEMO-VENCIDA")).toBeInTheDocument();
+    expect(screen.getByText("La acreditación venció.")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Niveles permitidos: BAJA, MEDIA/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Otorgar|Renovar|Revocar/ }),
+    ).not.toBeInTheDocument();
+  });
+  it("explica la ONG pendiente y el historial vacío sin otorgar competencia", async () => {
+    server.use(
+      http.get(`${base}/certificaciones`, () =>
+        HttpResponse.json({
+          ...perfil,
+          estadoOng: "PENDIENTE",
+          motivosInstitucionales: [
+            {
+              codigo: "ONG_PENDIENTE",
+              mensaje: "La ONG tiene pendiente su habilitación institucional.",
+              capacidadId: null,
+            },
+          ],
+        }),
+      ),
+    );
+    renderPage();
+    expect(
+      await screen.findByText("Estado institucional: PENDIENTE"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Tu ONG todavía no tiene acreditaciones registradas."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Tu ONG no tiene capacidades habilitadas/),
+    ).toBeInTheDocument();
+  });
+  it("permite reintentar una consulta fallida sin conservar un perfil habilitado", async () => {
+    server.use(
+      http.get(`${base}/certificaciones`, () =>
+        HttpResponse.json(
+          { detail: "El Sistema Nacional demoró en responder." },
+          { status: 504 },
+        ),
+      ),
+    );
+    renderPage();
+    expect(
+      await screen.findByText("El Sistema Nacional demoró en responder."),
+    ).toBeInTheDocument();
+    server.use(
+      http.get(`${base}/certificaciones`, () => HttpResponse.json(perfil)),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Actualizar certificaciones" }),
+    );
+    expect(
+      await screen.findByText("Estado institucional: HABILITADA"),
+    ).toBeInTheDocument();
+  });
+  it("desconecta y oculta certificaciones ante rechazo nacional del JWT", async () => {
+    server.use(
+      http.get(`${base}/certificaciones`, () => {
+        conectada = false;
+        return HttpResponse.json(
+          { detail: "La credencial nacional expiró." },
+          { status: 401 },
+        );
+      }),
+    );
+    renderPage();
+    expect(
+      await screen.findByRole("heading", { name: "Conectar cuenta nacional" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Mis certificaciones" }),
+    ).not.toBeInTheDocument();
+  });
   it("presenta la vinculación pendiente sin pedir credenciales", async () => {
     server.use(
       http.get(`${base}/conexion`, () =>
@@ -178,7 +339,9 @@ describe("Mis recursos nacionales", () => {
     await user.type(screen.getByLabelText("Nombre del recurso"), "Ambulancias");
     await user.type(screen.getByLabelText(/Cantidad total/), "0");
     await user.click(screen.getByRole("button", { name: "Registrar recurso" }));
-    expect(await screen.findByText("La cantidad debe ser mayor que cero.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("La cantidad debe ser mayor que cero."),
+    ).toBeInTheDocument();
     expect(llamadas).toBe(0);
     await user.clear(screen.getByLabelText(/Cantidad total/));
     await user.type(screen.getByLabelText(/Cantidad total/), "2.5");
@@ -265,42 +428,115 @@ describe("Mis recursos nacionales", () => {
 
   it("registra una ONG pendiente y muestra el UUID para vinculación administrativa", async () => {
     server.use(
-      http.get(`${base}/conexion`, () => HttpResponse.json({ vinculada: false, conectada: false, ongId: null, expiraEn: null })),
+      http.get(`${base}/conexion`, () =>
+        HttpResponse.json({
+          vinculada: false,
+          conectada: false,
+          ongId: null,
+          expiraEn: null,
+        }),
+      ),
       http.post(`${base}/registro-nacional`, async ({ request }) => {
         expect(request.headers.get("X-CSRF-Token")).toBe("csrf-demo");
-        expect(await request.json()).toEqual({ identificadorInstitucional: "registro:123", emailContacto: "contacto@example.org", identificadorLogin: "nueva@nacional.org", password: "clave-nacional123" });
-        return HttpResponse.json({ id: ong, nombre: "ONG de prueba", estado: "PENDIENTE" }, { status: 201 });
+        expect(await request.json()).toEqual({
+          identificadorInstitucional: "registro:123",
+          emailContacto: "contacto@example.org",
+          identificadorLogin: "nueva@nacional.org",
+          password: "clave-nacional123",
+        });
+        return HttpResponse.json(
+          { id: ong, nombre: "ONG de prueba", estado: "PENDIENTE" },
+          { status: 201 },
+        );
       }),
     );
     renderPage();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Registrar ONG en el Sistema Nacional" }));
-    await user.type(screen.getByLabelText("Identificador institucional"), "registro:123");
-    await user.type(screen.getByLabelText("Email de contacto"), "contacto@example.org");
-    await user.type(screen.getByLabelText("Nuevo identificador nacional"), "nueva@nacional.org");
-    await user.type(screen.getByLabelText("Nueva contraseña nacional"), "clave-nacional123");
-    await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
-    expect(await screen.findByText("ONG registrada en estado pendiente.")).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Registrar ONG en el Sistema Nacional",
+      }),
+    );
+    await user.type(
+      screen.getByLabelText("Identificador institucional"),
+      "registro:123",
+    );
+    await user.type(
+      screen.getByLabelText("Email de contacto"),
+      "contacto@example.org",
+    );
+    await user.type(
+      screen.getByLabelText("Nuevo identificador nacional"),
+      "nueva@nacional.org",
+    );
+    await user.type(
+      screen.getByLabelText("Nueva contraseña nacional"),
+      "clave-nacional123",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Crear registro nacional" }),
+    );
+    expect(
+      await screen.findByText("ONG registrada en estado pendiente."),
+    ).toBeInTheDocument();
     expect(screen.getByText(ong)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Nueva contraseña nacional")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Cuenta nacional conectada" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Nueva contraseña nacional"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Cuenta nacional conectada" }),
+    ).not.toBeInTheDocument();
   });
 
   it("presenta un duplicado de registro y borra la contraseña para un nuevo intento", async () => {
     server.use(
-      http.get(`${base}/conexion`, () => HttpResponse.json({ vinculada: false, conectada: false, ongId: null, expiraEn: null })),
-      http.post(`${base}/registro-nacional`, () => HttpResponse.json({ detail: "La ONG ya está registrada." }, { status: 409 })),
+      http.get(`${base}/conexion`, () =>
+        HttpResponse.json({
+          vinculada: false,
+          conectada: false,
+          ongId: null,
+          expiraEn: null,
+        }),
+      ),
+      http.post(`${base}/registro-nacional`, () =>
+        HttpResponse.json(
+          { detail: "La ONG ya está registrada." },
+          { status: 409 },
+        ),
+      ),
     );
     renderPage();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Registrar ONG en el Sistema Nacional" }));
-    await user.type(screen.getByLabelText("Identificador institucional"), "registro:123");
-    await user.type(screen.getByLabelText("Email de contacto"), "contacto@example.org");
-    await user.type(screen.getByLabelText("Nuevo identificador nacional"), "nueva@nacional.org");
-    await user.type(screen.getByLabelText("Nueva contraseña nacional"), "clave-nacional123");
-    await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
-    expect(await screen.findByText("La ONG ya está registrada.")).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Registrar ONG en el Sistema Nacional",
+      }),
+    );
+    await user.type(
+      screen.getByLabelText("Identificador institucional"),
+      "registro:123",
+    );
+    await user.type(
+      screen.getByLabelText("Email de contacto"),
+      "contacto@example.org",
+    );
+    await user.type(
+      screen.getByLabelText("Nuevo identificador nacional"),
+      "nueva@nacional.org",
+    );
+    await user.type(
+      screen.getByLabelText("Nueva contraseña nacional"),
+      "clave-nacional123",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Crear registro nacional" }),
+    );
+    expect(
+      await screen.findByText("La ONG ya está registrada."),
+    ).toBeInTheDocument();
     expect(screen.getByLabelText("Nueva contraseña nacional")).toHaveValue("");
-    expect(screen.getByLabelText("Identificador institucional")).toHaveValue("registro:123");
+    expect(screen.getByLabelText("Identificador institucional")).toHaveValue(
+      "registro:123",
+    );
   });
 });
