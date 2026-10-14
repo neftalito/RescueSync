@@ -116,6 +116,43 @@ async function agregarLote(
 }
 
 describe("OfertaForm", () => {
+  it("desglosa una oferta usando recursos propios y envía cantidades exactas", async () => {
+    const capacidadId = "00000000-0000-4000-8000-000000000101";
+    const recursoId = "00000000-0000-4000-8000-000000000201";
+    let cuerpo: unknown;
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([{ ...convocatorias[0], lotes: [{ ...convocatorias[0]?.lotes[0], capacidad_nacional_id: capacidadId }] }])),
+      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json([{ id: recursoId, ongId: "00000000-0000-4000-8000-000000000301", capacidadId, codigoInterno: "AGUA", nombre: "Agua de mi ONG", capacidad: "Agua", unidad: "litros", admiteFracciones: true, cantidadTotal: "1000.000", cantidadComprometida: "0.000", cantidadDisponible: "1000.000", activo: true, actualizadoEn: "2026-10-14T12:00:00Z" }])),
+      http.post(`${API_URL}/ofertas`, async ({ request }) => { cuerpo = await request.json(); return HttpResponse.json(ofertaCreada, { status: 201 }); }),
+    );
+    renderForm();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Convocatoria"), "8");
+    await agregarLote(user, "54");
+    await user.type(screen.getByLabelText("Cantidad ofrecida"), "250,500");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+    expect(await screen.findByText("Agregá recursos de tu inventario para este lote.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Agregar recurso" }));
+    await user.selectOptions(await screen.findByLabelText("Recurso"), recursoId);
+    await user.type(screen.getByLabelText("Cantidad del recurso"), "250,500");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+    expect(await screen.findByText(/presentada correctamente/)).toBeInTheDocument();
+    expect(cuerpo).toMatchObject({ items: [{ cantidad_ofrecida: "250.500", aportes: [{ recurso_nacional_id: recursoId, cantidad: "250.500" }] }] });
+  });
+
+  it("explica que se necesita conectar la cuenta nacional para elegir recursos", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([{ ...convocatorias[0], lotes: [{ ...convocatorias[0]?.lotes[0], capacidad_nacional_id: "00000000-0000-4000-8000-000000000101" }] }])),
+      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json({ detail: "Conectá tu cuenta nacional." }, { status: 401 })),
+    );
+    renderForm();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Convocatoria"), "8");
+    await agregarLote(user, "54");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Conectá tu cuenta nacional.");
+    expect(screen.getByRole("link", { name: "Ir a Mis recursos" })).toHaveAttribute("href", "/mis-recursos");
+  });
+
   it("presenta una oferta parcial con recursos y personal para varios lotes", async () => {
     let cuerpo: unknown;
     let csrfHeader: string | null = null;

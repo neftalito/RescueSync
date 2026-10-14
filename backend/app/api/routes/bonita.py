@@ -8,24 +8,31 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Response,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import GestorTiempoRealDep, validar_callback_bonita
 from app.db.models import Convocatoria
-from app.db.session import get_db
+from app.db.session import get_db, get_db_consolidado
 from app.integrations.bonita.contratos import CABECERA_CASO_RAIZ
 from app.schemas import ErrorResponse
 from app.schemas.bonita import (
     CierreConvocatoriaRequest,
     ConvocatoriaBonitaResponse,
-    ItemOfertaConsolidado,
-    LoteConsolidado,
     NotificacionAperturaRequest,
-    OfertaConsolidada,
     OfertasConsolidadasResponse,
 )
 from app.services import callbacks_bonita as servicio
+from app.services.consolidado_nacional import respuesta_consolidada
 from app.services.notificaciones import clave_convocatoria_cerrada
 from app.services.tiempo_real import programar_evento_confirmado
 
@@ -160,48 +167,19 @@ def cerrar_convocatoria(
 def ofertas_consolidadas(
     emergencia_id: EmergenciaId,
     case_id: CasoBonitaId,
-    session: Annotated[Session, Depends(get_db)],
+    response: Response,
+    session: Annotated[Session, Depends(get_db_consolidado)],
+    intento_convocatoria: Annotated[
+        int | None, Query(alias="intentoConvocatoria", gt=0)
+    ] = None,
 ) -> OfertasConsolidadasResponse:
     consolidado = _ejecutar(
         lambda: servicio.consolidar_ofertas(
-            session, emergencia_id=emergencia_id, case_id=case_id
+            session,
+            emergencia_id=emergencia_id,
+            case_id=case_id,
+            intento_convocatoria=intento_convocatoria,
         )
     )
-    return OfertasConsolidadasResponse(
-        id_emergencia=consolidado.emergencia_id,
-        convocatoria_id=consolidado.convocatoria.id,
-        numero=consolidado.convocatoria.numero,
-        lotes_cubiertos=consolidado.lotes_cubiertos,
-        lotes=[
-            LoteConsolidado(
-                lote_id=cobertura.lote.id,
-                tipo_necesidad=cobertura.lote.tipo_necesidad,
-                cantidad_publicada=cobertura.publicacion.cantidad_publicada,
-                unidad=cobertura.publicacion.unidad_publicada,
-                cantidad_ofrecida=cobertura.cantidad_ofrecida,
-                cubierto=cobertura.cubierto,
-            )
-            for cobertura in consolidado.lotes
-        ],
-        ofertas=[
-            OfertaConsolidada(
-                oferta_id=oferta.id,
-                ong_id=oferta.ong_creadora_id,
-                estado=oferta.estado,
-                version=version.numero,
-                presentada_en=version.presentada_en,
-                items=[
-                    ItemOfertaConsolidado(
-                        lote_id=item.lote_id,
-                        tipo=item.tipo,
-                        descripcion=item.descripcion,
-                        cantidad_ofrecida=item.cantidad_ofrecida,
-                        unidad=item.unidad,
-                    )
-                    for item in sorted(version.items, key=lambda i: i.lote_id)
-                ],
-            )
-            for oferta, version in consolidado.ofertas
-            if version.presentada_en is not None
-        ],
-    )
+    response.headers["Cache-Control"] = "no-store"
+    return respuesta_consolidada(consolidado, case_id)

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.config import get_settings
 from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
@@ -127,6 +128,14 @@ def publicar_convocatoria(
         raise SinLotesValidosError(
             "La emergencia no tiene lotes en borrador para publicar."
         )
+    sistema_origen = get_settings().nacional_sistema_origen
+    if sistema_origen and any(
+        l.capacidad_nacional_id is None or l.codigo_capacidad is None
+        for l in lotes_borrador
+    ):
+        raise SinLotesValidosError(
+            "Completá las capacidades nacionales antes de publicar."
+        )
 
     ahora = datetime.now(UTC)
     convocatoria = Convocatoria(
@@ -135,6 +144,8 @@ def publicar_convocatoria(
         estado=EstadoConvocatoria.ABIERTA,
         publicada_en=ahora,
         cierra_en=ahora + VENTANA_CIERRE_PROVISORIA,
+        sistema_origen_ref=sistema_origen,
+        gravedad_publicada=emergencia.gravedad,
     )
     session.add(convocatoria)
     session.flush()
@@ -146,6 +157,10 @@ def publicar_convocatoria(
                 lote_id=lote.id,
                 cantidad_publicada=lote.cantidad_requerida,
                 unidad_publicada=lote.unidad,
+                capacidad_nacional_id=lote.capacidad_nacional_id,
+                codigo_capacidad_publicada=lote.codigo_capacidad,
+                admite_fracciones_publicada=lote.admite_fracciones,
+                riesgo_requerido_publicado=lote.riesgo_requerido or emergencia.gravedad,
             )
         )
         lote.estado = EstadoLote.PUBLICADO

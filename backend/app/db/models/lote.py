@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
@@ -21,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.models.enums import EstadoLote
+from app.db.models.enums import EstadoLote, GravedadEmergencia
 
 if TYPE_CHECKING:
     from app.db.models.convocatoria import ConvocatoriaLote
@@ -57,6 +58,12 @@ class Lote(Base):
         nullable=False,
     )
     unidad: Mapped[str] = mapped_column(String(40), nullable=False)
+    capacidad_nacional_id: Mapped[UUID | None] = mapped_column()
+    codigo_capacidad: Mapped[str | None] = mapped_column(String(80))
+    admite_fracciones: Mapped[bool | None] = mapped_column()
+    riesgo_requerido: Mapped[GravedadEmergencia | None] = mapped_column(
+        Enum(GravedadEmergencia, name="gravedad_emergencia")
+    )
     estado: Mapped[EstadoLote] = mapped_column(
         Enum(EstadoLote, name="estado_lote"),
         nullable=False,

@@ -26,6 +26,9 @@ export const lotePublicadoSchema = z.object({
   // Pydantic serializa `Decimal` como texto en JSON.
   cantidad_publicada: z.union([z.string(), z.number()]).transform(String),
   unidad_publicada: z.string(),
+  capacidad_nacional_id: z.string().uuid().nullable().optional(),
+  codigo_capacidad_publicada: z.string().nullable().optional(),
+  riesgo_requerido_publicado: z.enum(gravedades).nullable().optional(),
 });
 
 export const emergenciaResumenSchema = z.object({
@@ -43,6 +46,7 @@ export const convocatoriaSchema = z.object({
   cierra_en: z.string().min(1),
   lotes: z.array(lotePublicadoSchema),
   emergencia: emergenciaResumenSchema,
+  requiere_desglose_nacional: z.boolean().optional(),
 });
 
 export const convocatoriaPublicadaSchema = z.object({

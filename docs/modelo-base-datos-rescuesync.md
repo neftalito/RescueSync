@@ -34,6 +34,14 @@ ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
 
 ## 2. Principios de diseño
 
+La revisión `20261014_0009` amplía este modelo local para T34: agrega referencias
+de capacidad/riesgo en lotes y sus publicaciones, emisor/gravedad publicados,
+`oferta_version_participante` y `oferta_item_aporte`. Las referencias UUID son
+externas, sin claves foráneas entre bases. La composición operativa se congela
+por versión; `oferta_participante` conserva su estructura histórica anterior.
+El inventario sigue en la base nacional. El contrato, transición y restricciones
+se documentan en [Ofertas consolidadas nacionales](./ofertas-consolidadas-nacionales.md).
+
 1. **PostgreSQL local es la fuente de verdad.** Emergencias, lotes,
    convocatorias, ofertas y sus borradores se almacenan localmente.
 2. **Bonita conserva la orquestación.** La base local guarda la referencia de

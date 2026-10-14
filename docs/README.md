@@ -6,6 +6,8 @@ referencia.
 
 ## Desarrollo
 
+- [Ofertas consolidadas nacionales](./ofertas-consolidadas-nacionales.md): T34,
+  referencias publicadas, aportes por participante, consorcios y contrato Bonita.
 - [Autenticación local](./autenticacion-local.md): administrador inicial,
   gestión de usuarios, contraseñas, seed, sesiones, CSRF y matriz RBAC.
 - [Inventario nacional](./inventario-nacional.md): Mis recursos, vinculación de

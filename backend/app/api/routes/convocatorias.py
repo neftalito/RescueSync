@@ -103,6 +103,9 @@ def _respuesta_lote(publicacion: ConvocatoriaLote) -> LotePublicadoResponse:
         descripcion=publicacion.lote.descripcion,
         cantidad_publicada=publicacion.cantidad_publicada,
         unidad_publicada=publicacion.unidad_publicada,
+        capacidad_nacional_id=publicacion.capacidad_nacional_id,
+        codigo_capacidad_publicada=publicacion.codigo_capacidad_publicada,
+        riesgo_requerido_publicado=publicacion.riesgo_requerido_publicado,
     )
 
 
@@ -171,6 +174,7 @@ def listar_convocatorias_abiertas(
     convocatorias = servicio.listar_convocatorias_abiertas(session)
     return [
         ConvocatoriaAbiertaResponse(
+            requiere_desglose_nacional=bool(convocatoria.sistema_origen_ref),
             id=convocatoria.id,
             emergencia_id=convocatoria.emergencia_id,
             numero=convocatoria.numero,

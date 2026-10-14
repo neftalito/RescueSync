@@ -15,6 +15,7 @@ interface ContenidoOfertaApi {
     descripcion: string;
     cantidad_ofrecida: string;
     unidad: string;
+    aportes?: Array<{ recurso_nacional_id: string; cantidad: string }>;
   }>;
 }
 
@@ -27,6 +28,7 @@ function contenidoOferta(datos: OfertaFormData): ContenidoOfertaApi {
       descripcion: item.descripcion,
       cantidad_ofrecida: item.cantidad_ofrecida.replace(",", "."),
       unidad: item.unidad,
+      ...(item.aportes?.length ? { aportes: item.aportes.map((a) => ({ recurso_nacional_id: a.recurso_nacional_id, cantidad: a.cantidad.replace(",", ".") })) } : {}),
     })),
   };
 }

@@ -1,8 +1,13 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 
 import { ApiError } from "../api/client";
+import { apiRequest } from "../api/client";
+import { capacidadSchema } from "../schemas/inventario";
+import { z } from "zod";
+import { gravedades, gravedadLabels } from "../schemas/emergencia";
 import { useEliminarLote } from "../hooks/useEliminarLote";
 import { useGuardarLotes } from "../hooks/useGuardarLotes";
 import { usePublicarConvocatoria } from "../hooks/usePublicarConvocatoria";
@@ -48,6 +53,8 @@ function aFormulario(lote: Lote): LoteItemFormData {
     ),
     unidad: lote.unidad,
     descripcion: lote.descripcion ?? "",
+    capacidad_nacional_id: lote.capacidad_nacional_id ?? "",
+    riesgo_requerido: lote.riesgo_requerido ?? "",
   };
 }
 
@@ -66,6 +73,7 @@ export function LotesForm({
     handleSubmit,
     reset,
     getValues,
+    setValue,
     formState: { errors, isDirty, defaultValues },
   } = useForm<LotesFormData>({
     resolver: zodResolver(lotesFormSchema),
@@ -85,6 +93,12 @@ export function LotesForm({
   // Borrador cuya eliminación espera confirmación: es estado de la interfaz,
   // no un valor del formulario.
   const [confirmando, setConfirmando] = useState<number | null>(null);
+  const [consultarCatalogo, setConsultarCatalogo] = useState(false);
+  const catalogo = useQuery({
+    queryKey: ["capacidades-coordinacion"],
+    queryFn: () => apiRequest("/emergencias/catalogos/capacidades-nacionales", z.array(capacidadSchema)),
+    enabled: consultarCatalogo, retry: false,
+  });
 
   const submit = (datos: LotesFormData): void => {
     eliminacion.reset();
@@ -230,6 +244,28 @@ export function LotesForm({
                   )}
 
                   <div className="mt-2 grid gap-5 sm:grid-cols-2">
+                    <div className="sm:col-span-2 rounded-xl bg-cyan-50 p-3">
+                      <button type="button" className="font-semibold text-cyan-800 underline" onClick={() => setConsultarCatalogo(true)}>Seleccionar capacidad nacional</button>
+                      {catalogo.isFetching && <p role="status">Cargando capacidades…</p>}
+                      {catalogo.isError && <p role="alert">{catalogo.error instanceof ApiError ? catalogo.error.message : "No pudimos consultar las capacidades."}</p>}
+                      {catalogo.data && <>
+                        <label className="mt-2 block">Capacidad operativa
+                          <select className={inputClasses} {...register(`lotes.${index}.capacidad_nacional_id`, { onChange: (event) => {
+                            const capacidad = catalogo.data?.find((c) => c.id === event.target.value);
+                            if (capacidad) setValue(`lotes.${index}.unidad`, capacidad.unidad, { shouldDirty: true });
+                          } })}>
+                            <option value="">Elegí una capacidad</option>
+                            {catalogo.data.map((c) => <option key={c.id} value={c.id}>{c.nombre} · {c.unidad}</option>)}
+                          </select>
+                        </label>
+                        <label className="mt-2 block">Riesgo requerido
+                          <select className={inputClasses} {...register(`lotes.${index}.riesgo_requerido`)}>
+                            <option value="">Usar gravedad de la emergencia</option>
+                            {gravedades.map((g) => <option key={g} value={g}>{gravedadLabels[g]}</option>)}
+                          </select>
+                        </label>
+                      </>}
+                    </div>
                     <div className="sm:col-span-2">
                       <label
                         htmlFor={`${prefijo}-tipo`}

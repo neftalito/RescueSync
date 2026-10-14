@@ -86,6 +86,25 @@ async function completarLote(
 }
 
 describe("LotesForm", () => {
+  it("selecciona una capacidad explícita y conserva su unidad y riesgo al guardar", async () => {
+    const capacidadId = "00000000-0000-4000-8000-000000000101";
+    let cuerpo: unknown;
+    server.use(
+      http.get(`${API_URL}/emergencias/catalogos/capacidades-nacionales`, () => HttpResponse.json([{ id: capacidadId, codigo: "AGUA", nombre: "Agua", tipo: "SUMINISTRO", unidad: "litros", admiteFracciones: true }])),
+      http.post(URL_LOTES, async ({ request }) => { cuerpo = await request.json(); return HttpResponse.json([loteGuardado(1, "Agua", "10", "litros")]); }),
+    );
+    renderForm();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Tipo de necesidad"), "Agua");
+    await user.type(screen.getByLabelText("Cantidad requerida"), "10");
+    await user.click(screen.getByRole("button", { name: "Seleccionar capacidad nacional" }));
+    await user.selectOptions(await screen.findByLabelText("Capacidad operativa"), capacidadId);
+    expect(screen.getByLabelText("Unidad")).toHaveValue("litros");
+    await user.selectOptions(screen.getByLabelText("Riesgo requerido"), "ALTA");
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+    await waitFor(() => expect(cuerpo).toMatchObject({ lotes: [{ capacidad_nacional_id: capacidadId, riesgo_requerido: "ALTA", unidad: "litros" }] }));
+  });
+
   it("valida campos obligatorios y cantidades positivas", async () => {
     const user = userEvent.setup();
     renderForm();
