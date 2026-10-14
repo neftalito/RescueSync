@@ -1,6 +1,7 @@
 """Esquemas HTTP para la publicación de convocatorias."""
 
 from decimal import Decimal
+from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
@@ -21,6 +22,9 @@ class LotePublicadoResponse(BaseModel):
     descripcion: str | None
     cantidad_publicada: Decimal
     unidad_publicada: str
+    capacidad_nacional_id: UUID | None = None
+    codigo_capacidad_publicada: str | None = None
+    riesgo_requerido_publicado: GravedadEmergencia | None = None
 
 
 class ConvocatoriaResponse(BaseModel):
@@ -63,3 +67,4 @@ class ConvocatoriaAbiertaResponse(BaseModel):
     cierra_en: AwareDatetime
     lotes: list[LotePublicadoResponse]
     emergencia: EmergenciaResumenResponse
+    requiere_desglose_nacional: bool = False

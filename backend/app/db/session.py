@@ -17,3 +17,13 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 def get_db() -> Generator[Session, None, None]:
     with SessionLocal() as session:
         yield session
+
+
+def get_db_consolidado() -> Generator[Session, None, None]:
+    """El GET técnico lee todos sus datos desde el mismo snapshot local."""
+    with Session(
+        engine.execution_options(isolation_level="REPEATABLE READ"),
+        autoflush=False,
+        expire_on_commit=False,
+    ) as session:
+        yield session

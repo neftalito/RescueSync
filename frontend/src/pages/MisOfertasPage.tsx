@@ -2,6 +2,7 @@ import { type ReactElement } from "react";
 import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
+import { ConsorcioOferta } from "../components/ConsorcioOferta";
 import { useMisOfertas } from "../hooks/useMisOfertas";
 import { gravedadLabels } from "../schemas/emergencia";
 import { estadoOfertaLabels, tipoAporteLabels, type Oferta } from "../schemas/oferta";
@@ -23,7 +24,7 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
             {gravedadLabels[oferta.emergencia.gravedad]} · {oferta.emergencia.zona}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Presentada el {formatearFecha(oferta.presentada_en)}
+            {oferta.presentada_en ? `Presentada el ${formatearFecha(oferta.presentada_en)}` : "Propuesta pendiente de confirmación"}
           </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -49,6 +50,7 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
             Modificar oferta
           </Link>
         )}
+        {oferta.requiere_desglose_nacional && <ConsorcioOferta oferta={oferta} />}
       </div>
     </details>
   );

@@ -32,7 +32,7 @@ from app.db.models import (
     TipoOrganizacion,
     Usuario,
 )
-from app.db.session import get_db
+from app.db.session import get_db, get_db_consolidado
 from app.integrations.bonita.contratos import CABECERA_CASO_RAIZ
 from app.main import app
 
@@ -61,12 +61,15 @@ def client(db_session: Session) -> Iterator[TestClient]:
     def usar_sesion_de_prueba() -> Iterator[Session]:
         yield db_session
 
-    app.dependency_overrides[get_db] = usar_sesion_de_prueba
+    app.dependency_overrides[get_db_consolidado] = app.dependency_overrides[get_db] = (
+        usar_sesion_de_prueba
+    )
     try:
         with TestClient(app) as test_client:
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_db_consolidado, None)
 
 
 def _organizacion(
@@ -458,6 +461,11 @@ def test_consolida_solo_versiones_vigentes_presentadas_y_en_la_unidad_publicada(
             "unidad": "litros",
             "cantidadOfrecida": 1000.0,
             "cubierto": True,
+            "capacidadNacionalId": None,
+            "codigoCapacidad": None,
+            "riesgoRequerido": None,
+            "cantidadPublicadaExacta": "1000.000",
+            "cantidadOfrecidaExacta": "1000.000",
         },
         "Kits": {
             "loteId": kits.id,
@@ -466,6 +474,11 @@ def test_consolida_solo_versiones_vigentes_presentadas_y_en_la_unidad_publicada(
             "unidad": "kits",
             "cantidadOfrecida": 4.0,
             "cubierto": False,
+            "capacidadNacionalId": None,
+            "codigoCapacidad": None,
+            "riesgoRequerido": None,
+            "cantidadPublicadaExacta": "10.000",
+            "cantidadOfrecidaExacta": "4.000",
         },
     }
 

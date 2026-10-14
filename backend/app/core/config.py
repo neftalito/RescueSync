@@ -79,12 +79,20 @@ class Settings(BaseSettings):
     frontend_public_url: AnyHttpUrl = "http://localhost:5173"
     nacional_base_url: AnyHttpUrl = "http://host.docker.internal:8001/api/v1"
     nacional_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    nacional_sistema_origen: str | None = Field(
+        default=None, min_length=1, max_length=80
+    )
+    nacional_catalogo_login: str | None = None
+    nacional_catalogo_password: SecretStr | None = None
 
     @field_validator(
         "session_secret",
         "bonita_callback_token",
         "smtp_username",
         "smtp_password",
+        "nacional_sistema_origen",
+        "nacional_catalogo_login",
+        "nacional_catalogo_password",
         mode="before",
     )
     @classmethod

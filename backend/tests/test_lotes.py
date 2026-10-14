@@ -582,6 +582,7 @@ def test_rechaza_lote_ajeno_a_la_emergencia(
     db_session.add(otra)
     db_session.flush()
     ajeno = _lote(db_session, otra, coordinador)
+    db_session.commit()
     csrf = _autenticar(client, coordinador)
     iniciales = _contar_lotes(db_session)
 
@@ -612,6 +613,7 @@ def test_rechaza_editar_lote_publicado(
     coordinador: Usuario,
 ) -> None:
     lote = _lote(db_session, emergencia, coordinador, estado=EstadoLote.PUBLICADO)
+    db_session.commit()
     csrf = _autenticar(client, coordinador)
 
     response = client.post(

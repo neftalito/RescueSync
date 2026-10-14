@@ -1,9 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
+import { consultarRecursos } from "../api/inventario";
+import { sessionQueryKey } from "../hooks/useSession";
+import type { Session } from "../schemas/auth";
+import { RecursosOferta } from "./RecursosOferta";
 import { useActualizarOferta } from "../hooks/useActualizarOferta";
 import { useConvocatoriasAbiertas } from "../hooks/useConvocatoriasAbiertas";
 import { useMisOfertas } from "../hooks/useMisOfertas";
@@ -36,10 +41,13 @@ function nuevoItem(lote: LotePublicado): OfertaFormData["items"][number] {
     cantidad_ofrecida: "",
     cantidad_publicada: lote.cantidad_publicada,
     unidad: lote.unidad_publicada,
+    requiere_desglose: Boolean(lote.capacidad_nacional_id),
+    aportes: [],
   };
 }
 
 export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactElement {
+  const session = useQueryClient().getQueryData<Session>(sessionQueryKey);
   const convocatoriasQuery = useConvocatoriasAbiertas();
   const ofertasQuery = useMisOfertas();
   const registrarMutation = useRegistrarOferta();
@@ -81,6 +89,10 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
     (item) => item.id === convocatoriaBuscadaId,
   );
   const lotes = convocatoria?.lotes ?? [];
+  const recursosQuery = useQuery({
+    queryKey: ["recursos-oferta", session?.usuario.id, convocatoriaId], queryFn: consultarRecursos,
+    enabled: items.some((i) => i.requiere_desglose), retry: false, gcTime: 0,
+  });
   const lotesAgregados = new Set(items.map((item) => item.lote_id));
   const lotesSinAgregar = lotes.filter(
     (lote) => !lotesAgregados.has(lote.lote_id),
@@ -130,6 +142,8 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
           ),
           cantidad_publicada: lote?.cantidad_publicada ?? "0",
           unidad: item.unidad,
+          requiere_desglose: Boolean(lote?.capacidad_nacional_id),
+          aportes: (item.aportes ?? []).map((a) => ({ recurso_nacional_id: a.recurso_nacional_id, cantidad: a.cantidad })),
         };
       }),
     });
@@ -390,6 +404,11 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
                         {lote.unidad_publicada}
                       </p>
                     )}
+                    {lote?.capacidad_nacional_id && <>
+                      {recursosQuery.isPending && <p role="status">Cargando tu inventario…</p>}
+                      {recursosQuery.isError && <p role="alert">{recursosQuery.error instanceof ApiError ? recursosQuery.error.message : "No pudimos consultar el inventario."} <Link to="/mis-recursos">Ir a Mis recursos</Link></p>}
+                      <RecursosOferta index={index} control={control} register={register} errores={errors} recursos={(recursosQuery.isError ? [] : recursosQuery.data ?? []).filter((r) => r.activo && r.capacidadId === lote.capacidad_nacional_id && r.unidad === lote.unidad_publicada)} />
+                    </>}
                     <input
                       type="hidden"
                       {...register(`items.${index}.lote_id`, {

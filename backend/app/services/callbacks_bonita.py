@@ -20,6 +20,7 @@ from app.db.models import (
     EstadoOferta,
     Lote,
     Oferta,
+    OfertaItem,
     OfertaVersion,
 )
 from app.services.notificaciones import notificar_convocatoria_cerrada
@@ -181,6 +182,7 @@ def consolidar_ofertas(
     *,
     emergencia_id: int,
     case_id: int,
+    intento_convocatoria: int | None = None,
 ) -> OfertasConsolidadas:
     """Consolida las ofertas presentadas en la última convocatoria cerrada.
 
@@ -197,6 +199,10 @@ def consolidar_ofertas(
     )
     if convocatoria is None:
         raise ConvocatoriaNoEncontradaError("La emergencia no tiene convocatorias.")
+    if intento_convocatoria is not None and intento_convocatoria != convocatoria.numero:
+        raise EstadoConvocatoriaInvalidoError(
+            "El intento no coincide con la última convocatoria."
+        )
     if convocatoria.estado is not EstadoConvocatoria.CERRADA:
         raise EstadoConvocatoriaInvalidoError(
             f"La convocatoria {convocatoria.numero} debe cerrarse antes de "
@@ -226,7 +232,10 @@ def consolidar_ofertas(
                 Oferta.estado.not_in(ESTADOS_OFERTA_NO_CONSOLIDABLES),
                 OfertaVersion.presentada_en.is_not(None),
             )
-            .options(selectinload(OfertaVersion.items))
+            .options(
+                selectinload(OfertaVersion.items).selectinload(OfertaItem.aportes),
+                selectinload(OfertaVersion.participantes),
+            )
             .order_by(Oferta.id)
         ).all()
     )

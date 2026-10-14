@@ -37,8 +37,10 @@ __all__ = [
     "Notificacion",
     "Oferta",
     "OfertaItem",
+    "OfertaItemAporte",
     "OfertaParticipante",
     "OfertaVersion",
+    "OfertaVersionParticipante",
     "Organizacion",
     "RolUsuario",
     "TipoAporte",
@@ -47,3 +49,4 @@ __all__ = [
     "TipoParticipacion",
     "Usuario",
 ]
+from app.db.models.aportes import OfertaItemAporte, OfertaVersionParticipante

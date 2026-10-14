@@ -17,6 +17,8 @@ integración inicial con Bonita.
 El frontend nunca llama directamente a Bonita ni a PostgreSQL. FastAPI concentra
 las sesiones locales, RBAC, CSRF, persistencia y traducción de contratos externos.
 La API Nacional con JWT corresponde a la Entrega 3.
+La captura de referencias nacionales y el GET ampliado para Bonita se describen
+en [Ofertas consolidadas nacionales](./docs/ofertas-consolidadas-nacionales.md).
 
 ## Actualizaciones y notificaciones en tiempo real
 
