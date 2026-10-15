@@ -670,8 +670,16 @@ function CantidadFormView({
       </label>
       <ErrorMensaje error={error} />
       <div className="flex flex-wrap gap-3">
-        <button className="action-button action-primary" disabled={pendiente}>
-          {pendiente ? "Guardando…" : "Guardar cantidad"}
+        <button
+          className="action-button action-primary action-icon"
+          disabled={pendiente}
+          aria-busy={pendiente}
+          title={pendiente ? "Guardando…" : "Guardar cantidad"}
+        >
+          <ActionIcon name="save" />
+          <span className="sr-only">
+            {pendiente ? "Guardando…" : "Guardar cantidad"}
+          </span>
         </button>
         <button
           type="button"

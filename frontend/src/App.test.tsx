@@ -116,6 +116,31 @@ describe("autenticación", () => {
     expect(requestCredentials).toBe("include");
   });
 
+  it("permite mostrar y ocultar la contraseña del login con el botón de ojo", async () => {
+    const user = userEvent.setup();
+    renderApp("/login");
+
+    const password = screen.getByLabelText("Contraseña");
+    expect(screen.queryByRole("button", { name: "Mostrar contraseña" })).not.toBeInTheDocument();
+
+    await user.type(password, "Una-clave-segura");
+    expect(password).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+    expect(password).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: "Ocultar contraseña" }));
+    expect(password).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(screen.getByRole("button", { name: "Ocultar contraseña" })).toHaveAttribute("aria-pressed", "true");
+    expect(password).toHaveValue("Una-clave-segura");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    await user.clear(password);
+    expect(screen.queryByRole("button", { name: "Ocultar contraseña" })).not.toBeInTheDocument();
+  });
+
   it("muestra validaciones accesibles sin enviar datos incompletos", async () => {
     const user = userEvent.setup();
     renderApp("/login");
@@ -397,15 +422,25 @@ describe("autenticación", () => {
       "La contraseña actual es incorrecta.",
     );
     await user.click(
-      screen.getByRole("checkbox", { name: "Mostrar contraseñas" }),
+      screen.getByRole("button", { name: "Mostrar: Contraseña actual" }),
     );
     expect(screen.getByLabelText("Contraseña actual")).toHaveAttribute(
       "type",
       "text",
     );
+    expect(screen.getByLabelText("Contraseña nueva")).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText("Repetir contraseña nueva")).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "Mostrar: Contraseña nueva" }));
+    expect(screen.getByLabelText("Contraseña nueva")).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: "Mostrar: Repetir contraseña nueva" }));
+    expect(screen.getByLabelText("Repetir contraseña nueva")).toHaveAttribute("type", "text");
+    await user.click(screen.getByRole("button", { name: "Ocultar: Contraseña actual" }));
+    expect(screen.getByLabelText("Contraseña actual")).toHaveAttribute("type", "password");
+    await user.click(screen.getByRole("button", { name: "Mostrar: Contraseña actual" }));
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     expect(screen.getByLabelText("Contraseña actual")).toHaveValue("");
     expect(screen.getByLabelText("Contraseña nueva")).toHaveValue("");
+    expect(screen.getByLabelText("Contraseña nueva")).toHaveAttribute("type", "password");
     expect(screen.getByLabelText("Repetir contraseña nueva")).toHaveValue("");
     expect(screen.getByLabelText("Contraseña actual")).toHaveAttribute(
       "type",
@@ -902,7 +937,7 @@ describe("emergencias del municipio", () => {
     ).not.toBeInTheDocument();
     await user.click(screen.getByText("Alta · Ribera norte"));
     expect(
-      screen.getByRole("button", { name: "Reintentar vinculación" }),
+      screen.getByRole("button", { name: "Vincular con Bonita" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "Registrar emergencia" }));
     expect(screen.getByLabelText("Zona afectada")).toHaveValue("");

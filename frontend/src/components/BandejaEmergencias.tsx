@@ -101,15 +101,9 @@ function TarjetaEmergencia({
                 onClick={() =>
                   reintento.mutate({ emergenciaId: emergencia.id, csrfToken })
                 }
-                className="action-button action-primary action-icon mt-3"
-                title={reintento.isPending
-                  ? "Reintentando…"
-                  : "Reintentar vinculación"}
+                className="action-button action-primary mt-3"
               >
-                <ActionIcon name="refresh" />
-                <span className="sr-only">{reintento.isPending
-                  ? "Reintentando…"
-                  : "Reintentar vinculación"}</span>
+                {reintento.isPending ? "Vinculando…" : "Vincular con Bonita"}
               </button>
             )}
           </div>

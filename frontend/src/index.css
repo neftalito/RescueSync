@@ -95,6 +95,25 @@ a {
     @apply size-11 shrink-0 p-0;
   }
 
+  .action-borderless,
+  .action-borderless:not(:disabled):hover,
+  .action-borderless:focus-visible,
+  .action-borderless:not(:disabled):active {
+    border-color: transparent;
+    outline: none;
+  }
+
+  .action-borderless:focus-visible {
+    box-shadow: 0 0 0 2px var(--action-accent, var(--color-slate-500));
+  }
+
+  .password-visibility,
+  .password-visibility:not(:disabled):hover,
+  .password-visibility:focus-visible,
+  .password-visibility:not(:disabled):active {
+    background-color: transparent;
+  }
+
   .form-input {
     @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100 disabled:bg-slate-100;
   }

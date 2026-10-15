@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { useForm, type UseFormRegisterReturn } from "react-hook-form";
+import { useForm, useWatch, type UseFormRegisterReturn } from "react-hook-form";
 import { useNavigate } from "react-router";
 
 import { ActionIcon } from "./ActionIcon";
@@ -14,6 +14,8 @@ import {
   type Session,
 } from "../schemas/auth";
 
+const hiddenPasswords = { actual: false, nueva: false, confirmacion: false };
+
 interface ChangePasswordSectionProps {
   session: Session;
 }
@@ -23,8 +25,9 @@ export function ChangePasswordSection({
 }: ChangePasswordSectionProps): ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [showPasswords, setShowPasswords] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(hiddenPasswords);
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -37,13 +40,14 @@ export function ChangePasswordSection({
       confirmacion: "",
     },
   });
+  const passwords = useWatch({ control });
   const mutation = useMutation({
     mutationFn: (values: ChangePasswordForm) =>
       changePassword(values, session.csrf_token),
     onSuccess: (updatedSession: Session) => {
       queryClient.setQueryData(sessionQueryKey, updatedSession);
       reset();
-      setShowPasswords(false);
+      setShowPasswords(hiddenPasswords);
       if (session.usuario.requiere_cambio_password) {
         navigate("/", { replace: true });
       }
@@ -86,7 +90,12 @@ export function ChangePasswordSection({
           id="password-actual"
           label="Contraseña actual"
           placeholder="Ingresá tu contraseña actual"
-          visible={showPasswords}
+          visible={showPasswords.actual}
+          hasValue={Boolean(passwords.password_actual)}
+          onToggle={() => setShowPasswords((previous) => ({
+            ...previous,
+            actual: !previous.actual,
+          }))}
           error={errors.password_actual?.message}
           registration={register("password_actual")}
           autoComplete="current-password"
@@ -95,7 +104,12 @@ export function ChangePasswordSection({
           id="password-nueva"
           label="Contraseña nueva"
           placeholder="Usá entre 8 y 128 caracteres"
-          visible={showPasswords}
+          visible={showPasswords.nueva}
+          hasValue={Boolean(passwords.password_nueva)}
+          onToggle={() => setShowPasswords((previous) => ({
+            ...previous,
+            nueva: !previous.nueva,
+          }))}
           error={errors.password_nueva?.message}
           registration={register("password_nueva")}
           autoComplete="new-password"
@@ -104,21 +118,16 @@ export function ChangePasswordSection({
           id="confirmacion"
           label="Repetir contraseña nueva"
           placeholder="Volvé a ingresar la contraseña nueva"
-          visible={showPasswords}
+          visible={showPasswords.confirmacion}
+          hasValue={Boolean(passwords.confirmacion)}
+          onToggle={() => setShowPasswords((previous) => ({
+            ...previous,
+            confirmacion: !previous.confirmacion,
+          }))}
           error={errors.confirmacion?.message}
           registration={register("confirmacion")}
           autoComplete="new-password"
         />
-
-        <label className="flex items-center gap-3 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={showPasswords}
-            onChange={(event) => setShowPasswords(event.target.checked)}
-            className="size-4 rounded border-slate-300"
-          />
-          Mostrar contraseñas
-        </label>
 
         {requestError && (
           <p
@@ -145,14 +154,13 @@ export function ChangePasswordSection({
               type="button"
               onClick={() => {
                 reset();
-                setShowPasswords(false);
+                setShowPasswords(hiddenPasswords);
                 mutation.reset();
               }}
-              className="action-button action-icon"
+              className="action-button"
               title="Cancelar"
             >
-              <ActionIcon name="close" />
-              <span className="sr-only">Cancelar</span>
+              Cancelar
             </button>
           )}
           <button
@@ -173,6 +181,8 @@ interface PasswordFieldProps {
   label: string;
   placeholder: string;
   visible: boolean;
+  hasValue: boolean;
+  onToggle: () => void;
   error?: string;
   registration: UseFormRegisterReturn;
   autoComplete: string;
@@ -183,6 +193,8 @@ function PasswordField({
   label,
   placeholder,
   visible,
+  hasValue,
+  onToggle,
   error,
   registration,
   autoComplete,
@@ -196,16 +208,31 @@ function PasswordField({
       >
         {label}
       </label>
-      <input
-        id={id}
-        type={visible ? "text" : "password"}
-        autoComplete={autoComplete}
-        placeholder={placeholder}
-        aria-invalid={error !== undefined}
-        aria-describedby={error ? errorId : undefined}
-        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"
-        {...registration}
-      />
+      <div className="relative mt-2">
+        <input
+          id={id}
+          type={visible ? "text" : "password"}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          aria-invalid={error !== undefined}
+          aria-describedby={error ? errorId : undefined}
+          className="w-full rounded-xl border border-slate-300 px-4 py-3 pr-16 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100 [&::-ms-reveal]:hidden"
+          {...registration}
+        />
+        {hasValue && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="action-button action-icon action-borderless password-visibility absolute inset-y-0 right-2 my-auto"
+            aria-label={`${visible ? "Ocultar" : "Mostrar"}: ${label}`}
+            title={`${visible ? "Ocultar" : "Mostrar"}: ${label}`}
+            aria-controls={id}
+            aria-pressed={visible}
+          >
+            <ActionIcon name={visible ? "eye-off" : "eye"} />
+          </button>
+        )}
+      </div>
       {error && (
         <p id={errorId} className="mt-2 text-sm text-red-700">
           {error}

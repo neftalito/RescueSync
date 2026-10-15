@@ -348,11 +348,10 @@ export function OfertaForm({
           </p>
           <Link
             to={`/ofertas/${ofertaInicial.id}/editar`}
-            className="action-button action-primary action-icon mt-5"
+            className="action-button action-primary mt-5"
             title="Modificar oferta existente"
           >
-            <ActionIcon name="edit" />
-            <span className="sr-only">Modificar oferta existente</span>
+            Modificar oferta existente
           </Link>
         </article>
       );

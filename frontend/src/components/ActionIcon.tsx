@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
 type ActionIconName =
+  | "save"
   | "home"
   | "back"
   | "edit"
@@ -18,6 +19,7 @@ type ActionIconName =
   | "users";
 
 const paths: Record<ActionIconName, string> = {
+  save: "M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12l4 4v12a2 2 0 0 1-2 2ZM7 3v6h10V3M7 21v-8h10v8",
   home: "m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z",
   back: "m12 19-7-7 7-7M5 12h14",
   edit: "m16 3 5 5-12 12-6 1 1-6zM14 5l5 5",

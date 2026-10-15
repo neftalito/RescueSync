@@ -215,7 +215,7 @@ export function NotificationCenter({
                 title="Marcar todas como vistas"
                 disabled={noLeidas === 0 || marcarTodasLeidas.isPending}
                 onClick={() => marcarTodasLeidas.mutate()}
-                className="action-button action-primary action-icon"
+                className="action-button action-primary action-icon action-borderless"
               >
                 <svg
                   aria-hidden="true"
@@ -290,7 +290,7 @@ export function NotificationCenter({
                         <button
                           type="button"
                           onClick={() => leer(notificacion)}
-                          className="action-button action-primary action-icon"
+                          className="action-button action-primary action-icon action-borderless"
                           title="Marcar como leída"
                         >
                           <ActionIcon name="check" />

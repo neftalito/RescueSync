@@ -595,11 +595,10 @@ export function LotesForm({
             type="button"
             disabled={bloqueado}
             onClick={() => append(loteVacio)}
-            className="action-button action-primary action-icon"
+            className="action-button action-primary"
             title="Agregar lote"
           >
-            <ActionIcon name="plus" />
-            <span className="sr-only">Agregar lote</span>
+            Agregar lote
           </button>
 
           {eliminacion.isSuccess && (

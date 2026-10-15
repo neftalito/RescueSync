@@ -208,7 +208,7 @@ describe("BandejaEmergencias", () => {
     expect(screen.getByText("Error de vinculación")).toBeVisible();
     expect(screen.getByText("Bonita no está disponible.")).toBeVisible();
     await user.click(
-      screen.getByRole("button", { name: "Reintentar vinculación" }),
+      screen.getByRole("button", { name: "Vincular con Bonita" }),
     );
 
     expect(
