@@ -326,6 +326,41 @@ describe("autenticación", () => {
     });
   });
 
+  it("reintenta el alta nacional pendiente sin volver a crear la organización", async () => {
+    let vinculada = false;
+    const nationalId = "12345678-1234-4234-8234-123456789abc";
+    const organization = {
+      id: 90, nombre: "ONG pendiente", tipo: "ONG", activa: true,
+    };
+    server.use(
+      http.get(`${API_URL}/auth/me`, () =>
+        HttpResponse.json(sessionForRole("ADMINISTRADOR")),
+      ),
+      http.get(`${API_URL}/organizaciones`, () =>
+        HttpResponse.json([{
+          ...organization, ong_nacional_id: vinculada ? nationalId : null,
+        }]),
+      ),
+      http.post(
+        `${API_URL}/organizaciones/90/aprovisionamiento-nacional`,
+        ({ request }) => {
+          expect(request.headers.get("X-CSRF-Token")).toBe("csrf-firmado");
+          vinculada = true;
+          return HttpResponse.json({ ...organization, ong_nacional_id: nationalId });
+        },
+      ),
+    );
+    renderApp("/organizaciones");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", {
+      name: "Reintentar alta nacional",
+    }));
+    expect(await screen.findByText("Acceso nacional disponible.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", {
+      name: "Reintentar alta nacional",
+    })).not.toBeInTheDocument());
+  });
+
   it("permite crear, editar, desactivar y recuperar organizaciones", async () => {
     const adminSession = sessionForRole("ADMINISTRADOR");
     let organizations: Array<{
@@ -352,8 +387,10 @@ describe("autenticación", () => {
         expect(await request.json()).toEqual({
           nombre: "Nueva ONG",
           tipo: "ONG",
+          email_contacto: null,
         });
         const created = {
+          ong_nacional_id: "12345678-1234-4234-8234-123456789abc",
           id: 9,
           nombre: "Nueva ONG",
           tipo: "ONG" as const,
@@ -409,7 +446,7 @@ describe("autenticación", () => {
       screen.getByRole("button", { name: "Crear organización" }),
     );
 
-    expect(await screen.findByText("Organización creada.")).toBeInTheDocument();
+    expect(await screen.findByText("ONG creada con acceso nacional disponible.")).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { name: "Nueva ONG" }),
     ).toBeInTheDocument();

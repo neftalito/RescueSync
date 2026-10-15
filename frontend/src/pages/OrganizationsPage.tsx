@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
 import { ApiError } from "../api/client";
@@ -12,6 +12,7 @@ import {
   linkNationalOrganization,
   organizationsQueryKey,
   reactivateOrganization,
+  retryNationalProvisioning,
   updateOrganization,
 } from "../api/organizations";
 import type { Session } from "../schemas/auth";
@@ -43,19 +44,35 @@ export function OrganizationsPage({
   });
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors },
   } = useForm<CreateOrganizationForm>({
     resolver: zodResolver(createOrganizationSchema),
-    defaultValues: { nombre: "", tipo: "ONG" },
+    defaultValues: { nombre: "", tipo: "ONG", email_contacto: "" },
   });
+  const selectedType = useWatch({ control, name: "tipo" });
   const mutation = useMutation({
     mutationFn: (values: CreateOrganizationForm) =>
       createOrganization(values, session.csrf_token),
-    onSuccess: async () => {
+    onSuccess: async (organization) => {
       reset();
-      setFeedback("Organización creada.");
+      setFeedback(
+        organization.tipo === "ONG"
+          ? organization.ong_nacional_id
+            ? "ONG creada con acceso nacional disponible."
+            : "ONG creada. El alta nacional quedó pendiente; podés reintentar desde su tarjeta."
+          : "Organización creada.",
+      );
+      await queryClient.invalidateQueries({ queryKey: organizationsQueryKey });
+    },
+  });
+  const provisioning = useMutation({
+    mutationFn: (organization: Organization) =>
+      retryNationalProvisioning(organization.id, session.csrf_token),
+    onSuccess: async () => {
+      setFeedback("Acceso nacional disponible.");
       await queryClient.invalidateQueries({ queryKey: organizationsQueryKey });
     },
   });
@@ -167,6 +184,25 @@ export function OrganizationsPage({
                 ))}
               </select>
             </label>
+            {selectedType === "ONG" && (
+              <label className="block text-sm font-semibold text-slate-800">
+                Correo de contacto (opcional)
+                <input
+                  type="email"
+                  className="form-input mt-2"
+                  autoComplete="email"
+                  {...register("email_contacto")}
+                />
+                {errors.email_contacto && (
+                  <span role="alert" className="mt-2 block text-red-700">
+                    {errors.email_contacto.message}
+                  </span>
+                )}
+                <span className="mt-2 block text-sm font-normal text-slate-600">
+                  El identificador y el acceso nacional se generan automáticamente.
+                </span>
+              </label>
+            )}
             {mutation.isError && (
               <p role="alert" className="text-sm text-red-700 md:col-span-2">
                 {errorMessage(mutation.error)}
@@ -190,6 +226,11 @@ export function OrganizationsPage({
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
           >
             {feedback}
+          </p>
+        )}
+        {provisioning.isError && (
+          <p role="alert" className="text-red-800">
+            {errorMessage(provisioning.error)}
           </p>
         )}
         {statusMutation.isError && (
@@ -258,6 +299,16 @@ export function OrganizationsPage({
                         ? `UUID nacional: ${organization.ong_nacional_id}`
                         : "Sin vinculación nacional"}
                     </p>
+                  )}
+                  {organization.tipo === "ONG" && organization.activa && !organization.ong_nacional_id && (
+                    <button
+                      type="button"
+                      className="mt-3 rounded-lg border border-cyan-700 px-3 py-2 text-sm text-cyan-800"
+                      disabled={provisioning.isPending}
+                      onClick={() => provisioning.mutate(organization)}
+                    >
+                      Reintentar alta nacional
+                    </button>
                   )}
                   <div className="mt-5 flex flex-wrap gap-2">
                     <button

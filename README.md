@@ -86,7 +86,8 @@ persistencia del buzón no depende de ese bus.
 
    Para probar inventario, ejecutar también el seed de RescueSyncAPI. El recorrido,
    configuración están en [Inventario nacional](docs/inventario-nacional.md).
-   Configurar también el [acceso automático por ONG](docs/acceso-nacional-automatico.md).
+   Configurar una sola vez el [alta y acceso nacional automático](docs/acceso-nacional-automatico.md).
+   Las nuevas ONG generan su identificador y cuenta técnica al crearlas; el correo de contacto es opcional.
 
 4. Abrir los servicios:
 

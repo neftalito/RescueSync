@@ -84,20 +84,19 @@ type Codigo = Annotated[
 ]
 
 
-class RegistroNacionalRequest(ConexionRequest):
-    identificador_institucional: Codigo
-    email_contacto: EmailStr
-    password: SecretStr = Field(min_length=8, max_length=128)
+class RegistroNacionalRequest(ContratoNacional):
+    email_contacto: EmailStr | None = None
 
 
-class OngNacionalCreate(RegistroNacionalRequest):
+class AprovisionamientoRequest(RegistroNacionalRequest):
     nombre: Nombre
+    password: SecretStr = Field(min_length=32, max_length=128)
 
 
 class OngNacionalResponse(ContratoNacional):
     id: UUID
     nombre: str
-    estado: Literal["PENDIENTE"]
+    estado: Literal["PENDIENTE", "HABILITADA", "SUSPENDIDA", "BAJA"]
 
 
 class RecursoCreate(ContratoNacional):
@@ -126,3 +125,9 @@ class RecursoResponse(ContratoNacional):
     cantidad_disponible: Decimal
     activo: bool
     actualizado_en: datetime
+
+
+class AprovisionamientoResponse(ContratoNacional):
+    ong: OngNacionalResponse
+    cuenta_id: UUID
+    identificador_login: str

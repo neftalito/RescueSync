@@ -1,6 +1,7 @@
 """Adaptador nacional con permisos locales, CSRF y credenciales cifradas."""
 
 import json
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
@@ -492,43 +493,64 @@ def test_respuesta_nacional_malformada_se_traduce_sin_exponerla(
         assert TOKEN not in response.text
 
 
-REGISTRO = {
-    "identificadorLogin": "nueva@nacional.org",
-    "password": "password-nacional123",
-    "identificadorInstitucional": "registro:123",
-    "emailContacto": "contacto@example.org",
-}
+REGISTRO = {"emailContacto": "contacto@example.org"}
 
 
-def test_registro_usa_nombre_local_y_no_autovincula_ni_guarda_credenciales(
-    client: TestClient, representante: Usuario, db_session: Session
-) -> None:
-    representante.organizacion.ong_nacional_id = None
-    db_session.commit()
-    with respx.mock as mock:
-        ruta = mock.post(f"{NACIONAL}/ongs").respond(
-            201,
-            json={
+@pytest.fixture
+def alta_nacional(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        get_settings(), "nacional_aprovisionamiento_login", "emisor-local"
+    )
+    monkeypatch.setattr(
+        get_settings(),
+        "nacional_aprovisionamiento_password",
+        SecretStr("secreto-emisor"),
+    )
+
+
+def mock_alta(mock: respx.MockRouter) -> respx.Route:
+    mock.post(f"{NACIONAL}/login").respond(
+        200, json={"access_token": TOKEN, "token_type": "bearer", "expires_in": 1800}
+    )
+    return mock.put(
+        re.compile(re.escape(NACIONAL) + r"/integraciones/ongs/.*")
+    ).respond(
+        200,
+        json={
+            "ong": {
                 "id": str(ONG_ID),
                 "nombre": "Inventario ONG",
                 "estado": "PENDIENTE",
             },
-        )
+            "cuentaId": str(CUENTA_ID),
+            "identificadorLogin": "tecnica-ong",
+        },
+    )
+
+
+def test_registro_vincula_y_configura_acceso_sin_credenciales_personales(
+    client: TestClient,
+    representante: Usuario,
+    db_session: Session,
+    alta_nacional: None,
+) -> None:
+    representante.organizacion.ong_nacional_id = None
+    db_session.commit()
+    with respx.mock as mock:
+        ruta = mock_alta(mock)
         response = client.post(
-            "/api/v1/mi-ong/registro-nacional",
-            headers=csrf(representante),
-            json=REGISTRO,
+            "/api/v1/mi-ong/registro-nacional", headers=csrf(representante), json={}
         )
         assert response.status_code == 201 and response.json()["id"] == str(ONG_ID)
         assert response.headers["cache-control"] == "no-store"
-        assert json.loads(ruta.calls[0].request.content) == {
-            **REGISTRO,
-            "nombre": "Inventario ONG",
-        }
-        assert "authorization" not in ruta.calls[0].request.headers
-        assert "password" not in response.text
-        assert representante.organizacion.ong_nacional_id is None
-        assert db_session.get(AccesoNacional, representante.organizacion_id) is None
+        enviado = json.loads(ruta.calls[0].request.content)
+        assert (
+            enviado["nombre"] == "Inventario ONG" and enviado["emailContacto"] is None
+        )
+        assert len(enviado["password"]) >= 32
+        assert enviado["password"] not in response.text
+        assert representante.organizacion.ong_nacional_id == ONG_ID
+        assert db_session.get(AccesoNacional, representante.organizacion_id) is not None
 
 
 def test_registro_exige_csrf_y_ong_sin_vinculo(
@@ -538,7 +560,7 @@ def test_registro_exige_csrf_y_ong_sin_vinculo(
         assert (
             client.post("/api/v1/mi-ong/registro-nacional", json=REGISTRO).status_code
             == 403
-        ), client.get("/api/v1/auth/me").text
+        )
         assert (
             client.post(
                 "/api/v1/mi-ong/registro-nacional",
@@ -552,9 +574,9 @@ def test_registro_exige_csrf_y_ong_sin_vinculo(
 @pytest.mark.parametrize(
     "campo,valor",
     [
-        ("nombre", "Otro nombre"),
+        ("nombre", "Otro"),
         ("rol", "ADMIN_NACIONAL"),
-        ("identificadorLogin", "   "),
+        ("identificadorInstitucional", "auto"),
         ("password", "corta"),
         ("emailContacto", "inválido"),
     ],
@@ -569,39 +591,39 @@ def test_registro_rechaza_datos_invalidos_sin_llamada_remota(
             json={**REGISTRO, campo: valor},
         )
         assert response.status_code == 422
-        assert REGISTRO["password"] not in response.text
 
 
 @pytest.mark.parametrize("status", [409, 422, 500])
 def test_registro_traduce_fallos_sin_vincular_ong(
-    client: TestClient, representante: Usuario, db_session: Session, status: int
+    client: TestClient,
+    representante: Usuario,
+    db_session: Session,
+    status: int,
+    alta_nacional: None,
 ) -> None:
     representante.organizacion.ong_nacional_id = None
     db_session.commit()
     with respx.mock as mock:
-        mock.post(f"{NACIONAL}/ongs").respond(
-            status, json={"detail": "sql interno " + REGISTRO["password"]}
-        )
+        ruta = mock_alta(mock)
+        ruta.respond(status, json={"detail": "sql interno secreto"})
         response = client.post(
             "/api/v1/mi-ong/registro-nacional",
             headers=csrf(representante),
             json=REGISTRO,
         )
         assert response.status_code == (502 if status == 500 else status)
-        assert REGISTRO["password"] not in response.text
         assert "sql interno" not in response.text
         assert representante.organizacion.ong_nacional_id is None
 
 
 def test_timeout_registro_no_reintenta_ni_autovincula(
-    client: TestClient, representante: Usuario, db_session: Session
+    client: TestClient, representante: Usuario, db_session: Session, alta_nacional: None
 ) -> None:
     representante.organizacion.ong_nacional_id = None
     db_session.commit()
     with respx.mock as mock:
-        ruta = mock.post(f"{NACIONAL}/ongs").mock(
-            side_effect=httpx.ReadTimeout("secreto")
-        )
+        ruta = mock_alta(mock)
+        ruta.mock(side_effect=httpx.ReadTimeout("secreto"))
         response = client.post(
             "/api/v1/mi-ong/registro-nacional",
             headers=csrf(representante),

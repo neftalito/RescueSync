@@ -7,26 +7,15 @@ export const conexionSchema = z.object({
   ongId: z.uuid().nullable(),
   expiraEn: z.string().nullable(),
 });
-const credencialesRegistroSchema = z.object({
-  identificadorLogin: z
-    .string()
-    .trim()
-    .min(1, "Ingresá tu identificador nacional.")
-    .max(320),
-  password: z.string().min(1, "Ingresá tu contraseña nacional.").max(128),
-});
-
-export const registroNacionalFormSchema = credencialesRegistroSchema.extend({
-  identificadorInstitucional: z.string().trim()
-    .min(1, "Ingresá el identificador institucional.").max(80),
-  emailContacto: z.email("Ingresá un email de contacto válido."),
-  password: z.string()
-    .min(8, "La contraseña debe tener al menos 8 caracteres.").max(128),
+export const registroNacionalFormSchema = z.object({
+  emailContacto: z
+    .union([z.email("Ingresá un email de contacto válido."), z.literal("")])
+    .optional(),
 });
 export const ongNacionalSchema = z.object({
   id: z.uuid(),
   nombre: z.string(),
-  estado: z.literal("PENDIENTE"),
+  estado: z.enum(["PENDIENTE", "HABILITADA", "SUSPENDIDA", "BAJA"]),
 });
 
 export const capacidadSchema = z.object({

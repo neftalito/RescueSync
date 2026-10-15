@@ -93,7 +93,7 @@ def estado(
     summary="Registrar mi ONG y su cuenta nacional",
     description=(
         "Crea una ONG PENDIENTE usando el nombre local. "
-        "Un administrador debe verificar y guardar luego el vínculo por UUID."
+        "Genera el identificador y la cuenta técnica, y guarda el vínculo automáticamente."
     ),
     dependencies=[Depends(validar_csrf)],
 )
@@ -105,7 +105,9 @@ def registro_nacional(
     response: Response,
 ) -> OngNacionalResponse:
     response.headers["Cache-Control"] = "no-store"
-    return _ejecutar(session, lambda: registrar_ong_nacional(usuario, cliente, datos))
+    return _ejecutar(
+        session, lambda: registrar_ong_nacional(session, usuario, cliente, datos)
+    )
 
 
 @router.get(

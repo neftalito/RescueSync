@@ -29,7 +29,7 @@ export function registrarOngNacional(
   return apiRequest("/mi-ong/registro-nacional", ongNacionalSchema, {
     method: "POST",
     headers: cabeceras(csrfToken),
-    body: JSON.stringify(datos),
+    body: JSON.stringify({ emailContacto: datos.emailContacto || null }),
   });
 }
 

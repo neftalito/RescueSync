@@ -402,25 +402,22 @@ describe("Mis recursos nacionales", () => {
     expect(screen.getByLabelText(/Nuevo total/)).toBeInTheDocument();
   });
 
-  it("registra una ONG pendiente y muestra el UUID para vinculación administrativa", async () => {
+  it("activa el acceso nacional sin pedir identificadores ni contraseñas", async () => {
+    let registrada = false;
     server.use(
       http.get(`${base}/conexion`, () =>
         HttpResponse.json({
-          estado: "SIN_CONFIGURAR",
-          vinculada: false,
+          estado: registrada ? "LISTA" : "SIN_CONFIGURAR",
+          vinculada: registrada,
           conectada: false,
-          ongId: null,
+          ongId: registrada ? ong : null,
           expiraEn: null,
         }),
       ),
       http.post(`${base}/registro-nacional`, async ({ request }) => {
         expect(request.headers.get("X-CSRF-Token")).toBe("csrf-demo");
-        expect(await request.json()).toEqual({
-          identificadorInstitucional: "registro:123",
-          emailContacto: "contacto@example.org",
-          identificadorLogin: "nueva@nacional.org",
-          password: "clave-nacional123",
-        });
+        expect(await request.json()).toEqual({ emailContacto: null });
+        registrada = true;
         return HttpResponse.json(
           { id: ong, nombre: "ONG de prueba", estado: "PENDIENTE" },
           { status: 201 },
@@ -429,92 +426,32 @@ describe("Mis recursos nacionales", () => {
     );
     renderPage();
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Registrar ONG en el Sistema Nacional",
-      }),
-    );
-    await user.type(
-      screen.getByLabelText("Identificador institucional"),
-      "registro:123",
-    );
-    await user.type(
-      screen.getByLabelText("Email de contacto"),
-      "contacto@example.org",
-    );
-    await user.type(
-      screen.getByLabelText("Nuevo identificador nacional"),
-      "nueva@nacional.org",
-    );
-    await user.type(
-      screen.getByLabelText("Nueva contraseña nacional"),
-      "clave-nacional123",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Crear registro nacional" }),
-    );
-    expect(
-      await screen.findByText("ONG registrada en estado pendiente."),
-    ).toBeInTheDocument();
-    expect(screen.getByText(ong)).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Nueva contraseña nacional"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Acceso nacional automático" }),
-    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Registrar ONG en el Sistema Nacional" }));
+    expect(screen.getByLabelText("Email de contacto (opcional)")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Identificador institucional")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Nueva contraseña nacional")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
+    expect(await screen.findByRole("heading", { name: "Acceso nacional automático" })).toBeInTheDocument();
   });
 
-  it("presenta un duplicado de registro y borra la contraseña para un nuevo intento", async () => {
+  it("conserva el correo opcional ante un error y permite reintentar", async () => {
     server.use(
       http.get(`${base}/conexion`, () =>
         HttpResponse.json({
-          estado: "SIN_CONFIGURAR",
-          vinculada: false,
-          conectada: false,
-          ongId: null,
-          expiraEn: null,
+          estado: "SIN_CONFIGURAR", vinculada: false,
+          conectada: false, ongId: null, expiraEn: null,
         }),
       ),
       http.post(`${base}/registro-nacional`, () =>
-        HttpResponse.json(
-          { detail: "La ONG ya está registrada." },
-          { status: 409 },
-        ),
+        HttpResponse.json({ detail: "La ONG ya está registrada." }, { status: 409 }),
       ),
     );
     renderPage();
     const user = userEvent.setup();
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Registrar ONG en el Sistema Nacional",
-      }),
-    );
-    await user.type(
-      screen.getByLabelText("Identificador institucional"),
-      "registro:123",
-    );
-    await user.type(
-      screen.getByLabelText("Email de contacto"),
-      "contacto@example.org",
-    );
-    await user.type(
-      screen.getByLabelText("Nuevo identificador nacional"),
-      "nueva@nacional.org",
-    );
-    await user.type(
-      screen.getByLabelText("Nueva contraseña nacional"),
-      "clave-nacional123",
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Crear registro nacional" }),
-    );
-    expect(
-      await screen.findByText("La ONG ya está registrada."),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Nueva contraseña nacional")).toHaveValue("");
-    expect(screen.getByLabelText("Identificador institucional")).toHaveValue(
-      "registro:123",
-    );
+    await user.click(await screen.findByRole("button", { name: "Registrar ONG en el Sistema Nacional" }));
+    await user.type(screen.getByLabelText("Email de contacto (opcional)"), "contacto@example.org");
+    await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
+    expect(await screen.findByText("La ONG ya está registrada.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email de contacto (opcional)")).toHaveValue("contacto@example.org");
   });
 });
