@@ -11,8 +11,8 @@ backend de RescueSync; el JWT nacional permanece cifrado en el servidor.
 2. En RescueSyncAPI, ejecutar `python -m app.scripts.seed` mediante Compose.
    En RescueSync, ejecutar su seed. Se conservan los mismos mappings UUID de
    Ayuda Sin Fronteras y Red Médica Solidaria.
-3. Ingresar como representante local, abrir **Mis recursos** y conectar la
-   cuenta nacional de esa misma ONG.
+3. Aprovisionar el [acceso automático por ONG](./acceso-nacional-automatico.md),
+   ingresar como representante local y abrir **Mis recursos**.
 4. Consultar **Mis certificaciones**: estado institucional, momento de evaluación,
    capacidades por riesgo y el historial vigente/futuro/vencido/revocado.
 5. Abrir **Catálogo nacional de certificaciones** para ver definiciones y
@@ -37,20 +37,19 @@ revocaciones. La carga administrativa oficial está documentada en
 | `GET /api/v1/mi-ong/certificaciones` | `GET /api/v1/ongs/{uuid}/certificaciones` | Representante ONG, UUID obtenido del mapping del usuario. |
 
 Las rutas reutilizan `UsuarioInventario`, `credencial`, el cliente HTTPX nacional
-y el mecanismo de desconexión. No aceptan un UUID de ONG del navegador; la API
+y la renovación automática por ONG. No aceptan un UUID de ONG del navegador; la API
 nacional vuelve a autorizar. El adaptador valida los DTO y que el `ongId`
 devuelto coincida con el solicitado. No crea otra fuente de certificaciones en
 PostgreSQL local y no requiere migración nueva.
 
-JWT rechazado (`401`/`403`) desconecta la conexión; timeout, caída o respuesta
-inválida se traducen a `504`, `503` y `502`, sin cuerpos internos ni secretos.
-Las consultas llevan `no-store`. Sin vínculo o conexión, la pantalla conserva
-el recorrido existente de vinculación y login. No hay refresh automático de
-credenciales ni contraseña nacional persistida.
+Ante un `401` nacional se renueva el token y se repite la consulta una sola vez.
+Una credencial técnica rechazada requiere revisión administrativa. Timeout,
+caída y respuesta inválida devuelven `504`, `503` y `502`, sin secretos.
+Las consultas llevan `no-store`. No se solicitan credenciales a representantes.
 
-TanStack Query consulta el perfil cada minuto y al actualizar/reconectar. Las
-claves incluyen usuario y UUID nacional; al desconectar o rechazar credenciales
-se eliminan los perfiles y el catálogo. El cierre de sesión limpia la caché
+TanStack Query consulta el perfil cada minuto y al actualizar. Las claves incluyen
+usuario y UUID nacional. Ante rechazo se vuelve a consultar el estado de acceso.
+El cierre de sesión limpia la caché
 general. El perfil muestra su hora de evaluación: no autoriza acciones futuras
 ni garantiza stock. Las consultas pueden fallar independientemente del inventario
 y ofrecen actualización manual. Los formularios no permiten autoacreditarse.
@@ -64,12 +63,12 @@ y ofrecen actualización manual. Los formularios no permiten autoacreditarse.
 - Catálogo vacío: mensaje de ausencia de certificaciones, no error de conexión.
 - Caída nacional: mensaje seguro y reintento; no mostrar habilitación como si
   la consulta fallida la hubiese confirmado.
-- JWT vencido/rechazado: volver al panel de conexión y ocultar acreditaciones.
+- JWT vencido: renovación transparente. Credencial revocada: revisión administrativa.
 - Cuenta de otra ONG: conexión denegada. Otro rol local: GET denegado.
 
 El backend tiene pruebas RESPX de contrato, mapping, JWT, errores y roles. La
 pantalla se prueba con Vitest/Testing Library/MSW: estados de vigencia, perfil,
-historial vacío, pendiente, reintento y reconexión. Se mantienen las pruebas
+historial vacío, pendiente, reintento y acceso automático. Se mantienen las pruebas
 existentes de inventario, onboarding y CSRF.
 
 ## Orden y condiciones de integración de los PRs

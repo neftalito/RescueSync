@@ -8,7 +8,9 @@ from uuid import uuid4
 import httpx
 import pytest
 import respx
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -18,18 +20,22 @@ from app.core.security import (
     generar_password_hash,
 )
 from app.db.models import (
-    ConexionNacional,
+    AccesoNacional,
     Organizacion,
     RolUsuario,
     TipoOrganizacion,
     Usuario,
 )
 from app.db.session import get_db
+from app.integrations.nacional.cliente import ClienteNacional, ErrorNacional
 from app.main import app
+from app.schemas.inventario import CredencialTecnica
+from app.services.acceso_nacional import credencial, importar_credencial
 from app.services.inventario import estado_conexion
 
 NACIONAL = str(get_settings().nacional_base_url).rstrip("/")
 TOKEN = "jwt-nacional-confidencial"
+CUENTA_ID = uuid4()
 ONG_ID = uuid4()
 RECURSO_ID = uuid4()
 CAPACIDAD_ID = uuid4()
@@ -51,7 +57,12 @@ RECURSO = {
 
 
 @pytest.fixture
-def representante(db_session: Session) -> Usuario:
+def representante(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> Usuario:
+    monkeypatch.setattr(
+        get_settings(),
+        "nacional_encryption_key",
+        SecretStr(Fernet.generate_key().decode()),
+    )
     ong = Organizacion(
         tipo=TipoOrganizacion.ONG, nombre="Inventario ONG", ong_nacional_id=ONG_ID
     )
@@ -93,19 +104,39 @@ def remoto(mock: respx.MockRouter, ong_id: str = str(ONG_ID)) -> None:
         200, json={"access_token": TOKEN, "token_type": "bearer", "expires_in": 1800}
     )
     mock.get(f"{NACIONAL}/me").respond(
-        200, json={"id": str(uuid4()), "rol": "ONG", "ongId": ong_id}
+        200,
+        json={
+            "id": str(CUENTA_ID),
+            "rol": "ONG",
+            "ongId": ong_id,
+            "proposito": "TECNICA_ONG",
+        },
     )
 
 
 def conexion(client: TestClient, usuario: Usuario) -> httpx.Response:
-    return client.post(
-        "/api/v1/mi-ong/conexion",
-        headers=csrf(usuario),
-        json={
-            "identificadorLogin": "ong@nacional.org",
-            "password": "password-nacional123",
-        },
-    )
+    session = next(app.dependency_overrides[get_db]())
+    cliente = ClienteNacional(NACIONAL, 10)
+    try:
+        importar_credencial(
+            session,
+            usuario.organizacion_id,
+            CredencialTecnica(
+                cuenta_id=CUENTA_ID,
+                ong_id=ONG_ID,
+                identificador_login="ong@nacional.org",
+                password="password-nacional123",
+            ),
+            cliente,
+        )
+        session.commit()
+        credencial(session, usuario, cliente)
+    except ErrorNacional as error:
+        session.rollback()
+        return httpx.Response(error.status)
+    finally:
+        cliente.close()
+    return client.get("/api/v1/mi-ong/conexion")
 
 
 CERTIFICACION = {
@@ -191,7 +222,7 @@ def test_consulta_certificaciones_de_la_ong_vinculada_sin_exponer_token(
         ("caida", 503),
         ("json", 502),
         ("ong-ajena", 502),
-        ("401", 401),
+        ("401", 503),
         ("403", 403),
         ("404", 404),
     ],
@@ -223,9 +254,11 @@ def test_certificaciones_traduce_fallos_y_desconecta_credenciales_rechazadas(
             "dato-interno-confidencial" not in response.text
             and TOKEN not in response.text
         )
-        assert (db_session.get(ConexionNacional, representante.id) is None) == (
-            modo in {"401", "403"}
+        acceso = db_session.get(
+            AccesoNacional, representante.organizacion_id, populate_existing=True
         )
+        assert acceso is not None
+        assert acceso.requiere_revision == (modo == "401")
 
 
 def test_certificaciones_exigen_conexion_y_rol_local(
@@ -233,7 +266,7 @@ def test_certificaciones_exigen_conexion_y_rol_local(
     representante: Usuario,
     db_session: Session,
 ) -> None:
-    assert client.get("/api/v1/mi-ong/certificaciones").status_code == 401
+    assert client.get("/api/v1/mi-ong/certificaciones").status_code == 503
     representante.rol = RolUsuario.AUDITOR_DIRECTIVO
     representante.organizacion_id = None
     db_session.commit()
@@ -246,7 +279,7 @@ def test_conecta_sin_exponer_jwt_y_proxya_stock(
     with respx.mock as mock:
         remoto(mock)
         assert conexion(client, representante).status_code == 200
-        fila = db_session.get(ConexionNacional, representante.id)
+        fila = db_session.get(AccesoNacional, representante.organizacion_id)
         assert fila is not None and TOKEN not in fila.token_cifrado
         estado = client.get("/api/v1/mi-ong/conexion")
         assert estado.status_code == 200 and estado.json()["conectada"], estado.text
@@ -275,9 +308,8 @@ def test_conecta_sin_exponer_jwt_y_proxya_stock(
             client.delete(
                 "/api/v1/mi-ong/conexion", headers=csrf(representante)
             ).status_code
-            == 204
+            == 405
         )
-        assert db_session.get(ConexionNacional, representante.id) is None
 
 
 def test_cuenta_de_otra_ong_y_falta_de_vinculo_rechazados(
@@ -286,28 +318,28 @@ def test_cuenta_de_otra_ong_y_falta_de_vinculo_rechazados(
     with respx.mock as mock:
         remoto(mock, str(uuid4()))
         assert conexion(client, representante).status_code == 403
-        assert db_session.get(ConexionNacional, representante.id) is None
+        assert db_session.get(AccesoNacional, representante.organizacion_id) is None
         representante.organizacion.ong_nacional_id = None
         db_session.commit()
-        assert conexion(client, representante).status_code == 409
+        assert client.get("/api/v1/mi-ong/recursos").status_code == 409
 
 
-def test_conexion_expirada_y_version_local_invalidan_token(
+def test_conexion_expirada_se_renueva_y_version_local_no_elimina_acceso(
     client: TestClient, representante: Usuario, db_session: Session
 ) -> None:
     with respx.mock as mock:
         remoto(mock)
         assert conexion(client, representante).status_code == 200
-        fila = db_session.get(ConexionNacional, representante.id)
+        fila = db_session.get(AccesoNacional, representante.organizacion_id)
         assert fila is not None
         fila.expira_en = datetime.now(UTC) - timedelta(seconds=1)
         db_session.commit()
         assert client.get("/api/v1/mi-ong/conexion").json()["conectada"] is False
-        assert client.get("/api/v1/mi-ong/recursos").status_code == 401
-        assert conexion(client, representante).status_code == 200
+        mock.get(f"{NACIONAL}/ongs/{ONG_ID}/recursos").respond(200, json=[RECURSO])
+        assert client.get("/api/v1/mi-ong/recursos").status_code == 200
         representante.version_sesion += 1
         db_session.commit()
-        assert estado_conexion(db_session, representante).conectada is False
+        assert estado_conexion(db_session, representante).estado == "LISTA"
 
 
 @pytest.mark.parametrize("status", [401, 403, 409, 422, 500])
@@ -321,10 +353,15 @@ def test_error_remoto_seguro(
             status, json={"detail": "sql interno " + TOKEN}
         )
         response = client.get("/api/v1/mi-ong/recursos")
-        assert response.status_code == (502 if status == 500 else status)
+        assert response.status_code == (
+            502 if status == 500 else 503 if status == 401 else status
+        )
         assert TOKEN not in response.text and "sql interno" not in response.text
-        if status in {401, 403}:
-            assert client.get("/api/v1/mi-ong/conexion").json()["conectada"] is False
+        if status == 401:
+            assert (
+                client.get("/api/v1/mi-ong/conexion").json()["estado"]
+                == "REQUIERE_REVISION"
+            )
 
 
 def test_timeout_no_reintenta_escritura(
@@ -353,13 +390,7 @@ def test_timeout_no_reintenta_escritura(
 def test_csrf_roles_y_logout(
     client: TestClient, representante: Usuario, db_session: Session
 ) -> None:
-    assert (
-        client.post(
-            "/api/v1/mi-ong/conexion",
-            json={"identificadorLogin": "ong", "password": "clave"},
-        ).status_code
-        == 403
-    )
+    assert client.post("/api/v1/mi-ong/recursos", json={}).status_code == 403
     with respx.mock as mock:
         remoto(mock)
         assert conexion(client, representante).status_code == 200
@@ -367,7 +398,8 @@ def test_csrf_roles_y_logout(
             client.post("/api/v1/auth/logout", headers=csrf(representante)).status_code
             == 204
         )
-        assert db_session.get(ConexionNacional, representante.id) is None
+        assert db_session.get(AccesoNacional, representante.organizacion_id) is not None
+        client.cookies.clear()
         assert client.get("/api/v1/mi-ong/recursos").status_code == 401
     representante.rol = RolUsuario.AUDITOR_DIRECTIVO
     representante.organizacion = None
@@ -415,7 +447,7 @@ def test_solo_admin_vincula_y_revoca_conexiones(
         ).status_code
         == 200
     )
-    assert db_session.get(ConexionNacional, representante.id) is None
+    assert db_session.get(AccesoNacional, representante.organizacion_id) is None
 
 
 def test_admin_rechaza_vinculo_duplicado_y_preserva_el_anterior(
@@ -496,7 +528,7 @@ def test_registro_usa_nombre_local_y_no_autovincula_ni_guarda_credenciales(
         assert "authorization" not in ruta.calls[0].request.headers
         assert "password" not in response.text
         assert representante.organizacion.ong_nacional_id is None
-        assert db_session.get(ConexionNacional, representante.id) is None
+        assert db_session.get(AccesoNacional, representante.organizacion_id) is None
 
 
 def test_registro_exige_csrf_y_ong_sin_vinculo(

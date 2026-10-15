@@ -44,6 +44,12 @@ class CuentaNacional(ContratoNacional):
     id: UUID
     rol: Literal["ONG", "ADMIN_NACIONAL", "INTEGRACION"]
     ong_id: UUID | None
+    proposito: Literal["PERSONAL", "TECNICA_ONG"] = "PERSONAL"
+
+
+class CredencialTecnica(ConexionRequest):
+    cuenta_id: UUID
+    ong_id: UUID
 
 
 class EstadoConexion(ContratoNacional):
@@ -51,6 +57,7 @@ class EstadoConexion(ContratoNacional):
     conectada: bool
     ong_id: UUID | None
     expira_en: datetime | None = None
+    estado: Literal["LISTA", "SIN_CONFIGURAR", "REQUIERE_REVISION"]
 
 
 class VinculoRequest(BaseModel):

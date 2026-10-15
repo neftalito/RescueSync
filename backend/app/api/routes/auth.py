@@ -26,7 +26,6 @@ from app.services.auth import (
     autenticar_usuario,
     cambiar_password_propia,
 )
-from app.services.inventario import desconectar
 
 router = APIRouter()
 settings = get_settings()
@@ -66,7 +65,7 @@ def _evitar_cache(response: Response) -> None:
     summary="Iniciar sesión local",
     description=(
         "Valida las credenciales locales y crea una sesión firmada en una cookie "
-        "HttpOnly. No utiliza el JWT del futuro Sistema Nacional."
+        "HttpOnly. El acceso nacional se obtiene automáticamente al necesitarlo."
     ),
 )
 def iniciar_sesion(
@@ -168,10 +167,8 @@ def cambiar_password(
 def cerrar_sesion(
     response: Response,
     usuario: UsuarioCierreSesion,
-    session: Annotated[Session, Depends(get_db)],
     _: Annotated[None, Depends(validar_csrf)],
 ) -> None:
-    desconectar(session, usuario.id)
     response.delete_cookie(
         key=settings.session_cookie_name,
         httponly=True,

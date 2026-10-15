@@ -89,6 +89,7 @@ beforeEach(() => {
       HttpResponse.json({
         vinculada: true,
         conectada,
+        estado: conectada ? "LISTA" : "REQUIERE_REVISION",
         ongId: ong,
         expiraEn: conectada ? "2026-10-08T13:00:00Z" : null,
       }),
@@ -239,7 +240,7 @@ describe("Mis recursos nacionales", () => {
       await screen.findByText("Estado institucional: HABILITADA"),
     ).toBeInTheDocument();
   });
-  it("desconecta y oculta certificaciones ante rechazo nacional del JWT", async () => {
+  it("muestra revisión administrativa ante revocación del acceso", async () => {
     server.use(
       http.get(`${base}/certificaciones`, () => {
         conectada = false;
@@ -251,7 +252,7 @@ describe("Mis recursos nacionales", () => {
     );
     renderPage();
     expect(
-      await screen.findByRole("heading", { name: "Conectar cuenta nacional" }),
+      await screen.findByRole("heading", { name: "El acceso nacional requiere revisión" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "Mis certificaciones" }),
@@ -261,6 +262,7 @@ describe("Mis recursos nacionales", () => {
     server.use(
       http.get(`${base}/conexion`, () =>
         HttpResponse.json({
+          estado: "SIN_CONFIGURAR",
           vinculada: false,
           conectada: false,
           ongId: null,
@@ -276,41 +278,15 @@ describe("Mis recursos nacionales", () => {
       screen.queryByLabelText("Contraseña nacional"),
     ).not.toBeInTheDocument();
   });
-  it("conecta la cuenta nacional usando CSRF y consulta el inventario", async () => {
+  it("consulta inventario automáticamente aunque todavía no haya token", async () => {
     conectada = false;
-    server.use(
-      http.post(`${base}/conexion`, async ({ request }) => {
-        expect(request.headers.get("X-CSRF-Token")).toBe("csrf-demo");
-        expect(await request.json()).toEqual({
-          identificadorLogin: "ong@nacional.org",
-          password: "clave-nacional",
-        });
-        conectada = true;
-        return HttpResponse.json({
-          vinculada: true,
-          conectada: true,
-          ongId: ong,
-          expiraEn: "2026-10-08T13:00:00Z",
-        });
-      }),
-    );
+    server.use(http.get(`${base}/conexion`, () => HttpResponse.json({
+      vinculada: true, conectada: false, estado: "LISTA", ongId: ong, expiraEn: null,
+    })));
     renderPage();
-    const user = userEvent.setup();
-    await user.type(
-      await screen.findByLabelText("Identificador nacional"),
-      "ong@nacional.org",
-    );
-    await user.type(
-      screen.getByLabelText("Contraseña nacional"),
-      "clave-nacional",
-    );
-    await user.click(screen.getByRole("button", { name: "Conectar cuenta" }));
-    expect(
-      await screen.findByRole("heading", { name: "Ambulancias de rescate" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Contraseña nacional"),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Ambulancias de rescate" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Contraseña nacional")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Desconectar" })).not.toBeInTheDocument();
   });
   it("registra recursos y rechaza fracciones para vehículos", async () => {
     recursos = [];
@@ -390,7 +366,7 @@ describe("Mis recursos nacionales", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("12.000")).toBeInTheDocument();
   });
-  it("permite reconectar si el token nacional expiró durante una consulta", async () => {
+  it("muestra revisión administrativa sin pedir contraseña", async () => {
     server.use(
       http.get(`${base}/recursos`, () => {
         conectada = false;
@@ -402,7 +378,7 @@ describe("Mis recursos nacionales", () => {
     );
     renderPage();
     expect(
-      await screen.findByRole("heading", { name: "Conectar cuenta nacional" }),
+      await screen.findByRole("heading", { name: "El acceso nacional requiere revisión" }),
     ).toBeInTheDocument();
   });
   it("conserva la edición y muestra el conflicto devuelto por el backend", async () => {
@@ -430,6 +406,7 @@ describe("Mis recursos nacionales", () => {
     server.use(
       http.get(`${base}/conexion`, () =>
         HttpResponse.json({
+          estado: "SIN_CONFIGURAR",
           vinculada: false,
           conectada: false,
           ongId: null,
@@ -484,7 +461,7 @@ describe("Mis recursos nacionales", () => {
       screen.queryByLabelText("Nueva contraseña nacional"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "Cuenta nacional conectada" }),
+      screen.queryByRole("heading", { name: "Acceso nacional automático" }),
     ).not.toBeInTheDocument();
   });
 
@@ -492,6 +469,7 @@ describe("Mis recursos nacionales", () => {
     server.use(
       http.get(`${base}/conexion`, () =>
         HttpResponse.json({
+          estado: "SIN_CONFIGURAR",
           vinculada: false,
           conectada: false,
           ongId: null,

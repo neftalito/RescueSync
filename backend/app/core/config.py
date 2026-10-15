@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     frontend_public_url: AnyHttpUrl = "http://localhost:5173"
     nacional_base_url: AnyHttpUrl = "http://host.docker.internal:8001/api/v1"
     nacional_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    nacional_encryption_key: SecretStr | None = None
     nacional_sistema_origen: str | None = Field(
         default=None, min_length=1, max_length=80
     )
@@ -87,6 +88,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "session_secret",
+        "nacional_encryption_key",
         "bonita_callback_token",
         "smtp_username",
         "smtp_password",
@@ -100,6 +102,23 @@ class Settings(BaseSettings):
         """Interpreta una variable vacía como configuración no provista."""
 
         return None if valor == "" else valor
+
+    @field_validator("nacional_encryption_key")
+    @classmethod
+    def validar_nacional_encryption_key(
+        cls, valor: SecretStr | None
+    ) -> SecretStr | None:
+        """Exige una clave Fernet explícita; no reutiliza el secreto de sesión."""
+        if valor is not None:
+            from cryptography.fernet import Fernet
+
+            try:
+                Fernet(valor.get_secret_value().encode())
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    "NACIONAL_ENCRYPTION_KEY debe ser una clave Fernet válida"
+                ) from error
+        return valor
 
     @field_validator("bonita_callback_token")
     @classmethod

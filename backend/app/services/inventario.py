@@ -1,32 +1,22 @@
 """Vinculación y conexión nacional sin duplicar inventario en la base local."""
 
-from base64 import urlsafe_b64encode
-from datetime import UTC, datetime, timedelta
-from hashlib import sha256
+from datetime import UTC, datetime
 from uuid import UUID
 
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import InvalidToken
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
-from app.db.models import ConexionNacional, Organizacion, TipoOrganizacion, Usuario
+from app.db.models import AccesoNacional, Organizacion, TipoOrganizacion, Usuario
 from app.integrations.nacional.cliente import ClienteNacional, ErrorNacional
 from app.schemas.inventario import (
-    ConexionRequest,
     EstadoConexion,
     OngNacionalCreate,
     OngNacionalResponse,
     RegistroNacionalRequest,
 )
-
-
-def _cifrador() -> Fernet:
-    """Deriva una clave con propósito separado del secreto de sesión local."""
-
-    material = b"rescuesync-nacional-v1:" + get_settings().clave_firma_sesion.encode()
-    return Fernet(urlsafe_b64encode(sha256(material).digest()))
+from app.services.acceso_nacional import cifrador
 
 
 def _ong(usuario: Usuario) -> Organizacion:
@@ -36,15 +26,6 @@ def _ong(usuario: Usuario) -> Organizacion:
             403, "Necesitás una ONG local activa para gestionar recursos."
         )
     return ong
-
-
-def desconectar(session: Session, usuario_id: int) -> None:
-    """Elimina la credencial temporal sin cambiar la vinculación institucional."""
-
-    session.execute(
-        delete(ConexionNacional).where(ConexionNacional.usuario_id == usuario_id)
-    )
-    session.commit()
 
 
 def registrar_ong_nacional(
@@ -61,76 +42,31 @@ def registrar_ong_nacional(
 
 
 def estado_conexion(session: Session, usuario: Usuario) -> EstadoConexion:
+    """Consulta configuración sin exigir un token vigente ni llamar al nacional."""
     ong = _ong(usuario)
-    conexion = session.get(ConexionNacional, usuario.id)
-    vigente = (
-        conexion is not None
-        and conexion.ong_id == ong.ong_nacional_id
-        and conexion.version_sesion == usuario.version_sesion
-        and conexion.expira_en > datetime.now(UTC)
-    )
-    if vigente and conexion is not None:
+    acceso = session.get(AccesoNacional, ong.id, populate_existing=True)
+    configurada = acceso is not None and acceso.ong_id == ong.ong_nacional_id
+    estado = "SIN_CONFIGURAR"
+    if configurada and acceso is not None:
+        estado = "REQUIERE_REVISION" if acceso.requiere_revision else "LISTA"
         try:
-            _cifrador().decrypt(conexion.token_cifrado.encode())
-        except InvalidToken:
-            vigente = False
-    if conexion is not None and not vigente:
-        desconectar(session, usuario.id)
+            cifrador().decrypt(acceso.secreto_cifrado.encode())
+        except (InvalidToken, ErrorNacional):
+            estado = "REQUIERE_REVISION"
     return EstadoConexion(
         vinculada=ong.ong_nacional_id is not None,
-        conectada=vigente,
+        conectada=bool(
+            configurada
+            and acceso is not None
+            and acceso.token_cifrado
+            and acceso.expira_en
+            and acceso.expira_en > datetime.now(UTC)
+            and estado == "LISTA"
+        ),
         ong_id=ong.ong_nacional_id,
-        expira_en=conexion.expira_en if vigente and conexion else None,
+        expira_en=acceso.expira_en if configurada and acceso is not None else None,
+        estado=estado,
     )
-
-
-def conectar(
-    session: Session, usuario: Usuario, cliente: ClienteNacional, datos: ConexionRequest
-) -> EstadoConexion:
-    """Verifica la ONG del JWT antes de cifrarlo y conservarlo temporalmente."""
-
-    ong = _ong(usuario)
-    if ong.ong_nacional_id is None:
-        raise ErrorNacional(
-            409, "Un administrador debe vincular tu ONG al Sistema Nacional."
-        )
-    # Se toma el instante previo al login para no sobreestimar la duración del JWT.
-    ahora = datetime.now(UTC)
-    credencial = cliente.login(datos)
-    token = credencial.access_token.get_secret_value()
-    cuenta = cliente.cuenta(token)
-    if cuenta.rol != "ONG" or cuenta.ong_id != ong.ong_nacional_id:
-        raise ErrorNacional(
-            403, "La cuenta nacional debe pertenecer a la ONG local vinculada."
-        )
-    # Las llamadas HTTP ya terminaron: recién aquí adquirimos el bloqueo local.
-    session.refresh(ong, with_for_update=True)
-    if cuenta.ong_id != ong.ong_nacional_id or not ong.activa:
-        raise ErrorNacional(
-            409, "La vinculación cambió durante la conexión. Intentá nuevamente."
-        )
-    conexion = session.get(ConexionNacional, usuario.id)
-    if conexion is None:
-        conexion = ConexionNacional(usuario_id=usuario.id)
-        session.add(conexion)
-    conexion.version_sesion = usuario.version_sesion
-    assert cuenta.ong_id is not None
-    conexion.ong_id = cuenta.ong_id
-    conexion.token_cifrado = _cifrador().encrypt(token.encode()).decode()
-    conexion.expira_en = ahora + timedelta(seconds=credencial.expires_in)
-    session.commit()
-    return estado_conexion(session, usuario)
-
-
-def credencial(session: Session, usuario: Usuario) -> tuple[UUID, str]:
-    """Revalida vinculación, versión y expiración antes de cada operación remota."""
-
-    estado = estado_conexion(session, usuario)
-    if not estado.conectada or estado.ong_id is None:
-        raise ErrorNacional(401, "Conectá tu cuenta nacional para gestionar recursos.")
-    conexion = session.get(ConexionNacional, usuario.id)
-    assert conexion is not None
-    return estado.ong_id, _cifrador().decrypt(conexion.token_cifrado.encode()).decode()
 
 
 def vincular_ong(
@@ -146,14 +82,13 @@ def vincular_ong(
     if ong.tipo != TipoOrganizacion.ONG:
         raise ErrorNacional(422, "Sólo se pueden vincular organizaciones de tipo ONG.")
     try:
-        ong.ong_nacional_id = ong_id
-        session.execute(
-            delete(ConexionNacional).where(
-                ConexionNacional.usuario_id.in_(
-                    select(Usuario.id).where(Usuario.organizacion_id == organizacion_id)
+        if ong.ong_nacional_id != ong_id:
+            session.execute(
+                delete(AccesoNacional).where(
+                    AccesoNacional.organizacion_id == organizacion_id
                 )
             )
-        )
+        ong.ong_nacional_id = ong_id
         session.commit()
     except IntegrityError as error:
         session.rollback()

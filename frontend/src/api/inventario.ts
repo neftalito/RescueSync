@@ -1,11 +1,10 @@
 import { z } from "zod";
-import { apiRequest, apiRequestVoid } from "./client";
+import { apiRequest } from "./client";
 import {
   capacidadSchema,
   conexionSchema,
   ongNacionalSchema,
   recursoSchema,
-  type ConexionForm,
   type RecursoForm,
   type Recurso,
   type RegistroNacionalForm,
@@ -34,22 +33,6 @@ export function registrarOngNacional(
   });
 }
 
-export function conectarCuenta(
-  datos: ConexionForm,
-  csrfToken: string,
-): Promise<z.infer<typeof conexionSchema>> {
-  return apiRequest("/mi-ong/conexion", conexionSchema, {
-    method: "POST",
-    headers: cabeceras(csrfToken),
-    body: JSON.stringify(datos),
-  });
-}
-export function desconectarCuenta(csrfToken: string): Promise<void> {
-  return apiRequestVoid("/mi-ong/conexion", {
-    method: "DELETE",
-    headers: cabeceras(csrfToken),
-  });
-}
 export function crearRecurso(
   datos: RecursoForm,
   csrfToken: string,
