@@ -1,5 +1,9 @@
 # Demo local y con Cloudflare Tunnel
 
+La [guía de CORS](./cors.md) detalla cómo mantener varios dominios permitidos
+desde `.env` y comprobar el preflight. Cada URL nueva del túnel debe agregarse
+como origen explícito y aplicarse recreando el backend.
+
 Esta guía publica el frontend de producción mediante Nginx bajo una sola URL.
 El navegador usa rutas relativas `/api/v1`, por lo que Nginx sirve React y
 reenvía tanto HTTP como WebSocket al backend sin exponer FastAPI ni Bonita.

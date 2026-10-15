@@ -199,6 +199,7 @@ def test_metadata_registra_todo_el_esquema() -> None:
         "oferta_item",
         "oferta_participante",
         "notificacion",
+        "hecho_monitoreo",
     }
 
 

@@ -29,6 +29,44 @@ const conteoSchema = z.object({
   categoria: z.string(),
   cantidad: z.number().int().nonnegative(),
 });
+const porcentaje = z.number().min(0).max(100).nullable();
+const segundos = z.number().nonnegative().nullable();
+const cantidad = z.string().regex(/^\d+(\.\d+)?$/);
+export const indicadoresProcesoSchema = z.object({
+  emergencias_con_hechos: z.number().int().nonnegative(),
+  emergencias_sin_hechos: z.number().int().nonnegative(),
+  resolucion_por_gravedad: z.array(z.object({
+    gravedad: z.enum(gravedades), emergencias: z.number().int().nonnegative(),
+    resueltas: z.number().int().nonnegative(), con_plazo: z.number().int().nonnegative(),
+    cierres_confirmados: z.number().int().nonnegative(), resueltas_sin_cierre: z.number().int().nonnegative(),
+    en_termino: z.number().int().nonnegative(), tasa_resolucion: porcentaje,
+    tasa_en_termino: porcentaje, promedio_segundos: segundos,
+    promedio_en_termino_segundos: segundos,
+  })),
+  reiteradas: z.array(z.object({
+    emergencia_id: z.number().int().positive(), reaperturas: z.number().int().nonnegative(),
+    reformulaciones: z.number().int().nonnegative(),
+  })),
+  ranking_ongs: z.array(z.object({
+    ong_id: z.number().int().positive(), ong: z.string(), capacidad: z.string(),
+    unidad: z.string(), cantidad, aportes: z.number().int().positive(),
+    finalizados: z.number().int().nonnegative(), con_plazo_finalizados: z.number().int().nonnegative(),
+    en_termino: z.number().int().nonnegative(), tasa_cumplimiento: porcentaje,
+  })),
+  cobertura_cierres: z.object({
+    total: z.number().int().nonnegative(), parcial: z.number().int().nonnegative(),
+    proporcion_total: porcentaje, proporcion_parcial: porcentaje,
+  }),
+  demanda_rubros: z.array(z.object({
+    capacidad: z.string(), unidad: z.string(), cantidad,
+    evaluaciones: z.number().int().nonnegative(), inhabilitadas: z.number().int().nonnegative(),
+    tasa_inhabilitacion: porcentaje,
+  })),
+  alerta_adjudicacion_promedio_segundos: segundos,
+  alerta_adjudicacion_muestras: z.number().int().nonnegative(),
+  definiciones: z.array(z.string()),
+});
+export type IndicadoresProceso = z.infer<typeof indicadoresProcesoSchema>;
 export const reporteMetricasSchema = z.object({
   generado_en: z.iso.datetime({ offset: true }),
   filtros: filtrosSchema,
@@ -55,6 +93,7 @@ export const reporteMetricasSchema = z.object({
       cantidad: z.string().regex(/^\d+(\.\d+)?$/),
     }),
   ),
+  indicadores_proceso: indicadoresProcesoSchema.optional(),
 });
 export const reporteTiemposSchema = z.object({
   generado_en: z.iso.datetime({ offset: true }),
@@ -80,6 +119,22 @@ export const reporteTiemposSchema = z.object({
       muestras: z.number().int().positive(),
     }),
   ),
+  casos_activos_consultados: z.number().int().nonnegative().optional(),
+  casos_activos_con_error: z.number().int().nonnegative().optional(),
+  actividad_por_etapa: z.array(z.object({
+    etapa: z.string(), version_proceso: z.string(), tareas: z.number().int().nonnegative(),
+    con_fecha: z.number().int().nonnegative(), promedio_antiguedad_segundos: segundos,
+    vencidas: z.number().int().nonnegative(), sin_plazo: z.number().int().nonnegative(),
+    fallidas: z.number().int().nonnegative(),
+  })).optional(),
+  tareas_activas: z.array(z.object({
+    emergencia_id: z.number().int().positive(), municipio_id: z.number().int().positive(),
+    gravedad: z.enum(gravedades), case_id: z.number().int().positive(),
+    tarea_id: z.number().int().positive(), etapa: z.string(), version_proceso: z.string(),
+    estado: z.string(), desde_en: z.iso.datetime({ offset: true }).nullable(),
+    antiguedad_segundos: segundos, vence_en: z.iso.datetime({ offset: true }).nullable(),
+    vencida: z.boolean().nullable(),
+  })).optional(),
 });
 export type ReporteMetricas = z.infer<typeof reporteMetricasSchema>;
 export type ReporteTiempos = z.infer<typeof reporteTiemposSchema>;

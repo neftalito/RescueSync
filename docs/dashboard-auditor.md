@@ -6,6 +6,11 @@ roles, incluido `ADMINISTRADOR`, no pueden consultar sus endpoints. El seed loca
 incluye `auditor@rescuesync.org` / `auditor123`; el administrador también puede
 crear cuentas auditoras sin organización.
 
+El [monitoreo de procesos](./monitoreo-procesos.md) amplía este panel con los seis
+indicadores del material de clase, evidencia confirmada y tareas activas de Bonita.
+Esa guía define fórmulas nuevas, el callback técnico y las emisiones pendientes
+del BPM. Las fórmulas siguientes describen los agregados originales.
+
 ## Alcance respecto del trabajo integrador
 
 La página 3 de `Trabajo integrador 2026.pdf` pide combinar datos locales con
@@ -83,8 +88,9 @@ siguen disponibles durante un fallo del motor.
 Ambos aceptan `fecha_desde`, `fecha_hasta` (ISO `YYYY-MM-DD`), `municipio_id`
 (positivo), `gravedad` y `estado` (enums existentes). Un período invertido o un
 filtro inválido devuelve 422; sin sesión, 401; otro rol, 403. El contrato completo
-está en `/docs`. Las alertas requieren la migración indicada más abajo;
-no hay cambios de BPM ni de la API Nacional.
+está en `/docs`. Las alertas requieren la migración indicada más abajo y el
+registro de hechos requiere `20261015_0014`. No hay cambios del BAR ni de la
+API Nacional; las nuevas emisiones deben integrarse con T35–T37.
 
 TanStack Query mantiene los resultados separados por filtros. **Actualizar
 métricas** vuelve a consultar ambas fuentes. El menú **Exportar** ofrece JSON,

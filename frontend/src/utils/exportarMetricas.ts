@@ -1,4 +1,5 @@
 import type { ReporteMetricas, ReporteTiempos } from "../schemas/metricas";
+import { filasMonitoreo } from "./filasMonitoreo";
 
 export const indicadoresPendientes = [
   "Suministros movilizados",
@@ -133,6 +134,7 @@ export function generarCsvMetricas(
   }
   for (const indicador of indicadoresPendientes)
     filas.push(["pendientes", indicador, "", motivoIndicadoresPendientes, ""]);
+  filas.push(...filasMonitoreo(locales, tiempos));
   return `\uFEFF${filas.map((fila) => fila.map(celdaCsv).join(",")).join("\r\n")}\r\n`;
 }
 

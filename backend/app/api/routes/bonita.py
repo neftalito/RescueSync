@@ -31,8 +31,10 @@ from app.schemas.bonita import (
     NotificacionAperturaRequest,
     OfertasConsolidadasResponse,
 )
+from app.schemas.monitoreo import HechoRegistrado, RegistroHecho
 from app.services import callbacks_bonita as servicio
 from app.services.consolidado_nacional import respuesta_consolidada
+from app.services.hechos_monitoreo import HechoInvalidoError, registrar_hecho
 from app.services.notificaciones import clave_convocatoria_cerrada
 from app.services.tiempo_real import programar_evento_confirmado
 
@@ -87,6 +89,32 @@ def _respuesta_convocatoria(convocatoria: Convocatoria) -> ConvocatoriaBonitaRes
         estado=convocatoria.estado,
         cierra_en=convocatoria.cierra_en,
         cerrada_en=convocatoria.cerrada_en,
+    )
+
+
+@router.post(
+    "/{emergencia_id}/hechos-monitoreo",
+    response_model=HechoRegistrado,
+    responses=RESPUESTAS_ERROR,
+    summary="Bonita: registrar un hecho confirmado para monitoreo",
+    description="Callback técnico idempotente. Conserva decisiones, validaciones, adjudicaciones, finalizaciones y cierre sin modificar estados ni ejecutar operaciones nacionales. Reutilizar clave y contenido en cada reintento; requiere token y caso raíz vinculado.",
+)
+def registrar_hecho_monitoreo(
+    emergencia_id: EmergenciaId,
+    case_id: CasoBonitaId,
+    registro: RegistroHecho,
+    session: Annotated[Session, Depends(get_db)],
+    gestor_tiempo_real: GestorTiempoRealDep,
+) -> HechoRegistrado:
+    try:
+        hecho = registrar_hecho(session, emergencia_id, case_id, registro)
+        session.commit()
+    except HechoInvalidoError as error:
+        session.rollback()
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    gestor_tiempo_real.programar_metricas()
+    return HechoRegistrado(
+        id=hecho.id, clave=hecho.clave, registrado_en=hecho.registrado_en
     )
 
 

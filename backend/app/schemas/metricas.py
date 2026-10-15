@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, model_validator
 
 from app.db.models.enums import EstadoEmergencia, GravedadEmergencia
+from app.schemas.monitoreo import IndicadoresProceso
 
 ZONA_REPORTES = ZoneInfo("America/Argentina/Buenos_Aires")
 
@@ -75,6 +76,7 @@ class ReporteMetricas(BaseModel):
     evolucion_mensual: list[ConteoMetrica]
     tipos_oferta: list[ConteoMetrica]
     cantidades_ofrecidas: list[CantidadOfrecida]
+    indicadores_proceso: IndicadoresProceso
 
 
 class DisponibilidadBonita(StrEnum):
@@ -93,6 +95,32 @@ class TiempoEtapa(BaseModel):
     muestras: int
 
 
+class ActividadActual(BaseModel):
+    emergencia_id: int
+    municipio_id: int
+    gravedad: GravedadEmergencia
+    case_id: int
+    tarea_id: int
+    etapa: str
+    version_proceso: str
+    estado: str
+    desde_en: datetime | None
+    antiguedad_segundos: float | None
+    vence_en: datetime | None
+    vencida: bool | None
+
+
+class ResumenActividad(BaseModel):
+    etapa: str
+    version_proceso: str
+    tareas: int
+    con_fecha: int
+    promedio_antiguedad_segundos: float | None
+    vencidas: int
+    sin_plazo: int
+    fallidas: int
+
+
 class ReporteTiempos(BaseModel):
     generado_en: datetime = Field(default_factory=lambda: datetime.now(UTC))
     filtros: FiltrosMetricas
@@ -105,3 +133,7 @@ class ReporteTiempos(BaseModel):
     casos_con_error: int
     muestras_descartadas: int
     etapas: list[TiempoEtapa]
+    tareas_activas: list[ActividadActual] = Field(default_factory=list)
+    casos_activos_consultados: int = 0
+    casos_activos_con_error: int = 0
+    actividad_por_etapa: list[ResumenActividad] = Field(default_factory=list)

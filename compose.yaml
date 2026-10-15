@@ -53,6 +53,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-rescuesync}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rescuesync_dev}
       CORS_ORIGINS: '${CORS_ORIGINS:-["http://localhost:${FRONTEND_PORT:-5173}"]}'
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-lax}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@rescuesync.org}
       ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-administrador123}
       BONITA_BASE_URL: ${BONITA_BASE_URL:-http://bonita:8080/bonita}

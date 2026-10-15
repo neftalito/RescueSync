@@ -84,6 +84,37 @@ def _transicion(identidad: int, *, root: int = 42) -> dict[str, str]:
     }
 
 
+@respx.mock
+def test_tareas_activas_pagina_y_rechaza_datos_de_otro_caso(
+    cliente: ClienteBonita,
+) -> None:
+    _login(respx)
+
+    def tarea(identidad: int, root: int = 42) -> dict[str, str]:
+        return {
+            "id": str(identidad),
+            "rootCaseId": str(root),
+            "name": "Revisar",
+            "type": "USER_TASK",
+            "state": "ready",
+            "reached_state_date": "2026-10-15 09:00:00",
+            "dueDate": "",
+        }
+
+    ruta = respx.get(f"{BASE_URL}/API/bpm/flowNode").mock(
+        side_effect=[
+            httpx.Response(200, json=[tarea(i) for i in range(1, 101)]),
+            httpx.Response(200, json=[tarea(101)]),
+        ]
+    )
+    assert len(cliente.obtener_tareas_activas(42)) == 101
+    assert ruta.calls[1].request.url.params["p"] == "1"
+    assert ruta.calls[0].request.url.params["f"] == "caseId=42"
+    ruta.mock(return_value=httpx.Response(200, json=[tarea(1, root=99)]))
+    with pytest.raises(BonitaRespuestaInvalidaError, match="otro caso"):
+        cliente.obtener_tareas_activas(42)
+
+
 def test_historial_pagina_estados_intermedios_y_terminales(
     cliente: ClienteBonita,
 ) -> None:

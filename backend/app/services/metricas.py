@@ -1,8 +1,8 @@
 """Agrega indicadores sin confundir ofrecimientos con recursos movilizados."""
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import timedelta
 
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -30,25 +30,8 @@ from app.schemas.metricas import (
     ReporteMetricas,
     ResumenMetricas,
 )
-
-
-def emergencias_filtradas(filtros: FiltrosMetricas) -> Select[tuple[Emergencia]]:
-    """Aplica fechas civiles inclusivas convirtiéndolas en límites UTC."""
-    desde = datetime.combine(filtros.fecha_desde, time.min, ZONA_REPORTES)
-    hasta = datetime.combine(
-        filtros.fecha_hasta + timedelta(days=1), time.min, ZONA_REPORTES
-    )
-    consulta = select(Emergencia).where(
-        Emergencia.creada_en >= desde.astimezone(UTC),
-        Emergencia.creada_en < hasta.astimezone(UTC),
-    )
-    if filtros.municipio_id is not None:
-        consulta = consulta.where(Emergencia.municipio_id == filtros.municipio_id)
-    if filtros.gravedad is not None:
-        consulta = consulta.where(Emergencia.gravedad == filtros.gravedad)
-    if filtros.estado is not None:
-        consulta = consulta.where(Emergencia.estado == filtros.estado)
-    return consulta
+from app.services.filtros_metricas import emergencias_filtradas
+from app.services.indicadores_proceso import obtener_indicadores
 
 
 def obtener_metricas(session: Session, filtros: FiltrosMetricas) -> ReporteMetricas:
@@ -176,6 +159,7 @@ def obtener_metricas(session: Session, filtros: FiltrosMetricas) -> ReporteMetri
     ).all()
     total = sum(estados.values())
     return ReporteMetricas(
+        indicadores_proceso=obtener_indicadores(session, filtros),
         filtros=filtros,
         municipios=[MunicipioMetrica(id=m.id, nombre=m.nombre) for m in municipios],
         resumen=ResumenMetricas(

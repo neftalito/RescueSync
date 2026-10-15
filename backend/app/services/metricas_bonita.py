@@ -8,20 +8,111 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.db.models import Emergencia
 from app.integrations.bonita.cliente import (
     BonitaCredencialesError,
     BonitaNoDisponibleError,
     ClienteBonita,
     ErrorBonita,
 )
-from app.integrations.bonita.contratos import TransicionTareaArchivada
+from app.integrations.bonita.contratos import TareaActiva, TransicionTareaArchivada
 from app.schemas.metricas import (
+    ActividadActual,
     DisponibilidadBonita,
     FiltrosMetricas,
     ReporteTiempos,
+    ResumenActividad,
     TiempoEtapa,
 )
-from app.services.metricas import emergencias_filtradas
+from app.services.filtros_metricas import emergencias_filtradas
+
+
+def fecha_bonita(valor: str | None, zona: ZoneInfo) -> datetime | None:
+    """Normaliza fechas del Runtime; una fecha ausente no implica duración cero."""
+    if not valor:
+        return None
+    try:
+        fecha = datetime.fromisoformat(valor)
+        if fecha.tzinfo is None:
+            fecha = fecha.replace(tzinfo=zona)
+        return fecha.astimezone(UTC)
+    except ValueError:
+        return None
+
+
+def actividades_actuales(
+    emergencia: Emergencia,
+    tareas: list[TareaActiva],
+    historial: list[TransicionTareaArchivada],
+    zona: ZoneInfo,
+    ahora: datetime,
+) -> list[ActividadActual]:
+    """Mide antigüedad desde el primer estado conocido de cada ejecución activa."""
+    resultado: list[ActividadActual] = []
+    for tarea in {t.id: t for t in tareas}.values():
+        if tarea.tipo not in {
+            "USER_TASK",
+            "AUTOMATIC_TASK",
+            "MANUAL_TASK",
+        } or tarea.state in {"completed", "aborted", "cancelled", "skipped"}:
+            continue
+        observadas = [tarea.reached_state_date] + [
+            h.reached_state_date
+            for h in historial
+            if h.source_object_id == tarea.id
+            and h.state not in {"completed", "aborted", "cancelled", "skipped"}
+        ]
+        fechas = [
+            f
+            for valor in observadas
+            if (f := fecha_bonita(valor, zona)) is not None and f <= ahora
+        ]
+        desde = min(fechas) if fechas else None
+        vence = fecha_bonita(tarea.due_date, zona)
+        resultado.append(
+            ActividadActual(
+                emergencia_id=emergencia.id,
+                municipio_id=emergencia.municipio_id,
+                gravedad=emergencia.gravedad,
+                case_id=tarea.root_case_id,
+                tarea_id=tarea.id,
+                etapa=tarea.name,
+                version_proceso=emergencia.bonita_process_version or "Sin versión",
+                estado=tarea.state,
+                desde_en=desde,
+                antiguedad_segundos=(ahora - desde).total_seconds() if desde else None,
+                vence_en=vence,
+                vencida=vence < ahora if vence else None,
+            )
+        )
+    return resultado
+
+
+def resumir_actividad(tareas: list[ActividadActual]) -> list[ResumenActividad]:
+    """Informa espera media y carga actual, conservando la cobertura temporal."""
+    grupos: dict[tuple[str, str], list[ActividadActual]] = defaultdict(list)
+    for tarea in tareas:
+        grupos[(tarea.etapa, tarea.version_proceso)].append(tarea)
+    resultado: list[ResumenActividad] = []
+    for (etapa, version), filas in sorted(grupos.items()):
+        edades = [
+            f.antiguedad_segundos for f in filas if f.antiguedad_segundos is not None
+        ]
+        resultado.append(
+            ResumenActividad(
+                etapa=etapa,
+                version_proceso=version,
+                tareas=len(filas),
+                con_fecha=len(edades),
+                promedio_antiguedad_segundos=sum(edades) / len(edades)
+                if edades
+                else None,
+                vencidas=sum(f.vencida is True for f in filas),
+                sin_plazo=sum(f.vence_en is None for f in filas),
+                fallidas=sum(f.estado == "failed" for f in filas),
+            )
+        )
+    return resultado
 
 
 def duraciones_tareas(
@@ -80,6 +171,10 @@ def obtener_tiempos(
     vinculadas = [e for e in emergencias if e.bonita_process_instance_id is not None]
     grupos: dict[tuple[str, str], list[float]] = defaultdict(list)
     consultados = con_muestras = descartadas = 0
+    activos_consultados = 0
+    activas: list[ActividadActual] = []
+    ahora = datetime.now(UTC)
+    zona = ZoneInfo(get_settings().bonita_timezone)
     inicio = monotonic()
     for emergencia in vinculadas:
         # Evita multiplicar el timeout de Bonita por todos los casos de un reporte.
@@ -93,8 +188,9 @@ def obtener_tiempos(
         except (BonitaNoDisponibleError, BonitaCredencialesError):
             break
         except ErrorBonita:
-            continue
-        consultados += 1
+            historial = []
+        else:
+            consultados += 1
         muestras, invalidas = duraciones_tareas(
             historial, ZoneInfo(get_settings().bonita_timezone)
         )
@@ -104,6 +200,18 @@ def obtener_tiempos(
             grupos[(nombre, emergencia.bonita_process_version or "Sin versión")].append(
                 segundos
             )
+        if monotonic() - inicio >= 20:
+            continue
+        try:
+            tareas = cliente.obtener_tareas_activas(
+                emergencia.bonita_process_instance_id
+            )
+        except (BonitaNoDisponibleError, BonitaCredencialesError):
+            break
+        except ErrorBonita:
+            continue
+        activos_consultados += 1
+        activas.extend(actividades_actuales(emergencia, tareas, historial, zona, ahora))
     errores = len(vinculadas) - consultados
     sin_historial = len(emergencias) - len(vinculadas) + consultados - con_muestras
     disponibilidad = DisponibilidadBonita.DISPONIBLE
@@ -116,6 +224,13 @@ def obtener_tiempos(
     elif errores or sin_historial or descartadas:
         disponibilidad = DisponibilidadBonita.PARCIAL
     return ReporteTiempos(
+        actividad_por_etapa=resumir_actividad(activas),
+        tareas_activas=sorted(
+            activas,
+            key=lambda a: (-(a.antiguedad_segundos or 0), a.emergencia_id, a.tarea_id),
+        ),
+        casos_activos_consultados=activos_consultados,
+        casos_activos_con_error=len(vinculadas) - activos_consultados,
         filtros=filtros,
         disponibilidad=disponibilidad,
         casos_seleccionados=len(emergencias),

@@ -61,6 +61,8 @@ def test_historial_real_mide_tarea_completada_y_limpia_caso_temporal() -> None:
                     break
                 time.sleep(0.25)
             assert tarea is not None
+            activas = cliente.obtener_tareas_activas(caso)
+            assert any(t.id == tarea.id and t.root_case_id == caso for t in activas)
             cliente.ejecutar_tarea(tarea.id, USUARIO_ACTOR_COORDINADOR)
             for _ in range(40):
                 historial = cliente.obtener_historial_tareas(caso)

@@ -18,6 +18,7 @@ from app.integrations.bonita.contratos import (
     ContratoInicioProceso,
     DefinicionProceso,
     InstanciaIniciada,
+    TareaActiva,
     TareaBonitaFallida,
     TareaHumana,
     TransicionTareaArchivada,
@@ -315,6 +316,33 @@ class ClienteBonita:
                 return resultado
         raise BonitaRespuestaInvalidaError(
             "Las tareas fallidas superan el límite de paginación segura."
+        )
+
+    def obtener_tareas_activas(self, case_id: int) -> list[TareaActiva]:
+        """Pagina nodos actuales del caso sin ejecutar ni modificar tareas."""
+        resultado: list[TareaActiva] = []
+        for pagina in range(100):
+            respuesta = self._enviar(
+                "GET",
+                "/API/bpm/flowNode",
+                params=[
+                    ("p", pagina),
+                    ("c", 100),
+                    ("f", f"caseId={case_id}"),
+                    ("o", "name ASC"),
+                ],
+                estados_esperados=(httpx.codes.OK,),
+            )
+            filas = _validar_lista(respuesta, TareaActiva, "tareas activas")
+            if any(f.root_case_id != case_id for f in filas):
+                raise BonitaRespuestaInvalidaError(
+                    "Bonita devolvió tareas activas de otro caso."
+                )
+            resultado.extend(filas)
+            if len(filas) < 100:
+                return resultado
+        raise BonitaRespuestaInvalidaError(
+            "Las tareas activas superan el límite de paginación segura."
         )
 
     def obtener_historial_tareas(self, case_id: int) -> list[TransicionTareaArchivada]:

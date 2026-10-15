@@ -131,3 +131,15 @@ class TareaBonitaFallida(_ModeloBonita):
     root_case_id: PositiveInt = Field(alias="rootCaseId")
     name: str
     state: Literal["failed"]
+
+
+class TareaActiva(_ModeloBonita):
+    """Estado actual de un nodo; las fechas vacías del motor son admisibles."""
+
+    id: PositiveInt
+    root_case_id: PositiveInt = Field(alias="rootCaseId")
+    name: str
+    tipo: str = Field(alias="type")
+    state: TextoNoVacio
+    reached_state_date: str
+    due_date: str | None = Field(default=None, alias="dueDate")

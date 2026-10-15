@@ -6,6 +6,10 @@ referencia.
 
 ## Desarrollo
 
+- [CORS y dominios](./cors.md): configuración desde `.env`, nuevos dominios,
+  despliegue, preflight, cookies y WebSocket.
+- [Monitoreo de procesos](./monitoreo-procesos.md): indicadores BAM, tareas
+  activas, registro de hechos confirmados, fórmulas y cobertura de datos.
 - [Dashboard del auditor/directivo](./dashboard-auditor.md): métricas globales,
   fórmulas, gráficos, tiempos de Bonita, permisos y exportación CSV/JSON.
 - [Ofertas consolidadas nacionales](./ofertas-consolidadas-nacionales.md): T34,
@@ -61,6 +65,7 @@ fuente de verdad.
 
 ## Fuentes de verdad funcionales
 
+- [`Monitoreo de procesos.pptx.pdf`](<./Monitoreo de procesos.pptx.pdf>).
 - [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>).
 - [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>).
 - [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>).

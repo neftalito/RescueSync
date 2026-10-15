@@ -15,6 +15,8 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
+from app.core.cors import normalizar_origenes
+
 BONITA_CALLBACK_TOKEN_DESARROLLO = "dev-only-rescuesync-bonita-callback-token"
 """Token compartido por Compose en desarrollo; nunca es válido en producción."""
 
@@ -91,6 +93,18 @@ class Settings(BaseSettings):
     nacional_aprovisionamiento_password: SecretStr | None = None
     nacional_catalogo_login: str | None = None
     nacional_catalogo_password: SecretStr | None = None
+
+    @field_validator("cors_origins")
+    @classmethod
+    def validar_cors_origins(cls, valores: list[str]) -> list[str]:
+        """Comparte la lista normalizada entre HTTP y WebSocket."""
+        return normalizar_origenes(valores)
+
+    @field_validator("session_cookie_secure", mode="before")
+    @classmethod
+    def normalizar_cookie_secure_vacia(cls, valor: object) -> object:
+        """Permite omitir el override desde Compose y usar el valor por entorno."""
+        return None if valor == "" else valor
 
     @field_validator(
         "session_secret",

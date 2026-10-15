@@ -4,11 +4,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.core.cors import AplicacionConCORS
 from app.db.session import SessionLocal
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.integrations.email.cliente import ClienteSMTP, ConfiguracionSMTP
@@ -64,20 +64,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await gestor_tiempo_real.detener()
 
 
-app = FastAPI(
+app = AplicacionConCORS(
     title=settings.app_name,
     version="0.1.0",
     description="API local para la coordinación de emergencias de RescueSync.",
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.origenes_cors = tuple(settings.cors_origins)
+app.credenciales_cors = True
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 

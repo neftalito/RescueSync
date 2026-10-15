@@ -45,6 +45,10 @@ async function simularApi(
           casos_sin_historial_suficiente: 1,
           casos_con_error: 0,
           muestras_descartadas: 0,
+          casos_activos_consultados: 1,
+          casos_activos_con_error: 0,
+          actividad_por_etapa: [{ etapa: "Revisar necesidades", version_proceso: "1.2", tareas: 1, con_fecha: 1, promedio_antiguedad_segundos: 3600, vencidas: 1, sin_plazo: 0, fallidas: 0 }],
+          tareas_activas: [{ emergencia_id: 9, municipio_id: 1, gravedad: "ALTA", case_id: 42, tarea_id: 7, etapa: "Revisar necesidades", version_proceso: "1.2", estado: "ready", desde_en: "2026-10-15T09:00:00Z", antiguedad_segundos: 3600, vence_en: "2026-10-15T09:30:00Z", vencida: true }],
           etapas: [
             {
               etapa: "Generar lotes de necesidades",
@@ -90,6 +94,16 @@ async function simularApi(
               unidad: "litros",
             },
           ],
+          indicadores_proceso: {
+            emergencias_con_hechos: 1, emergencias_sin_hechos: 1,
+            resolucion_por_gravedad: [{ gravedad: "ALTA", emergencias: 2, resueltas: 1, cierres_confirmados: 1, resueltas_sin_cierre: 0, con_plazo: 1, en_termino: 1, tasa_resolucion: 50, tasa_en_termino: 100, promedio_segundos: 7200, promedio_en_termino_segundos: 7200 }],
+            reiteradas: [{ emergencia_id: 9, reaperturas: 1, reformulaciones: 0 }],
+            ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 1, finalizados: 1, con_plazo_finalizados: 1, en_termino: 1, tasa_cumplimiento: 100 }],
+            cobertura_cierres: { total: 1, parcial: 0, proporcion_total: 100, proporcion_parcial: 0 },
+            demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250", evaluaciones: 1, inhabilitadas: 0, tasa_inhabilitacion: 0 }],
+            alerta_adjudicacion_promedio_segundos: 3600, alerta_adjudicacion_muestras: 1,
+            definiciones: ["Se seleccionan emergencias por fecha de alta."],
+          },
         },
       });
     } else {
@@ -141,6 +155,9 @@ test("auditor usa gráficos, filtros y exportaciones sin desbordamiento", async 
   const contenido = await readFile(archivo, "utf-8");
   expect(contenido).toContain('"fecha_desde": "2026-09-01"');
   expect(contenido).toContain('"bonita": "PARCIAL"');
+  expect(contenido).toContain('"cantidad": "100.125"');
+  await expect(page.getByRole("heading", { name: "Resultados del proceso" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Tareas en ejecución y pendientes" })).toContainText("Revisar necesidades");
   const csvDescargado = page.waitForEvent("download");
   await page.getByRole("button", { name: "Exportar" }).click();
   await page.getByRole("button", { name: "Exportar CSV" }).click();

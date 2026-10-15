@@ -1,5 +1,9 @@
 # Imágenes de producción
 
+Configurar los orígenes del frontend con `CORS_ORIGINS` en el `.env` o en las
+variables del servicio. La [guía de CORS](./cors.md) explica cómo agregar dominios,
+aplicar cambios y verificar preflight, cookies y WebSocket después del despliegue.
+
 Los Dockerfiles de backend y frontend incluyen un target de producción:
 
 ```bash

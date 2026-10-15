@@ -317,6 +317,9 @@ def test_bonita_parcial_conserva_muestras_validas(
         ]
 
     monkeypatch.setattr(ClienteBonita, "obtener_historial_tareas", historial)
+    monkeypatch.setattr(
+        ClienteBonita, "obtener_tareas_activas", lambda _self, _case_id: []
+    )
     from app.integrations.bonita.cliente import ConfiguracionBonita
 
     with ClienteBonita(ConfiguracionBonita.desde_settings(get_settings())) as cliente:

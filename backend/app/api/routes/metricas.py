@@ -28,7 +28,7 @@ ERRORES = {codigo: {"model": ErrorResponse} for codigo in (401, 403, 422)}
     response_model=ReporteMetricas,
     responses=ERRORES,
     summary="Consultar indicadores globales",
-    description="Solo AUDITOR_DIRECTIVO. Filtra por fecha de alta de la emergencia; los datos relacionados reflejan su situación actual. Las fechas son inclusivas en America/Argentina/Buenos_Aires.",
+    description="Solo AUDITOR_DIRECTIVO. Filtra por fecha de alta de la emergencia; los datos relacionados reflejan su situación actual. Incluye seis indicadores de proceso calculados sobre evidencia confirmada, fórmulas y cobertura de datos. Las fechas son inclusivas en America/Argentina/Buenos_Aires.",
 )
 def consultar_metricas(
     filtros: Filtros, session: BaseDatos, _usuario: UsuarioAuditor
@@ -42,7 +42,7 @@ def consultar_metricas(
     response_model=ReporteTiempos,
     responses=ERRORES,
     summary="Consultar tiempos por tarea de Bonita",
-    description="Solo AUDITOR_DIRECTIVO. Promedios de tareas completadas con inicio observable, agrupados por nombre BPM y versión. Informa cobertura y fallos parciales sin sustituir datos ausentes por cero.",
+    description="Solo AUDITOR_DIRECTIVO. Promedios de tareas completadas con inicio observable y tareas activas por emergencia/caso con antigüedad, vencimiento y carga por etapa. Informa cobertura independiente de historial y actividad; los fallos parciales no sustituyen datos ausentes por cero.",
 )
 def consultar_tiempos(
     filtros: Filtros,

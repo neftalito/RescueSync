@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { autoTable } from "jspdf-autotable";
 import type { ReporteMetricas, ReporteTiempos } from "../schemas/metricas";
 import { etiquetasMetricas } from "./coloresMetricas";
+import { filasMonitoreo } from "./filasMonitoreo";
 import {
   indicadoresPendientes,
   motivoIndicadoresPendientes,
@@ -153,6 +154,7 @@ export function generarPdfMetricas(
   }
   for (const indicador of indicadoresPendientes)
     texto(`${indicador}: ${motivoIndicadoresPendientes}.`);
+  tabla("Resultados del proceso y actividad de Bonita", ["Sección", "Indicador", "Categoría", "Valor", "Unidad"], filasMonitoreo(locales, tiempos));
   for (const grafico of graficos) {
     if (y + 112 > 278) {
       doc.addPage();

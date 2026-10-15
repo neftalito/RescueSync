@@ -20,6 +20,8 @@ import {
 } from "../utils/exportarMetricas";
 import { GraficoMetricas } from "./GraficoMetricas";
 import { ExportarMetricasMenu } from "./ExportarMetricasMenu";
+import { IndicadoresProceso } from "./IndicadoresProceso";
+import { ActividadesBonita } from "./ActividadesBonita";
 import {
   coloresMetricas,
   etiquetasMetricas as etiquetas,
@@ -342,6 +344,7 @@ export function DashboardAuditor(): ReactElement {
           </article>
         </>
       )}
+      {reporte && !locales.isError && reporte.indicadores_proceso && <IndicadoresProceso datos={reporte.indicadores_proceso} />}
       <section aria-labelledby="tiempos-bonita" className="space-y-4">
         <div>
           <h3 id="tiempos-bonita" className="text-xl font-bold text-slate-900">
@@ -378,6 +381,7 @@ export function DashboardAuditor(): ReactElement {
         )}
         {historial && (
           <>
+            <ActividadesBonita datos={historial} />
             <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600">
               <p className="font-semibold text-slate-900">
                 {historial.disponibilidad === "DISPONIBLE"

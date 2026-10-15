@@ -17,6 +17,7 @@ from app.db.models.enums import (
     TipoOrganizacion,
     TipoParticipacion,
 )
+from app.db.models.hecho_monitoreo import HechoMonitoreo
 from app.db.models.lote import Lote
 from app.db.models.notificacion import Notificacion
 from app.db.models.oferta import Oferta, OfertaItem, OfertaParticipante, OfertaVersion
@@ -37,6 +38,7 @@ __all__ = [
     "EstadoSincronizacionBonita",
     "EstadoTareaBonita",
     "GravedadEmergencia",
+    "HechoMonitoreo",
     "Lote",
     "Notificacion",
     "Oferta",
