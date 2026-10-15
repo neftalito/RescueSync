@@ -11,6 +11,29 @@ import {
 interface GraficoPdf {
   titulo: string;
   imagen: string | null;
+  /** alto / ancho del gráfico original */
+  proporcion: number;
+}
+
+const PROPORCION_POR_DEFECTO = 0.54;
+
+/**
+ * Devuelve el SVG del gráfico dentro del panel. Recharts también dibuja los
+ * íconos de la leyenda como <svg class="recharts-surface"> (14x14), por lo que
+ * se descartan los que están dentro de la leyenda y se elige el de mayor área.
+ */
+function encontrarSvgGrafico(panel: HTMLElement): SVGSVGElement | null {
+  const candidatos = Array.from(
+    panel.querySelectorAll<SVGSVGElement>("svg.recharts-surface"),
+  ).filter((svg) => !svg.closest(".recharts-legend-wrapper"));
+
+  const area = (svg: SVGSVGElement): number => {
+    const { width, height } = svg.getBoundingClientRect();
+    return width * height;
+  };
+
+  candidatos.sort((a, b) => area(b) - area(a));
+  return candidatos[0] ?? null;
 }
 
 async function capturarGraficos(): Promise<GraficoPdf[]> {
@@ -18,13 +41,15 @@ async function capturarGraficos(): Promise<GraficoPdf[]> {
   for (const panel of document.querySelectorAll<HTMLElement>(
     "[data-reporte-grafico]",
   )) {
-    const svg = panel.querySelector("svg.recharts-surface");
-    if (!(svg instanceof SVGSVGElement)) continue;
+    const svg = encontrarSvgGrafico(panel);
+    if (!svg) continue;
     const titulo = panel.dataset.reporteGrafico ?? "Gráfico";
     try {
+      const { width, height } = svg.getBoundingClientRect();
+      if (!width || !height) throw new Error("Gráfico sin dimensiones.");
       const copia = svg.cloneNode(true);
       if (!(copia instanceof SVGSVGElement)) continue;
-      const { width, height } = svg.getBoundingClientRect();
+      copia.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       copia.setAttribute("width", String(width));
       copia.setAttribute("height", String(height));
       copia.style.fontFamily = "Arial, sans-serif";
@@ -39,9 +64,17 @@ async function capturarGraficos(): Promise<GraficoPdf[]> {
       contexto.fillStyle = "white";
       contexto.fillRect(0, 0, canvas.width, canvas.height);
       contexto.drawImage(imagen, 0, 0, canvas.width, canvas.height);
-      graficos.push({ titulo, imagen: canvas.toDataURL("image/png") });
+      graficos.push({
+        titulo,
+        imagen: canvas.toDataURL("image/png"),
+        proporcion: height / width,
+      });
     } catch {
-      graficos.push({ titulo, imagen: null });
+      graficos.push({
+        titulo,
+        imagen: null,
+        proporcion: PROPORCION_POR_DEFECTO,
+      });
     }
   }
   return graficos;
@@ -154,16 +187,23 @@ export function generarPdfMetricas(
   }
   for (const indicador of indicadoresPendientes)
     texto(`${indicador}: ${motivoIndicadoresPendientes}.`);
-  tabla("Resultados del proceso y actividad de Bonita", ["Sección", "Indicador", "Categoría", "Valor", "Unidad"], filasMonitoreo(locales, tiempos));
+  tabla(
+    "Resultados del proceso y actividad de Bonita",
+    ["Sección", "Indicador", "Categoría", "Valor", "Unidad"],
+    filasMonitoreo(locales, tiempos),
+  );
   for (const grafico of graficos) {
-    if (y + 112 > 278) {
+    const ancho = 178;
+    const alto = ancho * grafico.proporcion;
+    // título (~10 mm) + imagen + margen inferior
+    if (y + alto + 16 > 278) {
       doc.addPage();
       y = 20;
     }
     texto(grafico.titulo, 12);
     if (grafico.imagen) {
-      doc.addImage(grafico.imagen, "PNG", 16, y, 178, 96);
-      y += 106;
+      doc.addImage(grafico.imagen, "PNG", 16, y, ancho, alto);
+      y += alto + 10;
     } else
       texto(
         "No fue posible incorporar la imagen. Consultar la tabla de datos del gráfico.",
