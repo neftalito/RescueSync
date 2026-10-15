@@ -187,9 +187,10 @@ describe("autenticación", () => {
     const user = userEvent.setup();
     renderApp("/");
 
-    await user.click(
-      await screen.findByRole("button", { name: "Cerrar sesión" }),
-    );
+    const cerrarSesion = await screen.findByRole("button", { name: "Cerrar sesión" });
+    expect(cerrarSesion.textContent).toBe("");
+    expect(cerrarSesion.querySelector("svg")).toBeInTheDocument();
+    await user.click(cerrarSesion);
 
     await waitFor(() => {
       expect(

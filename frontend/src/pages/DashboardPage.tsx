@@ -94,11 +94,27 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
             </Link>
             <button
               type="button"
+              aria-label={mutation.isPending ? "Saliendo…" : "Cerrar sesión"}
+              aria-busy={mutation.isPending}
+              title="Cerrar sesión"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate()}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 outline-2 outline-offset-2 outline-transparent transition-colors hover:border-red-500 hover:bg-red-50 hover:text-red-700 hover:outline-red-500 focus-visible:outline-red-600 active:border-red-700 active:bg-red-100 active:text-red-900 active:outline-red-700 disabled:cursor-wait disabled:opacity-60"
             >
-              {mutation.isPending ? "Saliendo…" : "Cerrar sesión"}
+              <svg
+                aria-hidden="true"
+                focusable="false"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="size-5"
+              >
+                <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
+                <path d="m16 7 5 5-5 5M21 12H9" />
+              </svg>
             </button>
           </div>
         </div>

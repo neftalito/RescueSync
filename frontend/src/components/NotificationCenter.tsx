@@ -55,7 +55,10 @@ export function NotificationCenter({
           window.innerWidth - panel.offsetWidth - 16,
         ),
       );
-      const top = Math.max(16, Math.min(rect.bottom + 8, window.innerHeight - 160));
+      const top = Math.max(
+        16,
+        Math.min(rect.bottom + 8, window.innerHeight - 160),
+      );
       panel.style.setProperty("--notification-left", `${left}px`);
       panel.style.setProperty("--notification-top", `${top}px`);
       panel.style.setProperty(
@@ -128,7 +131,8 @@ export function NotificationCenter({
       );
     },
   });
-  const noLeidas = query.data?.filter((item) => item.leida_en === null).length ?? 0;
+  const noLeidas =
+    query.data?.filter((item) => item.leida_en === null).length ?? 0;
   const error = marcarLeida.error ?? marcarTodasLeidas.error;
   const errorMutacion =
     error instanceof ApiError
@@ -146,18 +150,42 @@ export function NotificationCenter({
       <button
         ref={botonRef}
         type="button"
+        aria-label="Notificaciones"
+        aria-describedby="estado-notificaciones"
+        title={
+          noLeidas > 0
+            ? `Notificaciones: ${noLeidas} sin leer`
+            : "Notificaciones"
+        }
         aria-expanded={abierto}
         aria-controls="panel-notificaciones"
         onClick={() => setAbierto((valor) => !valor)}
-        className="relative rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        className={`inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white outline-2 outline-offset-2 outline-transparent transition-colors hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700 hover:outline-yellow-500 focus-visible:outline-yellow-600 active:border-yellow-700 active:bg-yellow-100 active:text-yellow-900 active:outline-yellow-700 ${noLeidas > 0 ? "text-yellow-600" : "text-slate-600"}`}
       >
-        Notificaciones
-        {noLeidas > 0 && (
-          <span className="ml-2 inline-flex min-w-5 justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs text-white">
-            {noLeidas > 99 ? "99+" : noLeidas}
-          </span>
-        )}
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-5"
+          data-estado={noLeidas > 0 ? "sonando" : "quieta"}
+        >
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path d="M10 21h4" />
+          {noLeidas > 0 && (
+            <path d="M2 8a10 10 0 0 1 2-5m18 5a10 10 0 0 0-2-5" />
+          )}
+        </svg>
       </button>
+      <span id="estado-notificaciones" className="sr-only" aria-live="polite">
+        {noLeidas > 0
+          ? `${noLeidas} ${noLeidas === 1 ? "notificación sin leer" : "notificaciones sin leer"}`
+          : "No hay notificaciones sin leer"}
+      </span>
 
       {abierto && (
         <section
@@ -169,7 +197,9 @@ export function NotificationCenter({
           <div className="flex shrink-0 flex-wrap items-center gap-3">
             <h2 className="font-semibold text-slate-950">Novedades</h2>
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs text-slate-500">{noLeidas} sin leer</span>
+              <span className="text-xs text-slate-500">
+                {noLeidas} sin leer
+              </span>
               <button
                 type="button"
                 aria-label="Marcar todas como vistas"

@@ -211,3 +211,84 @@ test("administrador no recibe el dashboard ni consulta métricas", async ({
   ).toHaveCount(0);
   expect(consultas).toEqual([]);
 });
+
+test("los iconos del header muestran novedades y resaltan hover y pulsación", async ({
+  page,
+}) => {
+  await simularApi(page);
+  await page.route("**/api/v1/notificaciones", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 41,
+          usuario_id: 7,
+          tipo: "TAREA_BONITA_FALLIDA",
+          titulo: "Tarea de Bonita con errores",
+          mensaje: "Una tarea requiere revisión.",
+          ruta: "/",
+          leida_en: null,
+          creada_en: "2026-10-15T12:00:00Z",
+        },
+      ],
+    }),
+  );
+  await page.route("**/api/v1/notificaciones/leidas", (route) =>
+    route.fulfill({
+      json: {
+        cantidad_actualizada: 1,
+        leida_en: "2026-10-15T12:01:00Z",
+      },
+    }),
+  );
+  await page.goto("/");
+  const campana = page.getByRole("button", {
+    name: "Notificaciones",
+    exact: true,
+  });
+  const salir = page.getByRole("button", {
+    name: "Cerrar sesión",
+    exact: true,
+  });
+  const colorTema = async (nombre: string): Promise<string> =>
+    page.evaluate((color) => {
+      const referencia = document.createElement("span");
+      referencia.style.color = `var(--color-${color})`;
+      document.body.append(referencia);
+      const valor = getComputedStyle(referencia).color;
+      referencia.remove();
+      return valor;
+    }, nombre);
+  await expect(campana).toHaveAccessibleDescription("1 notificación sin leer");
+  expect(await campana.textContent()).toBe("");
+  expect(await salir.textContent()).toBe("");
+  await expect(campana.locator("svg")).toHaveAttribute(
+    "data-estado",
+    "sonando",
+  );
+  await campana.hover();
+  await expect(campana).toHaveCSS(
+    "outline-color",
+    await colorTema("yellow-500"),
+  );
+  await expect(campana).toHaveCSS("outline-width", "2px");
+  await page.mouse.down();
+  await expect(campana).toHaveCSS(
+    "outline-color",
+    await colorTema("yellow-700"),
+  );
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Marcar todas como vistas" }).click();
+  await expect(campana).toHaveAccessibleDescription(
+    "No hay notificaciones sin leer",
+  );
+  await expect(campana.locator("svg")).toHaveAttribute("data-estado", "quieta");
+  await page.keyboard.press("Escape");
+  await expect(campana).toBeFocused();
+  await salir.hover();
+  await expect(salir).toHaveCSS("outline-color", await colorTema("red-500"));
+  await page.mouse.down();
+  await expect(salir).toHaveCSS("outline-color", await colorTema("red-700"));
+  // Soltar fuera evita cerrar la sesión durante la comprobación visual.
+  await page.mouse.move(0, 0);
+  await page.mouse.up();
+});
