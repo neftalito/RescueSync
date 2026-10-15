@@ -9,7 +9,7 @@ Relacionado con [RescueSyncAPI #10](https://github.com/neftalito/RescueSyncAPI/i
 
 ## Configuración y transición
 
-Aplicar la revisión local `20261014_0009` antes de ejecutar el backend actualizado:
+Aplicar las migraciones locales hasta `20261014_0010` antes de ejecutar el backend actualizado:
 
 ```bash
 docker compose build backend migrate frontend
@@ -41,9 +41,15 @@ hay que configurar emisor/catálogo y vincular las ONGs con sus UUID verificados
 
 ## Captura en la aplicación
 
-1. El coordinador selecciona **Capacidad nacional** al guardar el lote. El
-   backend valida su existencia, unidad y admisión de fracciones contra el
-   catálogo. El riesgo elegido o la gravedad de la emergencia se congelan al
+1. El formulario carga automáticamente el catálogo y el coordinador selecciona
+   **Capacidad** en lugar de ingresar un tipo de necesidad libre. La unidad es
+   de solo lectura; cantidad y descripción opcional se completan por separado.
+   El backend valida existencia, unidad y admisión de fracciones contra el
+   catálogo y guarda su nombre como `tipo_necesidad` (hasta 160 caracteres).
+   Un borrador anterior sin vínculo requiere elegir una capacidad para volver
+   a guardarlo; no se infiere el UUID a partir de su texto. Si falla el catálogo
+   se puede reintentar, y si no hay capacidades activas se bloquea el guardado.
+   El riesgo elegido o la gravedad de la emergencia se congelan al
    publicar, junto con capacidad, código, unidad, cantidad y emisor.
 2. Cada ONG conecta su cuenta en **Mis recursos**. Al crear/editar una oferta
    para un lote asociado, elige recursos propios y desglosa las cantidades.

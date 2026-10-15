@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,6 +30,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import app
+from app.schemas.inventario import CapacidadResponse
 from app.schemas.lote import LoteItem
 from app.services import lotes as servicio_lotes
 
@@ -187,6 +189,47 @@ def _lote(
     db_session.flush()
     db_session.refresh(lote)
     return lote
+
+
+@pytest.mark.parametrize("editar", [False, True])
+@pytest.mark.parametrize("nombre", ["Agua potable", "A" * 160])
+def test_lote_nacional_conserva_nombre_y_unidad_del_catalogo(
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    editar: bool,
+    nombre: str,
+) -> None:
+    """El texto enviado por el cliente no sustituye el nombre nacional verificado."""
+    capacidad_id = uuid4()
+    capacidad = CapacidadResponse(
+        id=capacidad_id,
+        codigo="AGUA",
+        nombre=nombre,
+        tipo="SUMINISTRO",
+        unidad="litros",
+        admite_fracciones=True,
+    )
+    existente = _lote(db_session, emergencia, coordinador) if editar else None
+    item = LoteItem(
+        id=existente.id if existente else None,
+        version=existente.version if existente else None,
+        tipo_necesidad="Nombre ingresado por el cliente",
+        cantidad_requerida=Decimal(500),
+        unidad="litros",
+        capacidad_nacional_id=capacidad_id,
+        descripcion="Entregar en bidones de hasta 10 litros",
+    )
+
+    [guardado] = servicio_lotes.guardar_lotes(
+        db_session, coordinador, emergencia.id, [item], {capacidad_id: capacidad}
+    )
+
+    assert guardado.tipo_necesidad == nombre
+    assert guardado.unidad == "litros"
+    assert guardado.capacidad_nacional_id == capacidad_id
+    assert guardado.descripcion == "Entregar en bidones de hasta 10 litros"
+    assert guardado.version == (2 if editar else 1)
 
 
 def test_crea_uno_o_mas_lotes_en_borrador_sin_publicar(
@@ -492,7 +535,7 @@ def test_crea_y_edita_en_la_misma_operacion_atomica(
         ],
         [
             {
-                "tipo_necesidad": "x" * 121,
+                "tipo_necesidad": "x" * 161,
                 "cantidad_requerida": 10,
                 "unidad": "litros",
             }

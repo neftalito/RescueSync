@@ -13,8 +13,8 @@ from app.schemas.oferta import OfertaContenidoRequest
 from app.services.inventario import credencial
 
 
-def catalogo_tecnico(cliente: ClienteNacional) -> list[CapacidadResponse]:
-    """Usa una cuenta técnica configurada en el servidor, nunca un token de ONG."""
+def token_catalogo(cliente: ClienteNacional, *, administrar: bool = False) -> str:
+    """Autentica la cuenta del catálogo y exige su rol nacional vigente."""
     settings = get_settings()
     if (
         not settings.nacional_catalogo_login
@@ -29,9 +29,20 @@ def catalogo_tecnico(cliente: ClienteNacional) -> list[CapacidadResponse]:
             password=settings.nacional_catalogo_password,
         )
     ).access_token.get_secret_value()
-    if cliente.cuenta(token).rol not in {"INTEGRACION", "ADMIN_NACIONAL"}:
+    rol = cliente.cuenta(token).rol
+    if rol not in {"INTEGRACION", "ADMIN_NACIONAL"}:
         raise ErrorNacional(403, "El catálogo requiere una cuenta técnica autorizada.")
-    return cliente.capacidades(token)
+    if administrar and rol != "ADMIN_NACIONAL":
+        raise ErrorNacional(
+            403,
+            "Para crear capacidades, la cuenta del catálogo debe tener rol ADMIN_NACIONAL.",
+        )
+    return token
+
+
+def catalogo_tecnico(cliente: ClienteNacional) -> list[CapacidadResponse]:
+    """Usa una cuenta técnica configurada en el servidor, nunca un token de ONG."""
+    return cliente.capacidades(token_catalogo(cliente))
 
 
 def capacidades_para_lotes(

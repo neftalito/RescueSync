@@ -6,6 +6,7 @@ import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
 import { useNotificacionesTiempoReal } from "./hooks/useNotificacionesTiempoReal";
 import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { CatalogoNacionalPage } from "./pages/CatalogoNacionalPage";
 import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -106,6 +107,16 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "ADMINISTRADOR" ? (
             <OrganizationsPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/catalogo-nacional"
+        element={
+          session.data.usuario.rol === "ADMINISTRADOR" ? (
+            <CatalogoNacionalPage session={session.data} />
           ) : (
             <Navigate to="/" replace />
           )

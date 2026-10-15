@@ -51,7 +51,7 @@ class Lote(Base):
         ForeignKey("usuario.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    tipo_necesidad: Mapped[str] = mapped_column(String(120), nullable=False)
+    tipo_necesidad: Mapped[str] = mapped_column(String(160), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     cantidad_requerida: Mapped[Decimal] = mapped_column(
         Numeric(14, 3),

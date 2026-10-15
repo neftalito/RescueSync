@@ -12,6 +12,7 @@ import type { Session } from "../schemas/auth";
 import { LotesPage } from "./LotesPage";
 
 const API_URL = "http://localhost:8000/api/v1";
+const capacidadId = "00000000-0000-4000-8000-000000000101";
 
 const session: Session = {
   usuario: {
@@ -39,7 +40,14 @@ const emergencia = {
   actualizada_en: "2026-09-19T18:20:39.102766Z",
 };
 
-const server = setupServer();
+const server = setupServer(
+  http.get(`${API_URL}/emergencias/catalogos/capacidades-nacionales`, () =>
+    HttpResponse.json([{
+      id: capacidadId, codigo: "AGUA", nombre: "Agua potable", tipo: "SUMINISTRO",
+      unidad: "litros", admiteFracciones: true,
+    }]),
+  ),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -96,6 +104,7 @@ describe("LotesPage", () => {
             emergencia_id: 31,
             creado_por_usuario_id: 2,
             tipo_necesidad: "Agua potable",
+            capacidad_nacional_id: capacidadId,
             descripcion: "Bidones de 5 litros",
             cantidad_requerida: "500.000",
             unidad: "litros",
@@ -109,9 +118,8 @@ describe("LotesPage", () => {
     );
     renderPage("/emergencias/31/lotes");
 
-    expect(await screen.findByLabelText("Tipo de necesidad")).toHaveValue(
-      "Agua potable",
-    );
+    await screen.findByRole("option", { name: "Agua potable" });
+    expect(screen.getByLabelText("Capacidad")).toHaveValue(capacidadId);
     expect(screen.getByLabelText("Descripción (opcional)")).toHaveValue(
       "Bidones de 5 litros",
     );

@@ -1,12 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
-
-import { ApiError } from "../api/client";
-import { apiRequest } from "../api/client";
-import { capacidadSchema } from "../schemas/inventario";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
+
+import { ApiError, apiRequest } from "../api/client";
+import { capacidadSchema } from "../schemas/inventario";
 import { gravedades, gravedadLabels } from "../schemas/emergencia";
 import { useEliminarLote } from "../hooks/useEliminarLote";
 import { useGuardarLotes } from "../hooks/useGuardarLotes";
@@ -41,6 +40,8 @@ const loteVacio: LoteItemFormData = {
   cantidad_requerida: "",
   unidad: "",
   descripcion: "",
+  capacidad_nacional_id: "",
+  riesgo_requerido: "",
 };
 
 function aFormulario(lote: Lote): LoteItemFormData {
@@ -74,6 +75,7 @@ export function LotesForm({
     reset,
     getValues,
     setValue,
+    setError,
     formState: { errors, isDirty, defaultValues },
   } = useForm<LotesFormData>({
     resolver: zodResolver(lotesFormSchema),
@@ -87,24 +89,51 @@ export function LotesForm({
     // `id` pertenece al lote persistido; RHF usa otra clave para sus filas.
     keyName: "clave",
   });
+  const valores = useWatch({ control, name: "lotes" });
   const mutation = useGuardarLotes(emergenciaId);
   const eliminacion = useEliminarLote(emergenciaId);
   const publicacion = usePublicarConvocatoria(emergenciaId);
   // Borrador cuya eliminación espera confirmación: es estado de la interfaz,
   // no un valor del formulario.
   const [confirmando, setConfirmando] = useState<number | null>(null);
-  const [consultarCatalogo, setConsultarCatalogo] = useState(false);
   const catalogo = useQuery({
     queryKey: ["capacidades-coordinacion"],
-    queryFn: () => apiRequest("/emergencias/catalogos/capacidades-nacionales", z.array(capacidadSchema)),
-    enabled: consultarCatalogo, retry: false,
+    queryFn: () =>
+      apiRequest(
+        "/emergencias/catalogos/capacidades-nacionales",
+        z.array(capacidadSchema),
+      ),
+    retry: false,
   });
+  const catalogoDisponible = catalogo.isSuccess && catalogo.data.length > 0;
 
   const submit = (datos: LotesFormData): void => {
+    // Revalidar contra el catálogo cargado evita enviar nombres o unidades
+    // anteriores al editar un borrador o al refrescar las capacidades.
+    const lotesConCapacidad = datos.lotes.flatMap((lote, index) => {
+      const capacidad = catalogo.data?.find(
+        (item) => item.id === lote.capacidad_nacional_id,
+      );
+      if (!capacidad) {
+        setError(`lotes.${index}.capacidad_nacional_id`, {
+          message: "Seleccioná una capacidad disponible en el catálogo.",
+        });
+        return [];
+      }
+      return [{
+        ...lote,
+        tipo_necesidad: capacidad.nombre,
+        unidad: capacidad.unidad,
+      }];
+    });
+    if (lotesConCapacidad.length !== datos.lotes.length) return;
     eliminacion.reset();
     publicacion.reset();
     mutation.mutate(
-      { ...datos, csrfToken },
+      {
+        lotes: lotesConCapacidad,
+        csrfToken,
+      },
       {
         onSuccess: (guardados) => {
           // Los lotes guardados vuelven con `id`: el próximo envío los edita.
@@ -169,7 +198,8 @@ export function LotesForm({
         Lotes de necesidades
       </h2>
       <p className="mt-2 leading-7 text-slate-600">
-        Desglosá la emergencia en lotes con tipo, cantidad y unidad. Los lotes
+        Elegí una capacidad del catálogo nacional e indicá la cantidad requerida.
+        La unidad se determina automáticamente. Los lotes
         se guardan en borrador y podés editarlos o eliminarlos mientras no se
         publiquen: guardar no publica la convocatoria.
       </p>
@@ -215,11 +245,38 @@ export function LotesForm({
         noValidate
         aria-busy={ocupado}
       >
+        {catalogo.isPending && <p role="status">Cargando capacidades…</p>}
+        {catalogo.isError && (
+          <div role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">
+            <p>
+              {catalogo.error instanceof ApiError
+                ? catalogo.error.message
+                : "No pudimos consultar las capacidades."}
+            </p>
+            <button
+              type="button"
+              disabled={catalogo.isFetching}
+              onClick={() => void catalogo.refetch()}
+              className="mt-2 font-semibold underline disabled:opacity-60"
+            >
+              Reintentar catálogo
+            </button>
+          </div>
+        )}
+        {catalogo.isSuccess && catalogo.data.length === 0 && (
+          <p role="status" className="rounded-xl bg-amber-50 p-4 text-amber-900">
+            El catálogo nacional todavía no tiene capacidades activas.
+          </p>
+        )}
         <ol className="space-y-5">
           {fields.map((field, index) => {
             const erroresLote = errors.lotes?.[index];
             const prefijo = `lote-${index}`;
             const loteId = field.id;
+            const capacidadId = valores[index]?.capacidad_nacional_id ?? "";
+            const capacidadSeleccionada = catalogo.data?.find(
+              (item) => item.id === capacidadId,
+            );
             const describedBy = (campo: string, conError: boolean): string | undefined =>
               conError ? `${prefijo}-${campo}-error` : undefined;
 
@@ -244,54 +301,67 @@ export function LotesForm({
                   )}
 
                   <div className="mt-2 grid gap-5 sm:grid-cols-2">
-                    <div className="sm:col-span-2 rounded-xl bg-cyan-50 p-3">
-                      <button type="button" className="font-semibold text-cyan-800 underline" onClick={() => setConsultarCatalogo(true)}>Seleccionar capacidad nacional</button>
-                      {catalogo.isFetching && <p role="status">Cargando capacidades…</p>}
-                      {catalogo.isError && <p role="alert">{catalogo.error instanceof ApiError ? catalogo.error.message : "No pudimos consultar las capacidades."}</p>}
-                      {catalogo.data && <>
-                        <label className="mt-2 block">Capacidad operativa
-                          <select className={inputClasses} {...register(`lotes.${index}.capacidad_nacional_id`, { onChange: (event) => {
-                            const capacidad = catalogo.data?.find((c) => c.id === event.target.value);
-                            if (capacidad) setValue(`lotes.${index}.unidad`, capacidad.unidad, { shouldDirty: true });
-                          } })}>
-                            <option value="">Elegí una capacidad</option>
-                            {catalogo.data.map((c) => <option key={c.id} value={c.id}>{c.nombre} · {c.unidad}</option>)}
-                          </select>
-                        </label>
-                        <label className="mt-2 block">Riesgo requerido
-                          <select className={inputClasses} {...register(`lotes.${index}.riesgo_requerido`)}>
-                            <option value="">Usar gravedad de la emergencia</option>
-                            {gravedades.map((g) => <option key={g} value={g}>{gravedadLabels[g]}</option>)}
-                          </select>
-                        </label>
-                      </>}
-                    </div>
                     <div className="sm:col-span-2">
                       <label
-                        htmlFor={`${prefijo}-tipo`}
+                        htmlFor={`${prefijo}-capacidad`}
                         className="block text-sm font-semibold text-slate-800"
                       >
-                        Tipo de necesidad
+                        Capacidad
                       </label>
-                      <input
-                        id={`${prefijo}-tipo`}
-                        type="text"
-                        autoComplete="off"
-                        aria-invalid={erroresLote?.tipo_necesidad !== undefined}
+                      <select
+                        id={`${prefijo}-capacidad`}
+                        value={capacidadId}
+                        disabled={!catalogoDisponible}
+                        aria-invalid={
+                          erroresLote?.capacidad_nacional_id !== undefined
+                        }
                         aria-describedby={describedBy(
-                          "tipo",
-                          erroresLote?.tipo_necesidad !== undefined,
+                          "capacidad",
+                          erroresLote?.capacidad_nacional_id !== undefined,
                         )}
                         className={inputClasses}
-                        placeholder="Agua potable, colchones, voluntarios…"
-                        {...register(`lotes.${index}.tipo_necesidad`)}
-                      />
-                      {erroresLote?.tipo_necesidad && (
+                        {...register(`lotes.${index}.capacidad_nacional_id`, {
+                          onChange: (event) => {
+                            const capacidad = catalogo.data?.find(
+                              (item) => item.id === event.target.value,
+                            );
+                            setValue(
+                              `lotes.${index}.tipo_necesidad`,
+                              capacidad?.nombre ?? "",
+                              { shouldDirty: true },
+                            );
+                            setValue(
+                              `lotes.${index}.unidad`,
+                              capacidad?.unidad ?? "",
+                              { shouldDirty: true },
+                            );
+                          },
+                        })}
+                      >
+                        <option value="">Elegí una capacidad</option>
+                        {capacidadId && !capacidadSeleccionada && (
+                          <option value={capacidadId} disabled>
+                            {field.tipo_necesidad} (no disponible)
+                          </option>
+                        )}
+                        {catalogo.data?.map((capacidad) => (
+                          <option key={capacidad.id} value={capacidad.id}>
+                            {capacidad.nombre}
+                          </option>
+                        ))}
+                      </select>
+                      {loteId !== null && !capacidadId && (
+                        <p className="mt-2 text-sm text-slate-600">
+                          Necesidad guardada: {field.tipo_necesidad}. Elegí una
+                          capacidad del catálogo para actualizar este lote.
+                        </p>
+                      )}
+                      {erroresLote?.capacidad_nacional_id && (
                         <p
-                          id={`${prefijo}-tipo-error`}
+                          id={`${prefijo}-capacidad-error`}
                           className="mt-2 text-sm text-red-700"
                         >
-                          {erroresLote.tipo_necesidad.message}
+                          {erroresLote.capacidad_nacional_id.message}
                         </p>
                       )}
                     </div>
@@ -339,14 +409,18 @@ export function LotesForm({
                       <input
                         id={`${prefijo}-unidad`}
                         type="text"
-                        autoComplete="off"
+                        readOnly
+                        value={
+                          capacidadSeleccionada?.unidad ??
+                          valores[index]?.unidad ?? ""
+                        }
                         aria-invalid={erroresLote?.unidad !== undefined}
                         aria-describedby={describedBy(
                           "unidad",
                           erroresLote?.unidad !== undefined,
                         )}
                         className={inputClasses}
-                        placeholder="litros, unidades, personas…"
+                        placeholder="Se determina al elegir una capacidad"
                         {...register(`lotes.${index}.unidad`)}
                       />
                       {erroresLote?.unidad && (
@@ -357,6 +431,27 @@ export function LotesForm({
                           {erroresLote.unidad.message}
                         </p>
                       )}
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor={`${prefijo}-riesgo`}
+                        className="block text-sm font-semibold text-slate-800"
+                      >
+                        Riesgo requerido
+                      </label>
+                      <select
+                        id={`${prefijo}-riesgo`}
+                        className={inputClasses}
+                        {...register(`lotes.${index}.riesgo_requerido`)}
+                      >
+                        <option value="">Usar gravedad de la emergencia</option>
+                        {gravedades.map((gravedad) => (
+                          <option key={gravedad} value={gravedad}>
+                            {gravedadLabels[gravedad]}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="sm:col-span-2">
@@ -510,7 +605,7 @@ export function LotesForm({
 
         <button
           type="submit"
-          disabled={bloqueado || sinCambios}
+          disabled={bloqueado || sinCambios || !catalogoDisponible}
           className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-70 aria-busy:cursor-wait"
           aria-busy={mutation.isPending}
         >

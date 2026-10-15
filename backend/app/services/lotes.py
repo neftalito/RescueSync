@@ -132,6 +132,9 @@ def guardar_lotes(
             raise DatosLoteInvalidosError(
                 "La capacidad nacional debe verificarse antes de guardar."
             )
+        if capacidad is not None:
+            lote.tipo_necesidad = capacidad.nombre
+            lote.unidad = capacidad.unidad
         lote.capacidad_nacional_id = capacidad.id if capacidad else None
         lote.codigo_capacidad = capacidad.codigo if capacidad else None
         lote.admite_fracciones = capacidad.admite_fracciones if capacidad else None

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     auth,
     bonita,
+    catalogo,
     convocatorias,
     emergencias,
     health,
@@ -15,6 +16,9 @@ from app.api.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(
+    catalogo.router, prefix="/catalogo-nacional", tags=["catálogo nacional"]
+)
 api_router.include_router(
     inventario.router, prefix="/mi-ong", tags=["inventario nacional"]
 )

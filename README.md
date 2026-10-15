@@ -20,6 +20,17 @@ La API Nacional con JWT corresponde a la Entrega 3.
 La captura de referencias nacionales y el GET ampliado para Bonita se describen
 en [Ofertas consolidadas nacionales](./docs/ofertas-consolidadas-nacionales.md).
 
+El formulario de lotes usa un selector de capacidades nacionales y determina
+automáticamente el nombre y la unidad de cada necesidad. El coordinador completa
+la cantidad y una descripción opcional. Para cargar el catálogo se requieren
+`NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD` de una cuenta nacional
+autorizada; los detalles están en la guía de ofertas consolidadas enlazada arriba.
+
+El administrador dispone de **Gestionar capacidades** para ampliar el catálogo
+nacional usando unidades predefinidas, cargadas por migraciones en todos los
+entornos. Crear capacidades exige una cuenta nacional `ADMIN_NACIONAL`.
+Ver [Administración del catálogo nacional](docs/catalogo-nacional.md).
+
 ## Actualizaciones y notificaciones en tiempo real
 
 FastAPI expone `WS /api/v1/notificaciones/ws`. El navegador se autentica con la

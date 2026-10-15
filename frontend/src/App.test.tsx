@@ -626,6 +626,20 @@ describe("autenticación", () => {
 });
 
 describe("navegación por rol", () => {
+  it.each<Role>(["OPERADOR_MUNICIPAL", "COORDINADOR_REGIONAL", "REPRESENTANTE_ONG", "AUDITOR_DIRECTIVO"])(
+    "impide a %s abrir la administración del catálogo nacional",
+    async (role) => {
+      server.use(
+        http.get(`${API_URL}/auth/me`, () => HttpResponse.json(sessionForRole(role))),
+        http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
+      );
+      renderApp("/catalogo-nacional");
+      expect(await screen.findByRole("heading", { name: "Bienvenido a RescueSync" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Crear capacidad" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Gestionar capacidades" })).not.toBeInTheDocument();
+    },
+  );
+
   it.each<{
     role: Role;
     visible: string | null;

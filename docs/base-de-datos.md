@@ -226,7 +226,7 @@ Describe una necesidad cuantificada dentro de una emergencia.
 | `id` | `bigint`, PK | Identificador del lote. |
 | `emergencia_id` | `bigint`, FK, no nulo | Emergencia a la que pertenece. |
 | `creado_por_usuario_id` | `bigint`, FK, no nulo | Coordinador que lo registró. |
-| `tipo_necesidad` | `varchar(120)`, no nulo | Categoría o nombre de la necesidad. |
+| `tipo_necesidad` | `varchar(160)`, no nulo | Nombre de la capacidad nacional elegida; los lotes locales anteriores conservan su texto. |
 | `descripcion` | `text`, nullable | Detalle complementario. |
 | `cantidad_requerida` | `numeric(14,3)`, no nulo | Cantidad solicitada; debe ser positiva. |
 | `unidad` | `varchar(40)`, no nulo | Unidad de medida; no puede quedar vacía. |

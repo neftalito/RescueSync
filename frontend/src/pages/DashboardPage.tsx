@@ -170,6 +170,11 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                   Gestionar organizaciones
                 </Link>
               </article>
+              <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">Catálogo nacional</h3>
+                <p className="mt-3 leading-7 text-slate-600">Consultá las capacidades disponibles y registrá nuevas capacidades usando las unidades predefinidas.</p>
+                <Link to="/catalogo-nacional" className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800">Gestionar capacidades</Link>
+              </article>
             </div>
           ) : esMunicipio ? (
             <div className="mt-5 space-y-8">

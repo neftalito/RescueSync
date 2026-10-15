@@ -145,6 +145,13 @@ La bandeja del coordinador usa `GET /emergencias`. Solo muestra emergencias en
 | `GET /emergencias/{id}/lotes` | Recupera los lotes existentes del centro asignado. Consultar no reclama una emergencia libre. |
 | `POST /emergencias/{id}/lotes` | Crea o edita varios lotes `BORRADOR`; el primer guardado asigna la emergencia al centro. |
 | `DELETE /emergencias/{id}/lotes/{lote_id}` | Elimina físicamente un lote solo mientras siga en borrador. |
+| `GET /emergencias/catalogos/capacidades-nacionales` | Carga automáticamente las capacidades del selector del formulario. |
+
+Para crear o actualizar un lote desde la interfaz se elige una capacidad nacional
+y se indica la cantidad. El nombre y la unidad provienen del catálogo; la unidad
+se muestra como solo lectura. La descripción es opcional. Los borradores
+anteriores sin vínculo conservan sus datos y requieren seleccionar una capacidad
+antes de volver a guardarse.
 
 Las rutas están en `backend/app/api/routes/lotes.py` y el caso de uso en
 `backend/app/services/lotes.py`. Las ediciones exigen la versión vigente para

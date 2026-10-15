@@ -22,15 +22,14 @@ export const estadoLoteLabels: Record<EstadoLote, string> = {
 };
 
 export const loteItemFormSchema = z.object({
-  capacidad_nacional_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  capacidad_nacional_id: z.string().uuid("Seleccioná una capacidad."),
   riesgo_requerido: z.union([z.enum(gravedades), z.literal("")]).optional(),
   id: z.number().int().positive().nullable(),
   version: z.number().int().positive().nullable(),
   tipo_necesidad: z
     .string()
     .trim()
-    .min(1, "Ingresá el tipo de necesidad.")
-    .max(120, "El tipo no puede superar los 120 caracteres."),
+    .max(160, "El nombre de la capacidad no puede superar los 160 caracteres."),
   cantidad_requerida: z
     .string()
     .trim()
@@ -46,7 +45,6 @@ export const loteItemFormSchema = z.object({
   unidad: z
     .string()
     .trim()
-    .min(1, "Ingresá la unidad.")
     .max(40, "La unidad no puede superar los 40 caracteres."),
   descripcion: z
     .string()

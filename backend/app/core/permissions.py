@@ -12,6 +12,7 @@ class OperacionProtegida(StrEnum):
     CERRAR_SESION = "CERRAR_SESION"
     CAMBIAR_PASSWORD = "CAMBIAR_PASSWORD"
     GESTIONAR_USUARIOS = "GESTIONAR_USUARIOS"
+    GESTIONAR_CATALOGO_NACIONAL = "GESTIONAR_CATALOGO_NACIONAL"
     REGISTRAR_EMERGENCIA = "REGISTRAR_EMERGENCIA"
     CONSULTAR_EMERGENCIAS = "CONSULTAR_EMERGENCIAS"
     GESTIONAR_LOTES = "GESTIONAR_LOTES"
@@ -34,6 +35,9 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
             OperacionProtegida.CERRAR_SESION: ROLES_AUTENTICADOS,
             OperacionProtegida.CAMBIAR_PASSWORD: ROLES_AUTENTICADOS,
             OperacionProtegida.GESTIONAR_USUARIOS: frozenset(
+                {RolUsuario.ADMINISTRADOR}
+            ),
+            OperacionProtegida.GESTIONAR_CATALOGO_NACIONAL: frozenset(
                 {RolUsuario.ADMINISTRADOR}
             ),
             OperacionProtegida.REGISTRAR_EMERGENCIA: frozenset(

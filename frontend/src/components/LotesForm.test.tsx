@@ -14,6 +14,25 @@ const API_URL = "http://localhost:8000/api/v1";
 const CSRF_TOKEN = "csrf-firmado";
 const URL_LOTES = `${API_URL}/emergencias/31/lotes`;
 const URL_PUBLICAR = `${API_URL}/emergencias/31/publicar`;
+const URL_CATALOGO = `${API_URL}/emergencias/catalogos/capacidades-nacionales`;
+const capacidades = [
+  { nombre: "Agua potable", unidad: "litros" },
+  { nombre: "Colchones", unidad: "unidades" },
+  { nombre: "Pañales", unidad: "paquetes" },
+  { nombre: "Abrigo", unidad: "mantas" },
+].map((capacidad, index) => ({
+  ...capacidad,
+  id: `00000000-0000-4000-8000-${String(index + 101).padStart(12, "0")}`,
+  codigo: `CAPACIDAD_${index}`,
+  tipo: "SUMINISTRO",
+  admiteFracciones: index === 0,
+}));
+
+function capacidadId(nombre: string): string {
+  const capacidad = capacidades.find((item) => item.nombre === nombre);
+  if (!capacidad) throw new Error(`No existe la capacidad de prueba ${nombre}.`);
+  return capacidad.id;
+}
 
 function loteGuardado(
   id: number,
@@ -27,6 +46,7 @@ function loteGuardado(
     emergencia_id: 31,
     creado_por_usuario_id: 2,
     tipo_necesidad: tipo,
+    capacidad_nacional_id: capacidadId(tipo === "Agua" ? "Agua potable" : tipo),
     descripcion: null,
     cantidad_requerida: cantidad,
     unidad,
@@ -37,7 +57,9 @@ function loteGuardado(
   };
 }
 
-const server = setupServer();
+const server = setupServer(
+  http.get(URL_CATALOGO, () => HttpResponse.json(capacidades)),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -46,10 +68,11 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderForm(
+async function renderForm(
   lotes: Lote[] = [],
   convocatoriaPublicada = false,
-): void {
+  esperarCatalogo = true,
+): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -63,6 +86,9 @@ function renderForm(
       />
     </QueryClientProvider>,
   );
+  if (esperarCatalogo) {
+    await waitFor(() => expect(screen.getAllByLabelText("Capacidad")[0]).toBeEnabled());
+  }
 }
 
 function campo(label: string, indice: number): HTMLElement {
@@ -80,64 +106,175 @@ async function completarLote(
   cantidad: string,
   unidad: string,
 ): Promise<void> {
-  await user.type(campo("Tipo de necesidad", indice), tipo);
+  await user.selectOptions(campo("Capacidad", indice), capacidadId(tipo));
   await user.type(campo("Cantidad requerida", indice), cantidad);
-  await user.type(campo("Unidad", indice), unidad);
+  expect(campo("Unidad", indice)).toHaveValue(unidad);
+  expect(campo("Unidad", indice)).toHaveAttribute("readonly");
 }
 
 describe("LotesForm", () => {
-  it("selecciona una capacidad explícita y conserva su unidad y riesgo al guardar", async () => {
+  it("reemplaza el tipo manual por la capacidad y guarda su nombre, unidad y riesgo", async () => {
     const capacidadId = "00000000-0000-4000-8000-000000000101";
     let cuerpo: unknown;
     server.use(
       http.get(`${API_URL}/emergencias/catalogos/capacidades-nacionales`, () => HttpResponse.json([{ id: capacidadId, codigo: "AGUA", nombre: "Agua", tipo: "SUMINISTRO", unidad: "litros", admiteFracciones: true }])),
       http.post(URL_LOTES, async ({ request }) => { cuerpo = await request.json(); return HttpResponse.json([loteGuardado(1, "Agua", "10", "litros")]); }),
     );
-    renderForm();
+    await renderForm();
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText("Tipo de necesidad"), "Agua");
     await user.type(screen.getByLabelText("Cantidad requerida"), "10");
-    await user.click(screen.getByRole("button", { name: "Seleccionar capacidad nacional" }));
-    await user.selectOptions(await screen.findByLabelText("Capacidad operativa"), capacidadId);
+    expect(screen.queryByLabelText("Tipo de necesidad")).not.toBeInTheDocument();
+    await screen.findByRole("option", { name: "Agua" });
+    await user.selectOptions(screen.getByLabelText("Capacidad"), capacidadId);
     expect(screen.getByLabelText("Unidad")).toHaveValue("litros");
+    expect(screen.getByLabelText("Unidad")).toHaveAttribute("readonly");
     await user.selectOptions(screen.getByLabelText("Riesgo requerido"), "ALTA");
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
-    await waitFor(() => expect(cuerpo).toMatchObject({ lotes: [{ capacidad_nacional_id: capacidadId, riesgo_requerido: "ALTA", unidad: "litros" }] }));
+    await waitFor(() => expect(cuerpo).toMatchObject({ lotes: [{ capacidad_nacional_id: capacidadId, tipo_necesidad: "Agua", riesgo_requerido: "ALTA", unidad: "litros" }] }));
   });
 
   it("valida campos obligatorios y cantidades positivas", async () => {
     const user = userEvent.setup();
-    renderForm();
+    await renderForm();
 
     await user.type(screen.getByLabelText("Cantidad requerida"), "0");
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
 
     expect(
-      await screen.findByText("Ingresá el tipo de necesidad."),
+      await screen.findByText("Seleccioná una capacidad."),
     ).toBeInTheDocument();
     expect(
       screen.getByText("La cantidad debe ser mayor a cero."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Ingresá la unidad.")).toBeInTheDocument();
     expect(screen.getByLabelText("Cantidad requerida")).toHaveAttribute(
       "aria-invalid",
       "true",
     );
   });
 
+  it("cambia la unidad con la capacidad y conserva cantidad y descripción", async () => {
+    let cuerpo: unknown;
+    server.use(http.post(URL_LOTES, async ({ request }) => {
+      cuerpo = await request.json();
+      return HttpResponse.json([loteGuardado(1, "Abrigo", "500", "mantas")]);
+    }));
+    const user = userEvent.setup();
+    await renderForm();
+    await completarLote(user, 0, "Agua potable", "500", "litros");
+    await user.type(screen.getByLabelText("Descripción (opcional)"), "Entregar en el refugio");
+
+    await user.selectOptions(screen.getByLabelText("Capacidad"), capacidadId("Abrigo"));
+
+    expect(screen.getByLabelText("Unidad")).toHaveValue("mantas");
+    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500");
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+    await waitFor(() => expect(cuerpo).toEqual({ lotes: [{
+      capacidad_nacional_id: capacidadId("Abrigo"), tipo_necesidad: "Abrigo",
+      cantidad_requerida: "500", unidad: "mantas", descripcion: "Entregar en el refugio",
+    }] }));
+  });
+
+  it("borra la unidad y exige una capacidad al quitar la selección", async () => {
+    const user = userEvent.setup();
+    await renderForm();
+    await completarLote(user, 0, "Agua potable", "500", "litros");
+
+    await user.selectOptions(screen.getByLabelText("Capacidad"), "");
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+
+    expect(await screen.findByText("Seleccioná una capacidad.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Unidad")).toHaveValue("");
+    expect(screen.getByLabelText("Capacidad")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("conserva la cantidad y permite reintentar si falla el catálogo", async () => {
+    let consultas = 0;
+    server.use(http.get(URL_CATALOGO, () => {
+      consultas += 1;
+      return consultas === 1
+        ? HttpResponse.json({ detail: "El catálogo nacional para coordinación no está configurado." }, { status: 503 })
+        : HttpResponse.json(capacidades);
+    }));
+    const user = userEvent.setup();
+    await renderForm([], false, false);
+    expect(await screen.findByRole("alert")).toHaveTextContent("El catálogo nacional para coordinación no está configurado.");
+    expect(screen.getByLabelText("Capacidad")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar borrador" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Cantidad requerida"), "500");
+
+    await user.click(screen.getByRole("button", { name: "Reintentar catálogo" }));
+    await screen.findByRole("option", { name: "Agua potable" });
+
+    expect(screen.getByLabelText("Capacidad")).toBeEnabled();
+    expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(consultas).toBe(2);
+  });
+
+  it("explica que no hay capacidades activas y bloquea guardar", async () => {
+    server.use(http.get(URL_CATALOGO, () => HttpResponse.json([])));
+    await renderForm([], false, false);
+
+    expect(await screen.findByText("El catálogo nacional todavía no tiene capacidades activas.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Capacidad")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar borrador" })).toBeDisabled();
+  });
+
+  it("requiere elegir una capacidad para actualizar un borrador anterior sin vínculo", async () => {
+    let cuerpo: unknown;
+    server.use(http.post(URL_LOTES, async ({ request }) => {
+      cuerpo = await request.json();
+      return HttpResponse.json([loteGuardado(7, "Agua potable", "750", "litros")]);
+    }));
+    const user = userEvent.setup();
+    await renderForm([{ ...loteGuardado(7, "Agua potable", "500", "litros"), capacidad_nacional_id: null }]);
+    expect(screen.getByLabelText("Capacidad")).toHaveValue("");
+    expect(screen.getByText(/Necesidad guardada: Agua potable/)).toBeInTheDocument();
+    await user.clear(screen.getByLabelText("Cantidad requerida"));
+    await user.type(screen.getByLabelText("Cantidad requerida"), "750");
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+    expect(await screen.findByText("Seleccioná una capacidad.")).toBeInTheDocument();
+    expect(cuerpo).toBeUndefined();
+
+    await user.selectOptions(screen.getByLabelText("Capacidad"), capacidadId("Agua potable"));
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+
+    await waitFor(() => expect(cuerpo).toMatchObject({ lotes: [{
+      id: 7, version: 1, capacidad_nacional_id: capacidadId("Agua potable"),
+      tipo_necesidad: "Agua potable", unidad: "litros", cantidad_requerida: "750",
+    }] }));
+  });
+
+  it("pide reemplazar una capacidad guardada que ya no está disponible", async () => {
+    let guardados = 0;
+    server.use(
+      http.get(URL_CATALOGO, () => HttpResponse.json(capacidades.slice(1))),
+      http.post(URL_LOTES, () => { guardados += 1; return HttpResponse.json([]); }),
+    );
+    const user = userEvent.setup();
+    await renderForm([loteGuardado(7, "Agua potable", "500", "litros")]);
+    expect(screen.getByLabelText("Capacidad")).toHaveDisplayValue("Agua potable (no disponible)");
+    await user.type(screen.getByLabelText("Descripción (opcional)"), "Entrega urgente");
+
+    await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
+
+    expect(await screen.findByText("Seleccioná una capacidad disponible en el catálogo.")).toBeInTheDocument();
+    expect(guardados).toBe(0);
+  });
+
   it("agrega y quita lotes sin guardar", async () => {
     const user = userEvent.setup();
-    renderForm();
+    await renderForm();
 
     expect(
       screen.queryByRole("button", { name: "Quitar lote 1" }),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Agregar lote" }));
-    expect(screen.getAllByLabelText("Tipo de necesidad")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Capacidad")).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: "Quitar lote 2" }));
-    expect(screen.getAllByLabelText("Tipo de necesidad")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Capacidad")).toHaveLength(1);
   });
 
   it("guarda varios lotes en borrador sin publicar la convocatoria", async () => {
@@ -164,7 +301,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm();
+    await renderForm();
 
     await completarLote(user, 0, "Agua potable", "500", "litros");
     await user.click(screen.getByRole("button", { name: "Agregar lote" }));
@@ -179,12 +316,14 @@ describe("LotesForm", () => {
     expect(cuerpo).toEqual({
       lotes: [
         {
+          capacidad_nacional_id: capacidadId("Agua potable"),
           tipo_necesidad: "Agua potable",
           cantidad_requerida: "500",
           unidad: "litros",
           descripcion: null,
         },
         {
+          capacidad_nacional_id: capacidadId("Colchones"),
           tipo_necesidad: "Colchones",
           cantidad_requerida: "40",
           unidad: "unidades",
@@ -233,7 +372,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+    await renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
 
     await user.click(
       screen.getByRole("button", { name: "Publicar convocatoria" }),
@@ -258,7 +397,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm(
+    await renderForm(
       [loteGuardado(7, "Agua potable", "500.000", "litros")],
       true,
     );
@@ -283,7 +422,7 @@ describe("LotesForm", () => {
       ),
     );
     const user = userEvent.setup();
-    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+    await renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
 
     await user.click(
       screen.getByRole("button", { name: "Publicar convocatoria" }),
@@ -292,7 +431,7 @@ describe("LotesForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "La convocatoria requiere al menos un lote válido.",
     );
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+    expect(screen.getByLabelText("Capacidad")).toHaveDisplayValue(
       "Agua potable",
     );
   });
@@ -309,7 +448,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm();
+    await renderForm();
 
     await completarLote(user, 0, "Agua potable", "500", "litros");
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
@@ -328,6 +467,7 @@ describe("LotesForm", () => {
         {
           id: 7,
           version: 1,
+          capacidad_nacional_id: capacidadId("Agua potable"),
           tipo_necesidad: "Agua potable",
           cantidad_requerida: "750",
           unidad: "litros",
@@ -355,9 +495,9 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+    await renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
 
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+    expect(screen.getByLabelText("Capacidad")).toHaveDisplayValue(
       "Agua potable",
     );
     expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500,00");
@@ -384,12 +524,14 @@ describe("LotesForm", () => {
         {
           id: 7,
           version: 1,
+          capacidad_nacional_id: capacidadId("Agua potable"),
           tipo_necesidad: "Agua potable",
           cantidad_requerida: "900",
           unidad: "litros",
           descripcion: null,
         },
         {
+          capacidad_nacional_id: capacidadId("Pañales"),
           tipo_necesidad: "Pañales",
           cantidad_requerida: "30",
           unidad: "paquetes",
@@ -411,7 +553,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm([
+    await renderForm([
       loteGuardado(5, "Colchones", "40.000", "unidades", "PUBLICADO"),
     ]);
 
@@ -419,7 +561,7 @@ describe("LotesForm", () => {
     expect(publicados).toHaveTextContent("Colchones");
     expect(publicados).toHaveTextContent("40,00 unidades");
     expect(publicados).toHaveTextContent("Publicado");
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("");
+    expect(screen.getByLabelText("Capacidad")).toHaveValue("");
 
     await completarLote(user, 0, "Abrigo", "100", "mantas");
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
@@ -428,6 +570,7 @@ describe("LotesForm", () => {
     expect(cuerpo).toEqual({
       lotes: [
         {
+          capacidad_nacional_id: capacidadId("Abrigo"),
           tipo_necesidad: "Abrigo",
           cantidad_requerida: "100",
           unidad: "mantas",
@@ -446,7 +589,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+    await renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
 
     await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
 
@@ -461,7 +604,7 @@ describe("LotesForm", () => {
     expect(
       screen.queryByRole("group", { name: /¿Eliminar el lote 1\?/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+    expect(screen.getByLabelText("Capacidad")).toHaveDisplayValue(
       "Agua potable",
     );
     expect(eliminaciones).toBe(0);
@@ -486,7 +629,7 @@ describe("LotesForm", () => {
       }),
     );
     const user = userEvent.setup();
-    renderForm([
+    await renderForm([
       loteGuardado(7, "Agua potable", "500.000", "litros"),
       loteGuardado(8, "Abrigo", "100.000", "mantas"),
     ]);
@@ -504,8 +647,8 @@ describe("LotesForm", () => {
     );
     expect(requestCredentials).toBe("include");
     expect(csrfHeader).toBe(CSRF_TOKEN);
-    expect(screen.getAllByLabelText("Tipo de necesidad")).toHaveLength(1);
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("Abrigo");
+    expect(screen.getAllByLabelText("Capacidad")).toHaveLength(1);
+    expect(screen.getByLabelText("Capacidad")).toHaveDisplayValue("Abrigo");
     expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("250");
 
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
@@ -516,6 +659,7 @@ describe("LotesForm", () => {
         {
           id: 8,
           version: 1,
+          capacidad_nacional_id: capacidadId("Abrigo"),
           tipo_necesidad: "Abrigo",
           cantidad_requerida: "250",
           unidad: "mantas",
@@ -533,7 +677,7 @@ describe("LotesForm", () => {
       ),
     );
     const user = userEvent.setup();
-    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+    await renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
 
     await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
     await user.click(
@@ -541,7 +685,7 @@ describe("LotesForm", () => {
     );
 
     await screen.findByText("Lote eliminado definitivamente.");
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue("");
+    expect(screen.getByLabelText("Capacidad")).toHaveValue("");
     expect(
       screen.getByRole("button", { name: "Guardar borrador" }),
     ).toBeEnabled();
@@ -557,7 +701,7 @@ describe("LotesForm", () => {
       ),
     );
     const user = userEvent.setup();
-    renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
+    await renderForm([loteGuardado(7, "Agua potable", "500.000", "litros")]);
 
     await user.click(screen.getByRole("button", { name: "Eliminar lote 1" }));
     await user.click(
@@ -567,7 +711,7 @@ describe("LotesForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "El lote 7 está PUBLICADO y ya no puede eliminarse.",
     );
-    expect(screen.getByLabelText("Tipo de necesidad")).toHaveValue(
+    expect(screen.getByLabelText("Capacidad")).toHaveDisplayValue(
       "Agua potable",
     );
   });
@@ -582,7 +726,7 @@ describe("LotesForm", () => {
       ),
     );
     const user = userEvent.setup();
-    renderForm();
+    await renderForm();
 
     await completarLote(user, 0, "Agua potable", "500", "litros");
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
@@ -599,7 +743,7 @@ describe("LotesForm", () => {
     });
     server.use(http.post(URL_LOTES, () => pendiente));
     const user = userEvent.setup();
-    renderForm();
+    await renderForm();
 
     await completarLote(user, 0, "Agua potable", "500", "litros");
     await user.click(screen.getByRole("button", { name: "Guardar borrador" }));
@@ -607,11 +751,11 @@ describe("LotesForm", () => {
     expect(
       await screen.findByRole("button", { name: "Guardando…" }),
     ).toBeDisabled();
-    expect(screen.getByLabelText("Tipo de necesidad")).toBeDisabled();
+    expect(screen.getByLabelText("Capacidad")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Agregar lote" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Agregar lote" }));
-    expect(screen.getAllByLabelText("Tipo de necesidad")).toHaveLength(1);
+    expect(screen.getAllByLabelText("Capacidad")).toHaveLength(1);
 
     resolver?.(
       new Response(

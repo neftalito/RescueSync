@@ -5,6 +5,7 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from app.schemas.catalogo import CapacidadCreate, UnidadResponse
 from app.schemas.certificaciones import (
     CertificacionesOngResponse,
     CertificacionResponse,
@@ -86,6 +87,13 @@ class ClienteNacional:
                     else "Revisá los datos, cantidades y unidades del recurso."
                 ),
             }
+            if path == "capacidades":
+                mensajes.update(
+                    {
+                        409: "Ya existe una capacidad con ese código.",
+                        422: "Revisá la capacidad y elegí una unidad del catálogo disponible.",
+                    }
+                )
             raise ErrorNacional(
                 response.status_code if response.status_code in mensajes else 502,
                 mensajes.get(
@@ -137,6 +145,22 @@ class ClienteNacional:
     def capacidades(self, token: str) -> list[CapacidadResponse]:
         return self._request(
             "GET", "capacidades", TypeAdapter(list[CapacidadResponse]), token=token
+        )
+
+    def unidades(self, token: str) -> list[UnidadResponse]:
+        """Consulta unidades predefinidas; no ofrece operaciones de escritura."""
+        return self._request(
+            "GET", "unidades", TypeAdapter(list[UnidadResponse]), token=token
+        )
+
+    def crear_capacidad(self, token: str, datos: CapacidadCreate) -> CapacidadResponse:
+        """Envía una única alta administrativa y no reintenta ante timeouts."""
+        return self._request(
+            "POST",
+            "capacidades",
+            TypeAdapter(CapacidadResponse),
+            token=token,
+            datos=datos,
         )
 
     def recursos(self, token: str, ong_id: UUID) -> list[RecursoResponse]:

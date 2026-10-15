@@ -21,7 +21,7 @@ class LoteItem(BaseModel):
 
     id: int | None = Field(default=None, gt=0)
     version: int | None = Field(default=None, gt=0)
-    tipo_necesidad: str = Field(min_length=1, max_length=120)
+    tipo_necesidad: str = Field(min_length=1, max_length=160)
     descripcion: str | None = Field(default=None, max_length=2000)
     cantidad_requerida: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     unidad: str = Field(min_length=1, max_length=40)
