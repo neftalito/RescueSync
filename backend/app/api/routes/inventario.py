@@ -23,7 +23,6 @@ from app.schemas.certificaciones import (
 from app.schemas.errors import ErrorResponse
 from app.schemas.inventario import (
     CapacidadResponse,
-    ConexionRequest,
     EstadoConexion,
     OngNacionalResponse,
     RecursoCreate,
@@ -33,10 +32,8 @@ from app.schemas.inventario import (
     VinculoRequest,
 )
 from app.schemas.organizaciones import OrganizacionResponse
+from app.services.acceso_nacional import ejecutar_nacional
 from app.services.inventario import (
-    conectar,
-    credencial,
-    desconectar,
     estado_conexion,
     registrar_ong_nacional,
     vincular_ong,
@@ -55,23 +52,24 @@ def _ejecutar[T](session: Session, operacion: Callable[[], T]) -> T:
     try:
         return operacion()
     except ErrorNacional as error:
-        session.rollback()
         raise HTTPException(error.status, str(error)) from error
 
 
 def _remoto[T](
-    session: Session, usuario: UsuarioInventario, operacion: Callable[[UUID, str], T]
+    session: Session,
+    usuario: UsuarioInventario,
+    cliente: ClienteNacionalDep,
+    operacion: Callable[[UUID, str], T],
+    *,
+    escritura: bool = False,
+    accion: str,
 ) -> T:
-    def ejecutar() -> T:
-        ong_id, token = credencial(session, usuario)
-        try:
-            return operacion(ong_id, token)
-        except ErrorNacional as error:
-            if error.status in {401, 403}:
-                desconectar(session, usuario.id)
-            raise
-
-    return _ejecutar(session, ejecutar)
+    return _ejecutar(
+        session,
+        lambda: ejecutar_nacional(
+            session, usuario, cliente, operacion, escritura=escritura, accion=accion
+        ),
+    )
 
 
 @router.get(
@@ -85,35 +83,6 @@ def estado(
 ) -> EstadoConexion:
     response.headers["Cache-Control"] = "no-store"
     return _ejecutar(session, lambda: estado_conexion(session, usuario))
-
-
-@router.post(
-    "/conexion",
-    response_model=EstadoConexion,
-    responses=errores,
-    summary="Conectar la cuenta nacional de la ONG",
-    dependencies=[Depends(validar_csrf)],
-)
-def conexion(
-    datos: ConexionRequest,
-    usuario: UsuarioInventario,
-    session: Db,
-    cliente: ClienteNacionalDep,
-    response: Response,
-) -> EstadoConexion:
-    response.headers["Cache-Control"] = "no-store"
-    return _ejecutar(session, lambda: conectar(session, usuario, cliente, datos))
-
-
-@router.delete(
-    "/conexion",
-    status_code=204,
-    responses=errores,
-    summary="Desconectar la cuenta nacional",
-    dependencies=[Depends(validar_csrf)],
-)
-def desconexion(usuario: UsuarioInventario, session: Db) -> None:
-    desconectar(session, usuario.id)
 
 
 @router.post(
@@ -148,7 +117,13 @@ def registro_nacional(
 def capacidades(
     usuario: UsuarioInventario, session: Db, cliente: ClienteNacionalDep
 ) -> list[CapacidadResponse]:
-    return _remoto(session, usuario, lambda _ong, token: cliente.capacidades(token))
+    return _remoto(
+        session,
+        usuario,
+        cliente,
+        lambda _ong, token: cliente.capacidades(token),
+        accion="consultar capacidades",
+    )
 
 
 @router.get(
@@ -165,7 +140,13 @@ def catalogo_certificaciones(
     response: Response,
 ) -> list[CertificacionResponse]:
     response.headers["Cache-Control"] = "no-store"
-    return _remoto(session, usuario, lambda _ong, token: cliente.certificaciones(token))
+    return _remoto(
+        session,
+        usuario,
+        cliente,
+        lambda _ong, token: cliente.certificaciones(token),
+        accion="consultar catálogo de certificaciones",
+    )
 
 
 @router.get(
@@ -183,7 +164,11 @@ def certificaciones(
 ) -> CertificacionesOngResponse:
     response.headers["Cache-Control"] = "no-store"
     return _remoto(
-        session, usuario, lambda ong, token: cliente.certificaciones_ong(token, ong)
+        session,
+        usuario,
+        cliente,
+        lambda ong, token: cliente.certificaciones_ong(token, ong),
+        accion="consultar certificaciones",
     )
 
 
@@ -196,7 +181,13 @@ def certificaciones(
 def recursos(
     usuario: UsuarioInventario, session: Db, cliente: ClienteNacionalDep
 ) -> list[RecursoResponse]:
-    return _remoto(session, usuario, lambda ong, token: cliente.recursos(token, ong))
+    return _remoto(
+        session,
+        usuario,
+        cliente,
+        lambda ong, token: cliente.recursos(token, ong),
+        accion="consultar recursos",
+    )
 
 
 @router.post(
@@ -214,7 +205,12 @@ def crear(
     cliente: ClienteNacionalDep,
 ) -> RecursoResponse:
     return _remoto(
-        session, usuario, lambda ong, token: cliente.crear(token, ong, datos)
+        session,
+        usuario,
+        cliente,
+        lambda ong, token: cliente.crear(token, ong, datos),
+        escritura=True,
+        accion="crear recurso",
     )
 
 
@@ -235,7 +231,10 @@ def actualizar(
     return _remoto(
         session,
         usuario,
+        cliente,
         lambda ong, token: cliente.actualizar(token, ong, recurso_id, datos),
+        escritura=True,
+        accion="editar recurso",
     )
 
 

@@ -186,6 +186,7 @@ def test_metadata_registra_todo_el_esquema() -> None:
         "oferta_version_participante",
         "oferta_item_aporte",
         "conexion_nacional",
+        "acceso_nacional",
         "organizacion",
         "usuario",
         "emergencia",

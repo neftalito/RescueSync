@@ -7,12 +7,10 @@ import {
 } from "@tanstack/react-query";
 import {
   actualizarRecurso,
-  conectarCuenta,
   consultarCapacidades,
   consultarConexion,
   consultarRecursos,
   crearRecurso,
-  desconectarCuenta,
   registrarOngNacional,
 } from "../api/inventario";
 import { ApiError } from "../api/client";
@@ -28,7 +26,6 @@ import type { Session } from "../schemas/auth";
 import type {
   Capacidad,
   ConexionEstado,
-  ConexionForm,
   Recurso,
   RecursoForm,
   OngNacional,
@@ -41,9 +38,7 @@ interface InventarioNacional {
   capacidades: UseQueryResult<Capacidad[]>;
   certificaciones: UseQueryResult<CertificacionesOng>;
   catalogoCertificaciones: UseQueryResult<Certificacion[]>;
-  conectar: UseMutationResult<ConexionEstado, Error, ConexionForm>;
   registrar: UseMutationResult<OngNacional, Error, RegistroNacionalForm>;
-  desconectar: UseMutationResult<void, Error, void>;
   crear: UseMutationResult<Recurso, Error, RecursoForm>;
   editar: UseMutationResult<
     Recurso,
@@ -64,7 +59,7 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     try {
       return await operacion();
     } catch (error: unknown) {
-      if (error instanceof ApiError && [401, 403].includes(error.status)) {
+      if (error instanceof ApiError && [401, 403, 503].includes(error.status)) {
         limpiarCertificaciones();
         client.setQueryData<ConexionEstado>([...key, "conexion"], (actual) =>
           actual ? { ...actual, conectada: false } : actual,
@@ -81,35 +76,35 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     refetchInterval: 60_000,
   });
   const recursos = useQuery({
-    queryKey: [...key, "recursos"],
+    queryKey: [...key, "recursos", conexion.data?.ongId],
     queryFn: () => consultar(consultarRecursos),
-    enabled: conexion.data?.conectada === true,
+    enabled: conexion.data?.estado === "LISTA",
     retry: false,
   });
   const capacidades = useQuery({
-    queryKey: [...key, "capacidades"],
+    queryKey: [...key, "capacidades", conexion.data?.ongId],
     queryFn: () => consultar(consultarCapacidades),
-    enabled: conexion.data?.conectada === true,
+    enabled: conexion.data?.estado === "LISTA",
     retry: false,
   });
   const certificaciones = useQuery({
     queryKey: [...key, "certificaciones", conexion.data?.ongId],
     queryFn: () => consultar(consultarCertificaciones),
-    enabled: conexion.data?.conectada === true,
+    enabled: conexion.data?.estado === "LISTA",
     retry: false,
     refetchInterval: 60_000,
   });
   const catalogoCertificaciones = useQuery({
     queryKey: [...key, "catalogo-certificaciones", conexion.data?.ongId],
     queryFn: () => consultar(consultarCatalogoCertificaciones),
-    enabled: conexion.data?.conectada === true,
+    enabled: conexion.data?.estado === "LISTA",
     retry: false,
   });
   const actualizar = async (): Promise<void> => {
     await client.invalidateQueries({ queryKey: key });
   };
   const fallo = async (error: Error): Promise<void> => {
-    if (error instanceof ApiError && [401, 403].includes(error.status)) {
+    if (error instanceof ApiError && [401, 403, 503].includes(error.status)) {
       client.removeQueries({ queryKey: [...key, "recursos"] });
       client.removeQueries({ queryKey: [...key, "capacidades"] });
       limpiarCertificaciones();
@@ -118,29 +113,12 @@ export function useInventarioNacional(session: Session): InventarioNacional {
       await client.invalidateQueries({ queryKey: [...key, "recursos"] });
     }
   };
-  const conectar = useMutation({
-    mutationFn: (datos: ConexionForm) =>
-      conectarCuenta(datos, session.csrf_token),
-    onSuccess: actualizar,
-    onSettled: (_data, _error, datos) => {
-      datos.password = "";
-    },
-  });
   const registrar = useMutation({
     mutationFn: (datos: RegistroNacionalForm) =>
       registrarOngNacional(datos, session.csrf_token),
     retry: false,
     onSettled: (_data, _error, datos) => {
       datos.password = "";
-    },
-  });
-  const desconectar = useMutation({
-    mutationFn: () => desconectarCuenta(session.csrf_token),
-    onSuccess: async () => {
-      client.removeQueries({ queryKey: [...key, "recursos"] });
-      client.removeQueries({ queryKey: [...key, "capacidades"] });
-      limpiarCertificaciones();
-      await actualizar();
     },
   });
   const crear = useMutation({
@@ -165,9 +143,7 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     capacidades,
     certificaciones,
     catalogoCertificaciones,
-    conectar,
     registrar,
-    desconectar,
     crear,
     editar,
     actualizar,

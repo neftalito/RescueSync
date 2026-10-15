@@ -33,12 +33,13 @@ ya fueron editados. Una vinculación local demo distinta no se sobrescribe.
 | Ayuda Sin Fronteras | `ong@rescuesync.org` | `ong123` | `ong-nacional123` | Agua: 5000 litros; paramédicos: 12 personas |
 | Red Médica Solidaria | `redmedica@rescuesync.org` | `redmedica123` | `redmedica123` | Ambulancias: 4 vehículos; paramédicos: 20 personas |
 
-Ingresar a RescueSync con una cuenta local y abrir **Mis recursos**. Conectar con
-las credenciales nacionales de esa misma ONG. Registrar un recurso y editar su
-total; comprobar luego el stock en `/docs` de RescueSyncAPI. Cambiar de ONG local
-requiere usar su propia cuenta nacional. El escenario T28 y la nueva consulta
-personal se describen en [Mis certificaciones](./certificaciones-nacionales.md).
-La ONG no puede emitir acreditaciones desde la pantalla.
+Antes de probar inventario, aprovisionar e importar la cuenta técnica de cada
+ONG según [Acceso nacional automático](./acceso-nacional-automatico.md). Los seeds
+mantienen las identidades demo, pero no crean secretos técnicos públicos.
+Ingresar a RescueSync con una cuenta local y abrir **Mis recursos**: el acceso y
+la renovación nacional son automáticos. Registrar un recurso y editar su total;
+comprobar el stock nacional. El escenario de certificaciones se describe en
+[Mis certificaciones](./certificaciones-nacionales.md).
 
 Para una ONG fuera del seed y sin vínculo, abrir **Mis recursos → Registrar ONG
 en el Sistema Nacional**. Ingresar identificador institucional, email de contacto
@@ -48,7 +49,7 @@ compartir con el administrador. No inicia una conexión ni establece el vínculo
 También se puede registrar directamente con `POST /api/v1/ongs` de RescueSyncAPI.
 Como administrador local, ir a **Gestionar organizaciones →
 Editar → UUID de la ONG nacional** y guardar el UUID verificado. Vacío elimina la
-vinculación. Guardar desconecta las cuentas nacionales de sus representantes.
+vinculación. Cambiar el UUID elimina la credencial técnica y el token anteriores.
 El representante no puede establecer esta relación por sí mismo.
 
 ## Configuración
@@ -57,6 +58,7 @@ El representante no puede establecer esta relación por sí mismo.
 | --- | --- | --- |
 | `NACIONAL_BASE_URL` | `http://host.docker.internal:8001/api/v1` | URL completa del prefijo de RescueSyncAPI, accesible desde el backend |
 | `NACIONAL_TIMEOUT_SECONDS` | `10` | Timeout HTTP explícito |
+| `NACIONAL_ENCRYPTION_KEY` | Vacío | Clave Fernet propia para credenciales institucionales |
 
 Si la API nacional publica otro puerto, actualizar `NACIONAL_BASE_URL`. Fuera de
 Docker, usar `http://localhost:8001/api/v1`. En producción, usar la URL HTTPS del
@@ -72,8 +74,6 @@ PostgreSQL nacional. No se reutiliza el token de Bonita ni se modifica el BPM.
 | Método y ruta local | Operación |
 | --- | --- |
 | `GET /api/v1/mi-ong/conexion` | Estado de vinculación y conexión, sin JWT |
-| `POST /api/v1/mi-ong/conexion` | Login nacional y verificación de pertenencia |
-| `DELETE /api/v1/mi-ong/conexion` | Eliminar credencial temporal |
 | `POST /api/v1/mi-ong/registro-nacional` | Registrar la ONG local sin vínculo y su cuenta nacional pendiente; sólo representante ONG |
 | `GET /api/v1/mi-ong/capacidades` | Catálogo nacional |
 | `GET /api/v1/mi-ong/recursos` | Inventario de la ONG del usuario |
@@ -81,20 +81,19 @@ PostgreSQL nacional. No se reutiliza el token de Bonita ni se modifica el BPM.
 | `PATCH /api/v1/mi-ong/recursos/{id}` | Editar total enviando `actualizadoEn` |
 | `PATCH /api/v1/organizaciones/{id}/vinculo-nacional` | Vincular por UUID o desvincular; sólo administrador |
 
-Una cuenta técnica o administrativa nacional no puede usarse para conectar la
-pantalla de una ONG. La contraseña nacional se utiliza sólo para el login remoto
-y no se persiste. El JWT se cifra con Fernet en PostgreSQL local, ligado al usuario,
-versión de sesión, ONG nacional y expiración. No aparece en respuestas, cookies o
-localStorage. La clave de cifrado se deriva del secreto de sesión con un propósito
-separado; configurar `SESSION_SECRET` estable para compartirlo entre workers.
-Rotarlo invalida conexiones anteriores y exige reconectar. Cerrar la sesión local
-elimina la conexión nacional de ese usuario; el cambio de contraseña invalida su
-versión. No hay refresh automático.
+La conexión es institucional: una cuenta técnica de rol `ONG` por organización.
+El backend guarda secreto y JWT cifrados con `NACIONAL_ENCRYPTION_KEY`, compartida
+entre workers e independiente de `SESSION_SECRET`. Renueva el token al faltar o
+restarle menos de 30 segundos. No utiliza contraseñas personales de las ONG.
+Logout y cambios de contraseña local no desconectan a otros representantes.
+Los estados son `LISTA`, `SIN_CONFIGURAR` y `REQUIERE_REVISION`; `conectada`
+solamente informa si existe un token temporal vigente. Ningún secreto llega al
+navegador. Los antiguos POST/DELETE de conexión manual se retiran.
 
 El formulario de registro y su adaptador validan contraseña de al menos ocho
 caracteres, contacto e identificador institucional. No aceptan un nombre ajeno,
 rol, habilitación ni certificación desde el navegador. El administrador conserva
-el control del mapping institucional. Contraseñas de registro/conexión se
+el control del mapping institucional. Contraseñas de registro se
 eliminan del estado de mutaciones al terminar y se limpia el campo tras un error.
 Un login o identificador institucional repetido devuelve `409` y conserva los
 datos existentes. El registro no se reintenta automáticamente: ante `504`, puede

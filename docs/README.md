@@ -64,3 +64,5 @@ fuente de verdad.
 - [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>).
 - [`RescueSync-1.2.bar`](./RescueSync-1.2.bar), único artefacto BPM desplegable
   versionado. El proyecto fuente `.bos` no forma parte del repositorio.
+
+- [Acceso nacional automático por ONG](./acceso-nacional-automatico.md): cuentas técnicas, secretos, renovación y migración.

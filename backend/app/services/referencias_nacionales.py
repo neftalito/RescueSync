@@ -10,7 +10,7 @@ from app.integrations.nacional.cliente import ClienteNacional, ErrorNacional
 from app.schemas.inventario import CapacidadResponse, ConexionRequest, RecursoResponse
 from app.schemas.lote import LoteItem
 from app.schemas.oferta import OfertaContenidoRequest
-from app.services.inventario import credencial
+from app.services.acceso_nacional import ejecutar_nacional
 
 
 def token_catalogo(cliente: ClienteNacional, *, administrar: bool = False) -> str:
@@ -79,9 +79,14 @@ def recursos_para_oferta(
     ids = {a.recurso_nacional_id for item in datos.items for a in item.aportes}
     if not ids:
         return None, {}
-    ong_id, token = credencial(session, usuario)
-    recursos = cliente.recursos(token, ong_id)
-    capacidades = {c.id: c for c in cliente.capacidades(token)}
+
+    def consultar(
+        ong_id: UUID, token: str
+    ) -> tuple[UUID, list[RecursoResponse], list[CapacidadResponse]]:
+        return ong_id, cliente.recursos(token, ong_id), cliente.capacidades(token)
+
+    ong_id, recursos, catalogo = ejecutar_nacional(session, usuario, cliente, consultar)
+    capacidades = {c.id: c for c in catalogo}
     if any(r.ong_id != ong_id for r in recursos):
         raise ErrorNacional(502, "El inventario nacional contiene otra ONG.")
     seleccionados = {

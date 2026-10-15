@@ -73,7 +73,7 @@ class ClienteNacional:
             ) from error
         if not response.is_success:
             mensajes = {
-                401: "La credencial nacional no es válida o expiró. Volvé a conectar tu cuenta.",
+                401: "El acceso nacional no es válido o expiró.",
                 403: "La cuenta nacional no tiene permisos para esta operación.",
                 404: "La referencia solicitada no existe en el Sistema Nacional.",
                 409: (

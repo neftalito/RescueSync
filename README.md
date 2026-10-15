@@ -85,7 +85,8 @@ persistencia del buzón no depende de ese bus.
    ```
 
    Para probar inventario, ejecutar también el seed de RescueSyncAPI. El recorrido,
-   credenciales y configuración están en [Inventario nacional](docs/inventario-nacional.md).
+   configuración están en [Inventario nacional](docs/inventario-nacional.md).
+   Configurar también el [acceso automático por ONG](docs/acceso-nacional-automatico.md).
 
 4. Abrir los servicios:
 

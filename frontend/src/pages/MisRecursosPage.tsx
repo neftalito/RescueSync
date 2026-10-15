@@ -9,12 +9,10 @@ import type { Session } from "../schemas/auth";
 import {
   cantidadEnMiles,
   cantidadFormSchema,
-  conexionFormSchema,
   recursoFormSchema,
   registroNacionalFormSchema,
   type CantidadForm,
   type Capacidad,
-  type ConexionForm,
   type Recurso,
   type RecursoForm,
   type RegistroNacionalForm,
@@ -106,7 +104,7 @@ export function MisRecursosPage({
                 </p>
                 <p className="mt-2">
                   El registro no otorga certificaciones ni habilitaciones. Una vez
-                  vinculada, conectá tu cuenta con las credenciales que elegiste.
+                  vinculada, un administrador configurará el acceso automático.
                 </p>
               </div>
             ) : mostrarRegistro ? (
@@ -136,21 +134,21 @@ export function MisRecursosPage({
               Volver a consultar vinculación
             </button>
           </section>
-        ) : !inventario.conexion.data.conectada ? (
+        ) : inventario.conexion.data.estado !== "LISTA" ? (
           <section className={panel}>
-            <h2 className="text-xl font-bold">Conectar cuenta nacional</h2>
+            <h2 className="text-xl font-bold">
+              {inventario.conexion.data.estado === "SIN_CONFIGURAR"
+                ? "Acceso nacional pendiente"
+                : "El acceso nacional requiere revisión"}
+            </h2>
             <p className="mt-2 text-slate-600">
-              Usá las credenciales nacionales de tu ONG. La conexión vence
-              automáticamente; tu sesión de RescueSync continúa activa.
+              Pedile a un administrador que revise el acceso nacional de tu ONG.
+              Tu sesión de RescueSync continúa activa.
             </p>
-            <ConexionFormView
-              pendiente={inventario.conectar.isPending}
-              error={inventario.conectar.error}
-              onSubmit={async (datos) => {
-                await inventario.conectar.mutateAsync(datos);
-                setFeedback("Cuenta nacional conectada.");
-              }}
-            />
+            <button type="button" className={`${boton} mt-4`}
+              onClick={() => void inventario.conexion.refetch()}>
+              Volver a consultar acceso
+            </button>
           </section>
         ) : (
           <>
@@ -159,26 +157,13 @@ export function MisRecursosPage({
             >
               <div>
                 <h2 className="font-bold text-slate-900">
-                  Cuenta nacional conectada
+                  Acceso nacional automático
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   Las cantidades comprometidas y disponibles se calculan
                   automáticamente.
                 </p>
               </div>
-              <button
-                type="button"
-                className={boton}
-                disabled={inventario.desconectar.isPending}
-                onClick={() => {
-                  setEditando(null);
-                  setFeedback("");
-                  inventario.desconectar.mutate();
-                }}
-              >
-                Desconectar
-              </button>
-              <ErrorMensaje error={inventario.desconectar.error} />
             </section>
             <CertificacionesOngPanel
               perfil={inventario.certificaciones}
@@ -391,68 +376,6 @@ function RegistroNacionalFormView({
           onClick={onCancel}
         >
           Cancelar registro
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function ConexionFormView({
-  pendiente,
-  error,
-  onSubmit,
-}: {
-  pendiente: boolean;
-  error: unknown;
-  onSubmit: (datos: ConexionForm) => Promise<void>;
-}): ReactElement {
-  const {
-    register,
-    handleSubmit,
-    reset,
-    resetField,
-    formState: { errors },
-  } = useForm<ConexionForm>({ resolver: zodResolver(conexionFormSchema) });
-  return (
-    <form
-      className="mt-4 grid gap-4 sm:grid-cols-2"
-      noValidate
-      onSubmit={(event) =>
-        void handleSubmit(async (datos) => {
-          try {
-            await onSubmit(datos);
-            reset();
-          } catch {
-            resetField("password");
-          }
-        })(event)
-      }
-    >
-      <label className="text-sm font-semibold">
-        Identificador nacional
-        <input
-          className="form-input mt-2"
-          autoComplete="username"
-          {...register("identificadorLogin")}
-        />
-        {errors.identificadorLogin && (
-          <span role="alert">{errors.identificadorLogin.message}</span>
-        )}
-      </label>
-      <label className="text-sm font-semibold">
-        Contraseña nacional
-        <input
-          className="form-input mt-2"
-          type="password"
-          autoComplete="current-password"
-          {...register("password")}
-        />
-        {errors.password && <span role="alert">{errors.password.message}</span>}
-      </label>
-      <div className="sm:col-span-2">
-        <ErrorMensaje error={error} />
-        <button className={`${boton} mt-3`} disabled={pendiente}>
-          {pendiente ? "Conectando…" : "Conectar cuenta"}
         </button>
       </div>
     </form>

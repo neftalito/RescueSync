@@ -1,12 +1,13 @@
 import { z } from "zod";
 
 export const conexionSchema = z.object({
+  estado: z.enum(["LISTA", "SIN_CONFIGURAR", "REQUIERE_REVISION"]),
   vinculada: z.boolean(),
   conectada: z.boolean(),
   ongId: z.uuid().nullable(),
   expiraEn: z.string().nullable(),
 });
-export const conexionFormSchema = z.object({
+const credencialesRegistroSchema = z.object({
   identificadorLogin: z
     .string()
     .trim()
@@ -15,7 +16,7 @@ export const conexionFormSchema = z.object({
   password: z.string().min(1, "Ingresá tu contraseña nacional.").max(128),
 });
 
-export const registroNacionalFormSchema = conexionFormSchema.extend({
+export const registroNacionalFormSchema = credencialesRegistroSchema.extend({
   identificadorInstitucional: z.string().trim()
     .min(1, "Ingresá el identificador institucional.").max(80),
   emailContacto: z.email("Ingresá un email de contacto válido."),
@@ -75,7 +76,6 @@ export const vinculoFormSchema = z.object({
   ong_nacional_id: z.union([z.uuid("Ingresá un UUID válido."), z.literal("")]),
 });
 
-export type ConexionForm = z.infer<typeof conexionFormSchema>;
 export type RegistroNacionalForm = z.infer<typeof registroNacionalFormSchema>;
 export type OngNacional = z.infer<typeof ongNacionalSchema>;
 export type ConexionEstado = z.infer<typeof conexionSchema>;

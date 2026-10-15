@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import respx
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError
 from sqlalchemy import Connection, delete, event, select, text
@@ -23,7 +24,7 @@ from test_ofertas import (
 
 from app.core.config import get_settings
 from app.db.models import (
-    ConexionNacional,
+    AccesoNacional,
     Convocatoria,
     ConvocatoriaLote,
     Emergencia,
@@ -43,6 +44,7 @@ from app.db.session import engine, get_db_consolidado
 from app.main import app
 from app.schemas.inventario import RecursoResponse
 from app.schemas.oferta import OfertaCreateRequest, OfertaUpdateRequest
+from app.services.acceso_nacional import cifrador
 from app.services.callbacks_bonita import consolidar_ofertas
 from app.services.consolidado_nacional import respuesta_consolidada
 from app.services.consorcios import (
@@ -50,7 +52,6 @@ from app.services.consorcios import (
     desarmar_consorcio,
     proponer_consorcio,
 )
-from app.services.inventario import _cifrador
 from app.services.ofertas import (
     OfertaYaExisteError,
     VersionOfertaDesactualizadaError,
@@ -426,7 +427,11 @@ def test_completitud_diferida_y_pertenencia_se_validan_en_la_base(
 
 
 def test_captura_http_verifica_dueño_sin_confiar_en_uuid_arbitrario(
-    client: TestClient, db_session: Session, escenario: Escenario, capacidad: UUID
+    client: TestClient,
+    db_session: Session,
+    escenario: Escenario,
+    capacidad: UUID,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     usuario = escenario.representante
     csrf = _autenticar_con_cookie(client, usuario)
@@ -435,12 +440,20 @@ def test_captura_http_verifica_dueño_sin_confiar_en_uuid_arbitrario(
         and usuario.organizacion.ong_nacional_id is not None
     )
     ong_id = usuario.organizacion.ong_nacional_id
+    monkeypatch.setattr(
+        get_settings(),
+        "nacional_encryption_key",
+        SecretStr(Fernet.generate_key().decode()),
+    )
     db_session.add(
-        ConexionNacional(
-            usuario_id=usuario.id,
-            version_sesion=usuario.version_sesion,
+        AccesoNacional(
+            organizacion_id=usuario.organizacion_id,
+            cuenta_id=uuid4(),
+            configuracion_id=uuid4(),
+            identificador_login="tecnica",
+            secreto_cifrado=cifrador().encrypt(b"secreto-prueba").decode(),
             ong_id=ong_id,
-            token_cifrado=_cifrador().encrypt(b"jwt-prueba").decode(),
+            token_cifrado=cifrador().encrypt(b"jwt-prueba").decode(),
             expira_en=datetime.now(UTC) + timedelta(hours=1),
         )
     )

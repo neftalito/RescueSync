@@ -1,5 +1,11 @@
 # Validación manual de T25, T26 y T27
 
+> El login directo nacional de esta guía sigue disponible. La conexión manual de
+> representantes fue reemplazada por el [acceso automático por ONG](./acceso-nacional-automatico.md).
+> Para inventario, aprovisionar primero las cuentas técnicas; ya no se muestran
+> los formularios ni los botones de conexión/desconexión descritos históricamente.
+
+
 Esta guía cubre [T25 / issue #4](https://github.com/neftalito/RescueSyncAPI/issues/4),
 [T26 / issue #5](https://github.com/neftalito/RescueSyncAPI/issues/5) y
 [T27 / issue #6](https://github.com/neftalito/RescueSyncAPI/issues/6). Los cambios
