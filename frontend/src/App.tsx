@@ -12,7 +12,9 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
 import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
+import { MisEmergenciasPage } from "./pages/MisEmergenciasPage";
 import { MisOfertasPage } from "./pages/MisOfertasPage";
+import { NuevaEmergenciaPage } from "./pages/NuevaEmergenciaPage";
 import { NuevaOfertaPage } from "./pages/NuevaOfertaPage";
 import { OrganizationsPage } from "./pages/OrganizationsPage";
 import { UsersPage } from "./pages/UsersPage";
@@ -78,6 +80,26 @@ function ProtectedApp(): ReactElement {
   return (
     <Routes>
       <Route path="/" element={<DashboardPage session={session.data} />} />
+      <Route
+        path="/emergencias/nueva"
+        element={
+          session.data.usuario.rol === "OPERADOR_MUNICIPAL" ? (
+            <NuevaEmergenciaPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-emergencias"
+        element={
+          session.data.usuario.rol === "OPERADOR_MUNICIPAL" ? (
+            <MisEmergenciasPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
       <Route
         path="/mis-recursos"
         element={

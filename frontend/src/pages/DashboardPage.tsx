@@ -5,7 +5,6 @@ import { Link, useNavigate } from "react-router";
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
-import { EmergenciaForm } from "../components/EmergenciaForm";
 import { NotificationCenter } from "../components/NotificationCenter";
 import { roleLabels, type Session } from "../schemas/auth";
 
@@ -177,12 +176,37 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
               </article>
             </div>
           ) : esMunicipio ? (
-            <div className="mt-5 space-y-8">
-              <EmergenciaForm csrfToken={session.csrf_token} />
-              <BandejaEmergencias
-                rol="OPERADOR_MUNICIPAL"
-                csrfToken={session.csrf_token}
-              />
+            <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Registrar emergencia
+                </h3>
+                <p className="mt-3 leading-7 text-slate-600">
+                  Informá la gravedad, la zona afectada y la descripción inicial
+                  de una nueva emergencia de tu municipio.
+                </p>
+                <Link
+                  to="/emergencias/nueva"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                >
+                  Registrar emergencia
+                </Link>
+              </article>
+              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h3 className="text-xl font-semibold text-slate-950">
+                  Mis emergencias
+                </h3>
+                <p className="mt-3 leading-7 text-slate-600">
+                  Consultá las emergencias de tu municipio, revisá su estado y
+                  reintentá la vinculación cuando sea necesario.
+                </p>
+                <Link
+                  to="/mis-emergencias"
+                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                >
+                  Ver mis emergencias
+                </Link>
+              </article>
             </div>
           ) : esCoordinador ? (
             <div className="mt-5">

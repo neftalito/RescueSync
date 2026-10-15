@@ -539,8 +539,12 @@ describe("autenticación", () => {
     const user = userEvent.setup();
     renderApp("/");
 
+    await user.click(
+      await screen.findByRole("link", { name: "Ver mis emergencias" }),
+    );
     await screen.findByText("Alta · Ribera norte");
 
+    await user.click(screen.getByRole("link", { name: "Volver al inicio" }));
     await user.click(
       await screen.findByRole("button", { name: "Cerrar sesión" }),
     );
@@ -600,6 +604,9 @@ describe("autenticación", () => {
     const user = userEvent.setup();
     const queryClient = renderApp("/");
 
+    await user.click(
+      await screen.findByRole("link", { name: "Ver mis emergencias" }),
+    );
     await screen.findByText("Alta · Ribera norte");
 
     // Simula que la sesión venció del lado del servidor (sin que nadie use
@@ -622,6 +629,144 @@ describe("autenticación", () => {
       await screen.findByText("No hay emergencias registradas pendientes."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
+  });
+});
+
+describe("emergencias del municipio", () => {
+  it("navega entre las tarjetas y las vistas, y actualiza el listado después del alta", async () => {
+    let emergencias: unknown[] = [];
+    const emergencia = {
+      id: 31,
+      municipio_id: 3,
+      centro_coordinador_id: null,
+      creada_por_usuario_id: 7,
+      gravedad: "ALTA",
+      zona: "Ribera norte",
+      descripcion: "Inundación con familias evacuadas",
+      estado: "REGISTRADA",
+      bonita_sync: "PENDIENTE",
+      bonita_process_instance_id: null,
+      creada_en: "2026-09-19T18:20:39.102766Z",
+      actualizada_en: "2026-09-19T18:20:39.102766Z",
+    };
+    server.use(
+      http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)),
+      http.get(`${API_URL}/emergencias`, () => HttpResponse.json(emergencias)),
+      http.post(`${API_URL}/emergencias`, async ({ request }) => {
+        expect(request.headers.get("X-CSRF-Token")).toBe(session.csrf_token);
+        expect(await request.json()).toEqual({
+          gravedad: "ALTA",
+          zona: "Ribera norte",
+          descripcion: "Inundación con familias evacuadas",
+        });
+        emergencias = [emergencia];
+        return HttpResponse.json(emergencia, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp("/");
+
+    await user.click(
+      await screen.findByRole("link", { name: "Ver mis emergencias" }),
+    );
+    expect(
+      await screen.findByText("Todavía no registraste emergencias."),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Zona afectada")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Volver al inicio" }));
+    await user.click(screen.getByRole("link", { name: "Registrar emergencia" }));
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Nueva emergencia" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Mis emergencias" }),
+    ).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Gravedad"), "ALTA");
+    await user.type(screen.getByLabelText("Zona afectada"), "Ribera norte");
+    await user.type(
+      screen.getByLabelText("Descripción inicial"),
+      "Inundación con familias evacuadas",
+    );
+    await user.click(screen.getByRole("button", { name: "Registrar emergencia" }));
+    expect(
+      await screen.findByText("Emergencia 31 registrada en estado REGISTRADA."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Ver mis emergencias" }));
+    expect(await screen.findByText("Alta · Ribera norte")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Todavía no registraste emergencias."),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByText("Alta · Ribera norte"));
+    expect(
+      screen.getByRole("button", { name: "Reintentar vinculación" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Registrar emergencia" }));
+    expect(screen.getByLabelText("Zona afectada")).toHaveValue("");
+    await user.click(screen.getByRole("link", { name: "Volver al inicio" }));
+    expect(
+      screen.getByRole("heading", { name: "Bienvenido a RescueSync" }),
+    ).toBeInTheDocument();
+  });
+
+  it.each(["/emergencias/nueva", "/mis-emergencias"])(
+    "permite al municipio abrir directamente %s",
+    async (path) => {
+      server.use(http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)));
+      renderApp(path);
+      expect(
+        await screen.findByRole("heading", {
+          level: 1,
+          name: path === "/emergencias/nueva"
+            ? "Nueva emergencia"
+            : "Emergencias de mi municipio",
+        }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it.each(["/emergencias/nueva", "/mis-emergencias"])(
+    "redirige al login si se abre %s sin sesión",
+    async (path) => {
+      server.use(
+        http.get(`${API_URL}/auth/me`, () =>
+          HttpResponse.json(
+            { detail: "La sesión no es válida o expiró." },
+            { status: 401 },
+          ),
+        ),
+      );
+      renderApp(path);
+      expect(
+        await screen.findByRole("heading", { name: "Iniciá sesión" }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  describe.each(["/emergencias/nueva", "/mis-emergencias"])("acceso a %s", (path) => {
+    it.each<Role>([
+      "ADMINISTRADOR",
+      "COORDINADOR_REGIONAL",
+      "REPRESENTANTE_ONG",
+      "AUDITOR_DIRECTIVO",
+    ])("impide a %s abrir una vista municipal", async (role) => {
+      server.use(
+        http.get(`${API_URL}/auth/me`, () => HttpResponse.json(sessionForRole(role))),
+      );
+      renderApp(path);
+
+      expect(
+        await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Zona afectada")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "Emergencias de mi municipio" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: "Ver mis emergencias" }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 

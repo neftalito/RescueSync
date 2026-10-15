@@ -77,6 +77,12 @@ Archivos principales:
 
 ### 1. El municipio registra la emergencia
 
+El dashboard municipal presenta dos tarjetas: **Registrar emergencia** abre
+`/emergencias/nueva` y **Mis emergencias** abre `/mis-emergencias`. Ambas vistas
+permiten volver al inicio y navegar a la otra funcionalidad. El formulario conserva
+la confirmación del alta y permite registrar otra emergencia; el listado permite
+consultar estados y reintentar la vinculación con Bonita.
+
 El operador completa gravedad, zona y descripción en
 `frontend/src/components/EmergenciaForm.tsx`. El hook
 `frontend/src/hooks/useRegistrarEmergencia.ts` llama a:
