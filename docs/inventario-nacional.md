@@ -33,24 +33,17 @@ ya fueron editados. Una vinculación local demo distinta no se sobrescribe.
 | Ayuda Sin Fronteras | `ong@rescuesync.org` | `ong123` | `ong-nacional123` | Agua: 5000 litros; paramédicos: 12 personas |
 | Red Médica Solidaria | `redmedica@rescuesync.org` | `redmedica123` | `redmedica123` | Ambulancias: 4 vehículos; paramédicos: 20 personas |
 
-Antes de probar inventario, aprovisionar e importar la cuenta técnica de cada
-ONG según [Acceso nacional automático](./acceso-nacional-automatico.md). Los seeds
-mantienen las identidades demo, pero no crean secretos técnicos públicos.
-Ingresar a RescueSync con una cuenta local y abrir **Mis recursos**: el acceso y
-la renovación nacional son automáticos. Registrar un recurso y editar su total;
-comprobar el stock nacional. El escenario de certificaciones se describe en
-[Mis certificaciones](./certificaciones-nacionales.md).
+Configurar una sola vez el emisor y la clave Fernet según
+[Alta y acceso nacional automático](./acceso-nacional-automatico.md). Las nuevas
+ONG creadas desde Administración de organizaciones se registran y vinculan con
+su cuenta técnica automáticamente. El identificador es generado y el contacto es
+opcional. Mis recursos queda disponible al completar el alta.
 
-Para una ONG fuera del seed y sin vínculo, abrir **Mis recursos → Registrar ONG
-en el Sistema Nacional**. Ingresar identificador institucional, email de contacto
-y credenciales nuevas. Se toma el nombre de la organización local y se crea la
-ONG nacional en estado `PENDIENTE`. La pantalla muestra el UUID que se debe
-compartir con el administrador. No inicia una conexión ni establece el vínculo.
-También se puede registrar directamente con `POST /api/v1/ongs` de RescueSyncAPI.
-Como administrador local, ir a **Gestionar organizaciones →
-Editar → UUID de la ONG nacional** y guardar el UUID verificado. Vacío elimina la
-vinculación. Cambiar el UUID elimina la credencial técnica y el token anteriores.
-El representante no puede establecer esta relación por sí mismo.
+Si la API no responde, la tarjeta de la organización permite **Reintentar alta
+nacional**. Las ONG locales anteriores sin vínculo también pueden completar el
+registro desde Mis recursos, sin ingresar credenciales ni identificadores.
+Para ONG nacionales anteriores ya vinculadas, conservar la importación de
+credenciales verificada; el seed no crea ni reemplaza accesos institucionales.
 
 ## Configuración
 
@@ -58,6 +51,7 @@ El representante no puede establecer esta relación por sí mismo.
 | --- | --- | --- |
 | `NACIONAL_BASE_URL` | `http://host.docker.internal:8001/api/v1` | URL completa del prefijo de RescueSyncAPI, accesible desde el backend |
 | `NACIONAL_TIMEOUT_SECONDS` | `10` | Timeout HTTP explícito |
+| `NACIONAL_APROVISIONAMIENTO_LOGIN/PASSWORD` | Vacío | Cuenta INTEGRACION del emisor para altas automáticas |
 | `NACIONAL_ENCRYPTION_KEY` | Vacío | Clave Fernet propia para credenciales institucionales |
 
 Si la API nacional publica otro puerto, actualizar `NACIONAL_BASE_URL`. Fuera de
@@ -79,6 +73,7 @@ PostgreSQL nacional. No se reutiliza el token de Bonita ni se modifica el BPM.
 | `GET /api/v1/mi-ong/recursos` | Inventario de la ONG del usuario |
 | `POST /api/v1/mi-ong/recursos` | Registrar recurso propio |
 | `PATCH /api/v1/mi-ong/recursos/{id}` | Editar total enviando `actualizadoEn` |
+| `POST /api/v1/organizaciones/{id}/aprovisionamiento-nacional` | Completar/reintentar alta automática; sólo administrador + CSRF |
 | `PATCH /api/v1/organizaciones/{id}/vinculo-nacional` | Vincular por UUID o desvincular; sólo administrador |
 
 La conexión es institucional: una cuenta técnica de rol `ONG` por organización.

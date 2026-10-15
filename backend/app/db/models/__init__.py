@@ -1,4 +1,5 @@
 from app.db.models.acceso_nacional import AccesoNacional
+from app.db.models.aprovisionamiento import AprovisionamientoNacional
 from app.db.models.conexion_nacional import ConexionNacional
 from app.db.models.convocatoria import Convocatoria, ConvocatoriaLote
 from app.db.models.emergencia import Emergencia
@@ -24,6 +25,7 @@ from app.db.models.usuario import Usuario
 
 __all__ = [
     "AccesoNacional",
+    "AprovisionamientoNacional",
     "ConexionNacional",
     "Convocatoria",
     "ConvocatoriaLote",

@@ -9,14 +9,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import AccesoNacional, Organizacion, TipoOrganizacion, Usuario
+from app.db.models.aprovisionamiento import AprovisionamientoNacional
 from app.integrations.nacional.cliente import ClienteNacional, ErrorNacional
 from app.schemas.inventario import (
     EstadoConexion,
-    OngNacionalCreate,
     OngNacionalResponse,
     RegistroNacionalRequest,
 )
 from app.services.acceso_nacional import cifrador
+from app.services.aprovisionamiento_nacional import completar_alta, preparar_alta
 
 
 def _ong(usuario: Usuario) -> Organizacion:
@@ -29,15 +30,22 @@ def _ong(usuario: Usuario) -> Organizacion:
 
 
 def registrar_ong_nacional(
-    usuario: Usuario, cliente: ClienteNacional, datos: RegistroNacionalRequest
+    session: Session,
+    usuario: Usuario,
+    cliente: ClienteNacional,
+    datos: RegistroNacionalRequest,
 ) -> OngNacionalResponse:
-    """Crea la identidad pendiente sin autoasignar el vínculo institucional local."""
-
+    """Registra y vincula la ONG propia con su acceso técnico automático."""
     ong = _ong(usuario)
     if ong.ong_nacional_id is not None:
         raise ErrorNacional(409, "Tu ONG ya tiene un registro nacional vinculado.")
-    return cliente.registrar_ong(
-        OngNacionalCreate(nombre=ong.nombre, **datos.model_dump())
+    preparar_alta(session, ong, datos)
+    organizacion_id = ong.id
+    session.commit()
+    resultado = completar_alta(session, organizacion_id, cliente)
+    assert resultado.ong_nacional_id is not None
+    return OngNacionalResponse(
+        id=resultado.ong_nacional_id, nombre=resultado.nombre, estado="PENDIENTE"
     )
 
 
@@ -86,6 +94,11 @@ def vincular_ong(
             session.execute(
                 delete(AccesoNacional).where(
                     AccesoNacional.organizacion_id == organizacion_id
+                )
+            )
+            session.execute(
+                delete(AprovisionamientoNacional).where(
+                    AprovisionamientoNacional.organizacion_id == organizacion_id
                 )
             )
         ong.ong_nacional_id = ong_id

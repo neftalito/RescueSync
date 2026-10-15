@@ -1,84 +1,98 @@
-# Acceso nacional automático por ONG
+# Alta y acceso nacional automático por ONG
 
-Los representantes sólo inician sesión local. El backend utiliza una cuenta
-técnica distinta por ONG, obtiene JWT de cinco minutos y los renueva cuando
-faltan o quedan menos de 30 segundos. No hay refresh tokens ni contraseñas
-personales nacionales guardadas. El token se comparte entre representantes y
-workers de la misma ONG y nunca llega al navegador.
+Al crear una organización de tipo ONG en **Administración de organizaciones**, el
+backend registra su identidad nacional, crea la cuenta `TECNICA_ONG`, guarda el
+vínculo y cifra su secreto. Sólo se requiere nombre y tipo; el correo de contacto
+es opcional. El identificador institucional se genera automáticamente en la API
+nacional como `rs:<UUID emisor sin guiones>:<referencia sin guiones>`.
 
-## Preparación
+El representante sólo inicia sesión local. Puede consultar y gestionar inventario
+sin importar archivos, elegir contraseñas nacionales ni vincular UUID manualmente.
+La institución se crea `PENDIENTE`: esto permite inventario, pero no concede
+certificaciones ni habilitación para adjudicaciones.
 
-1. Actualizar primero RescueSyncAPI y aplicar sus migraciones. Crear la cuenta
-   técnica con su comando administrativo, documentado en
-   [la API nacional](../../RescueSyncAPI/docs/acceso-automatico-ong.md).
-2. Generar una clave Fernet fuera del repositorio y configurar
-   `NACIONAL_ENCRYPTION_KEY` como secreto del backend:
+## Preparación única del entorno
+
+1. Desplegar primero RescueSyncAPI y aplicar `alembic upgrade head`. Preparar una
+   cuenta `INTEGRACION` para el sistema emisor con
+   [su comando de bootstrap](../../RescueSyncAPI/docs/acceso-automatico-ong.md).
+2. Configurar en todos los workers locales:
+
+   - `NACIONAL_BASE_URL`: URL de `/api/v1` nacional.
+   - `NACIONAL_APROVISIONAMIENTO_LOGIN` y `NACIONAL_APROVISIONAMIENTO_PASSWORD`:
+     credenciales de integración del emisor, conservadas únicamente en el servidor.
+   - `NACIONAL_ENCRYPTION_KEY`: clave Fernet propia, estable y compartida entre
+     workers, independiente de `SESSION_SECRET`.
+
+   Generar la clave fuera del repositorio:
 
    ```bash
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
-   La misma clave debe estar disponible en el comando de importación y en todos
-   los workers. Debe ser independiente de `SESSION_SECRET`. Si falta, las
-   funciones locales siguen disponibles; el acceso nacional requiere configuración.
-3. Aplicar `alembic upgrade head` local. La migración crea `acceso_nacional` y
-   descarta los JWT manuales anteriores; no los convierte en credenciales técnicas.
-4. Mantener la ONG local activa y vinculada al UUID nacional verificado. Copiar
-   el archivo protegido al contenedor del backend y ejecutar:
+3. Aplicar `alembic upgrade head` local y arrancar el backend con esas variables.
+   Compose ya propaga las dos variables de aprovisionamiento. No hay pasos
+   administrativos adicionales por cada nueva ONG.
 
-   ```bash
-   python -m app.scripts.acceso_nacional --login admin@example.org --organizacion ID_LOCAL --archivo /tmp/credencial-ong.json
-   ```
+La cuenta de integración y la de catálogo son configuraciones distintas. No usar
+una cuenta personal ONG ni un administrador nacional en las variables de alta.
+No cambiar la cuenta emisora a otra instalación con altas pendientes: la referencia
+se interpreta dentro del emisor autenticado.
 
-   Se solicita la contraseña del administrador local. Debe haber completado su
-   cambio de contraseña inicial. El archivo debe ser regular y privado (`0600`).
-   El comando hace login nacional y verifica cuenta, propósito técnico, rol y ONG
-   mediante `/me` antes de guardar. No acepta una cuenta personal ni autovincula.
-5. Eliminar las copias del archivo transferido. No versionarlas ni conservarlas
-   en logs, argumentos de proceso o capturas. Repetir por cada ONG vinculada.
+## Fallos y recuperación
 
-Los comandos pueden ejecutarse con `docker compose run --rm --no-deps -it`
-usando el servicio `api` o `backend` correspondiente y un archivo privado montado
-desde una carpeta fuera del repositorio. No hace falta reiniciar para importar
-otra ONG o reemplazar su credencial.
+- El alta local y su solicitud cifrada se confirman **antes** de llamar a la API.
+  No se mantienen locks de PostgreSQL durante HTTP.
+- Si la API falla o responde fuera de tiempo, la ONG queda creada localmente. La
+  interfaz informa que el alta nacional está pendiente y ofrece **Reintentar alta
+  nacional** en su tarjeta. No crear otra organización.
+- `POST /api/v1/organizaciones/{id}/aprovisionamiento-nacional`, sólo administrador
+  con CSRF, vuelve a usar la misma referencia, nombre, contacto y secreto.
+- La API nacional confirma ONG, cuenta y correlación juntas. Repetir la misma
+  referencia y contenido devuelve la misma identidad; cambiar el contenido produce
+  `409`. Una cuenta revocada o una ONG suspendida no se reactiva con reintentos.
+- **Mis recursos → Registrar ONG en el Sistema Nacional** aplica el mismo flujo
+  a una ONG local anterior sin vínculo. Pide sólo correo opcional, autovincula y
+  habilita el inventario al terminar. El administrador también puede iniciar el
+  alta con el botón de reintento y sin correo.
+- Las solicitudes guardadas son inmutables para reconciliar timeouts. Renombrar
+  la organización local durante un alta pendiente no altera el alta ya enviada.
+- La vinculación manual sigue disponible para registros nacionales anteriores.
+  No se reclaman registros existentes por nombre ni se reemplazan sus cuentas.
+  Una ONG anterior ya vinculada y sin acceso conserva el procedimiento de
+  importación descrito abajo. No hay backfill automático de identidades anteriores.
+- Cambiar o eliminar un vínculo borra la solicitud y el acceso anteriores; una
+  respuesta atrasada no puede restablecerlos. Guardar el mismo UUID los conserva.
 
-## Operación y recuperación
+## Operación y credenciales anteriores
 
-- `GET /api/v1/mi-ong/conexion` conserva vínculo y expiración y agrega `estado`:
-  `LISTA`, `SIN_CONFIGURAR` o `REQUIERE_REVISION`. `LISTA` permite operar aunque
-  todavía no haya JWT; `conectada` sólo describe la caché temporal.
-- Los POST/DELETE locales de conexión manual se retiran. La web no ofrece
-  conectar/desconectar para ONG vinculadas. El onboarding de ONG nuevas conserva
-  su recorrido y queda fuera del aprovisionamiento automático.
-- Cerrar sesión o cambiar una contraseña local no elimina el acceso institucional.
-  Las validaciones locales siguen rechazando usuarios inactivos, roles incorrectos,
-  sesiones vencidas y organizaciones desactivadas.
-- Cambiar o eliminar el vínculo nacional borra la configuración anterior. Guardar
-  el mismo UUID conserva el acceso.
-- Ante `401`, el backend autentica nuevamente una sola vez y reintenta únicamente
-  consultas. Una escritura nunca se repite automáticamente, tampoco ante timeout.
-- Una caída nacional no bloquea el login local. Credenciales inválidas/revocadas
-  dejan el acceso en revisión sin insistir con nuevos logins. Un `403` de negocio
-  no se interpreta como expiración de token.
-- Para recuperar una credencial, rotarla en la API nacional e importar el archivo
-  nuevo. Rotar/revocar afecta sólo esa ONG e invalida sus JWT inmediatamente.
-- Cambiar la clave Fernet exige reimportar las credenciales de todas las ONG; la
-  aplicación no intenta descifrar con el secreto de sesión como alternativa.
+`GET /api/v1/mi-ong/conexion` devuelve `LISTA`, `SIN_CONFIGURAR` o
+`REQUIERE_REVISION`. `LISTA` permite operar aunque todavía no haya JWT en caché.
+Los JWT técnicos duran cinco minutos; se renuevan cuando faltan o quedan menos de
+30 segundos. No llegan al navegador. Cerrar sesión local no elimina el acceso.
 
-La caché usa transacciones independientes y actualizaciones condicionadas a la
-versión de configuración. Renovar no confirma cambios de ofertas del llamador ni
-restaura una configuración reemplazada durante HTTP. Renovaciones simultáneas
-pueden obtener tokens válidos diferentes; no es necesaria una exclusión global.
-Los logs de operaciones completadas incluyen usuario local, ONG y acción.
+Ante `401`, se renueva una vez y sólo se reintentan consultas. Las escrituras de
+inventario no se repiten automáticamente. Un `403` de negocio no se interpreta
+como expiración. Credenciales revocadas quedan en revisión.
+
+Para recuperar una credencial técnica anterior o rotada, el administrador nacional
+exporta su archivo privado y el operador local ejecuta:
+
+```bash
+python -m app.scripts.acceso_nacional --login admin@example.org --organizacion ID_LOCAL --archivo /tmp/credencial-ong.json
+```
+
+El comando pide la contraseña del administrador local y exige un archivo regular
+`0600`. Verifica cuenta, rol, propósito y pertenencia mediante `/me`. Eliminar las
+copias del archivo después de importarlo. Cambiar la clave Fernet exige recuperar
+las credenciales; los reintentos no regeneran un secreto que ya fue enviado.
 
 ## Validación y rollback
 
-Las pruebas cubren aislamiento, renovación, logout, revocación, timeout, cambio de
-configuración durante login y ausencia de commits sobre el caso de uso llamador.
-Ejecutar las suites y checks de ambos proyectos. El downgrade local elimina la
-configuración técnica y no recupera tokens manuales descartados; un nuevo upgrade
-requiere importar otra vez las credenciales. El rollback nacional desactiva las
-cuentas técnicas antes de retirar su propósito y versión.
+Las pruebas cubren alta sin correo ni identificador ingresado, RBAC/CSRF, cifrado,
+timeout y reintento estable, pertenencia y concurrencia nacional. Las migraciones
+locales se prueban en ambas direcciones sobre schemas descartables.
 
-Tener acceso no habilita institucionalmente ni certifica a una ONG. Bonita y las
-cuentas técnicas de catálogo/integración conservan su autenticación separada.
+El downgrade local descarta las solicitudes de aprovisionamiento y conserva los
+accesos ya completados. Respaldar las referencias pendientes antes de un rollback:
+un nuevo upgrade no puede reconstruir el secreto de una solicitud descartada.

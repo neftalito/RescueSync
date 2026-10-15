@@ -86,8 +86,9 @@ export function MisRecursosPage({
           <section className={panel}>
             <h2 className="text-xl font-bold">Vinculación pendiente</h2>
             <p className="mt-2 text-slate-600">
-              Pedile a un administrador que vincule tu ONG local con su registro
-              nacional desde Gestionar organizaciones.
+              Completá el registro para activar el acceso nacional de tu ONG.
+              Si ya existe un registro nacional anterior, pedí al administrador
+              que revise su vinculación.
             </p>
             {inventario.registrar.data ? (
               <div
@@ -96,15 +97,15 @@ export function MisRecursosPage({
               >
                 <p className="font-semibold">ONG registrada en estado pendiente.</p>
                 <p className="mt-2">
-                  Compartí este UUID con el administrador para que verifique la
-                  vinculación:
+                  El vínculo y el acceso nacional ya están configurados.
+                  Tu identificador nacional es:
                 </p>
                 <p className="mt-2 break-all font-mono">
                   {inventario.registrar.data.id}
                 </p>
                 <p className="mt-2">
-                  El registro no otorga certificaciones ni habilitaciones. Una vez
-                  vinculada, un administrador configurará el acceso automático.
+                  Ya podés gestionar tus recursos. Las certificaciones y la
+                  habilitación institucional se revisan por separado.
                 </p>
               </div>
             ) : mostrarRegistro ? (
@@ -316,7 +317,6 @@ function RegistroNacionalFormView({
     register,
     handleSubmit,
     reset,
-    resetField,
     formState: { errors },
   } = useForm<RegistroNacionalForm>({
     resolver: zodResolver(registroNacionalFormSchema),
@@ -331,7 +331,7 @@ function RegistroNacionalFormView({
             await onSubmit(datos);
             reset();
           } catch {
-            resetField("password");
+            // La mutación conserva el error y permite reintentar el mismo registro.
           }
         })(event)
       }
@@ -339,31 +339,21 @@ function RegistroNacionalFormView({
       <h3 className="text-lg font-bold">Registrar mi ONG</h3>
       <p className="text-slate-600">
         Si tu ONG ya está registrada, pedí la vinculación al administrador. Para un
-        registro nuevo se usará el nombre de tu organización local.
+        registro nuevo se usará el nombre de tu organización local y se generarán
+        automáticamente el identificador y el acceso nacional.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {([
-          ["identificadorInstitucional", "Identificador institucional", "text"],
-          ["emailContacto", "Email de contacto", "email"],
-          ["identificadorLogin", "Nuevo identificador nacional", "text"],
-          ["password", "Nueva contraseña nacional", "password"],
-        ] as const).map(([campo, label, tipo]) => (
-          <label key={campo} className="text-sm font-semibold">
-            {label}
-            <input
-              className="form-input mt-2"
-              type={tipo}
-              autoComplete={
-                campo === "password" ? "new-password"
-                  : campo === "identificadorLogin" ? "username"
-                    : campo === "emailContacto" ? "email" : "off"
-              }
-              {...register(campo)}
-            />
-            {errors[campo] && <span role="alert">{errors[campo].message}</span>}
-          </label>
-        ))}
-      </div>
+      <label className="block text-sm font-semibold">
+        Email de contacto (opcional)
+        <input
+          className="form-input mt-2"
+          type="email"
+          autoComplete="email"
+          {...register("emailContacto")}
+        />
+        {errors.emailContacto && (
+          <span role="alert">{errors.emailContacto.message}</span>
+        )}
+      </label>
       <ErrorMensaje error={error} />
       <div className="flex flex-wrap gap-3">
         <button className={boton} disabled={pendiente}>

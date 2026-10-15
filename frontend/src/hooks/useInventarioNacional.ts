@@ -117,9 +117,7 @@ export function useInventarioNacional(session: Session): InventarioNacional {
     mutationFn: (datos: RegistroNacionalForm) =>
       registrarOngNacional(datos, session.csrf_token),
     retry: false,
-    onSettled: (_data, _error, datos) => {
-      datos.password = "";
-    },
+    onSuccess: actualizar,
   });
   const crear = useMutation({
     mutationFn: (datos: RecursoForm) => crearRecurso(datos, session.csrf_token),

@@ -23,7 +23,7 @@ export const managedOrganizationSchema = organizationSchema.extend({
 
 export const organizationsSchema = z.array(managedOrganizationSchema);
 
-export const createOrganizationSchema = z.object({
+const organizationIdentitySchema = z.object({
   nombre: z
     .string()
     .trim()
@@ -32,7 +32,20 @@ export const createOrganizationSchema = z.object({
   tipo: z.enum(organizationTypes),
 });
 
-export const editOrganizationSchema = createOrganizationSchema;
+export const createOrganizationSchema = organizationIdentitySchema
+  .extend({ email_contacto: z.string().optional() })
+  .superRefine((values, ctx) => {
+    if (
+      values.tipo === "ONG" && values.email_contacto &&
+      !z.email().safeParse(values.email_contacto).success
+    ) {
+      ctx.addIssue({
+        code: "custom", path: ["email_contacto"],
+        message: "Ingresá un correo válido.",
+      });
+    }
+  });
+export const editOrganizationSchema = organizationIdentitySchema;
 
 export type Organization = z.infer<typeof managedOrganizationSchema>;
 export type CreateOrganizationForm = z.infer<typeof createOrganizationSchema>;

@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     nacional_sistema_origen: str | None = Field(
         default=None, min_length=1, max_length=80
     )
+    nacional_aprovisionamiento_login: str | None = None
+    nacional_aprovisionamiento_password: SecretStr | None = None
     nacional_catalogo_login: str | None = None
     nacional_catalogo_password: SecretStr | None = None
 
@@ -93,6 +95,8 @@ class Settings(BaseSettings):
         "smtp_username",
         "smtp_password",
         "nacional_sistema_origen",
+        "nacional_aprovisionamiento_login",
+        "nacional_aprovisionamiento_password",
         "nacional_catalogo_login",
         "nacional_catalogo_password",
         mode="before",

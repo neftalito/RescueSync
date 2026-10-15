@@ -11,11 +11,11 @@ from app.schemas.certificaciones import (
     CertificacionResponse,
 )
 from app.schemas.inventario import (
+    AprovisionamientoRequest,
+    AprovisionamientoResponse,
     CapacidadResponse,
     ConexionRequest,
     CuentaNacional,
-    OngNacionalCreate,
-    OngNacionalResponse,
     RecursoCreate,
     RecursoResponse,
     RecursoUpdate,
@@ -54,7 +54,10 @@ class ClienteNacional:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         # Sólo el límite HTTP obtiene la contraseña sin cifrar, nunca repr/logs.
         payload = datos.model_dump(mode="json", by_alias=True) if datos else None
-        if isinstance(datos, ConexionRequest) and payload is not None:
+        if (
+            isinstance(datos, (ConexionRequest, AprovisionamientoRequest))
+            and payload is not None
+        ):
             payload["password"] = datos.password.get_secret_value()
         try:
             response = self.http.request(method, path, headers=headers, json=payload)
@@ -62,8 +65,8 @@ class ClienteNacional:
             raise ErrorNacional(
                 504,
                 (
-                    "El registro nacional demoró en responder y podría haberse creado. Verificá con tus credenciales nacionales antes de repetirlo."
-                    if path == "ongs"
+                    "El alta nacional demoró en responder. Podés reintentar desde la misma organización."
+                    if path.startswith("integraciones/ongs/")
                     else "El Sistema Nacional demoró en responder. Actualizá el listado para comprobar el resultado antes de repetir la operación."
                 ),
             ) from error
@@ -76,17 +79,16 @@ class ClienteNacional:
                 401: "El acceso nacional no es válido o expiró.",
                 403: "La cuenta nacional no tiene permisos para esta operación.",
                 404: "La referencia solicitada no existe en el Sistema Nacional.",
-                409: (
-                    "El identificador nacional o institucional ya está registrado. Si ya tenés cuenta, usala y pedí al administrador la vinculación."
-                    if path == "ongs"
-                    else "Hay un conflicto: el código puede estar repetido, el recurso cambió o el total es menor que lo comprometido. Actualizá el listado."
-                ),
-                422: (
-                    "Revisá los datos institucionales y las credenciales del registro."
-                    if path == "ongs"
-                    else "Revisá los datos, cantidades y unidades del recurso."
-                ),
+                409: "Hay un conflicto: el código puede estar repetido, el recurso cambió o el total es menor que lo comprometido. Actualizá el listado.",
+                422: "Revisá los datos, cantidades y unidades del recurso.",
             }
+            if path.startswith("integraciones/ongs/"):
+                mensajes.update(
+                    {
+                        409: "El alta nacional entra en conflicto con un registro existente. Un administrador debe revisar la vinculación.",
+                        422: "Revisá el nombre y el correo de contacto de la ONG.",
+                    }
+                )
             if path == "capacidades":
                 mensajes.update(
                     {
@@ -137,9 +139,18 @@ class ClienteNacional:
     def cuenta(self, token: str) -> CuentaNacional:
         return self._request("GET", "me", TypeAdapter(CuentaNacional), token=token)
 
-    def registrar_ong(self, datos: OngNacionalCreate) -> OngNacionalResponse:
+    def aprovisionar_ong(
+        self,
+        token: str,
+        referencia: UUID,
+        datos: AprovisionamientoRequest,
+    ) -> AprovisionamientoResponse:
         return self._request(
-            "POST", "ongs", TypeAdapter(OngNacionalResponse), datos=datos
+            "PUT",
+            f"integraciones/ongs/{referencia}",
+            TypeAdapter(AprovisionamientoResponse),
+            token=token,
+            datos=datos,
         )
 
     def capacidades(self, token: str) -> list[CapacidadResponse]:

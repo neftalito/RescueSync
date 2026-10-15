@@ -36,7 +36,10 @@ export function createOrganization(
   return apiRequest("/organizaciones", managedOrganizationSchema, {
     method: "POST",
     headers: { "X-CSRF-Token": csrfToken },
-    body: JSON.stringify(values),
+    body: JSON.stringify({
+      ...values,
+      email_contacto: values.tipo === "ONG" ? values.email_contacto || null : undefined,
+    }),
   });
 }
 
@@ -78,5 +81,16 @@ export function reactivateOrganization(
       headers: { "X-CSRF-Token": csrfToken },
       body: JSON.stringify({ activa: true }),
     },
+  );
+}
+
+export function retryNationalProvisioning(
+  organizationId: number,
+  csrfToken: string,
+): Promise<Organization> {
+  return apiRequest(
+    `/organizaciones/${organizationId}/aprovisionamiento-nacional`,
+    managedOrganizationSchema,
+    { method: "POST", headers: { "X-CSRF-Token": csrfToken } },
   );
 }
