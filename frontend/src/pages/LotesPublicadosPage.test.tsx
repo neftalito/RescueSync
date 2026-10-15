@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -9,6 +9,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { LotesPublicadosPage } from "./LotesPublicadosPage";
+import { NuevaOfertaPage } from "./NuevaOfertaPage";
 
 const API_URL = "http://localhost:8000/api/v1";
 
@@ -46,6 +47,10 @@ function renderPage(ruta: string): void {
           <Route
             path="/emergencias/:emergenciaId/lotes"
             element={<LotesPublicadosPage />}
+          />
+          <Route
+            path="/ofertas/nueva"
+            element={<NuevaOfertaPage csrfToken="csrf-firmado" />}
           />
         </Routes>
       </MemoryRouter>
@@ -118,6 +123,77 @@ describe("LotesPublicadosPage", () => {
 
     expect(await screen.findByText("Agua potable")).toBeInTheDocument();
     expect(intentos).toBe(2);
+  });
+
+  it("permite crear una oferta desde el lote elegido con su convocatoria y lote precargados", async () => {
+    let cuerpo: unknown;
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () =>
+        HttpResponse.json([
+          lotePublicado,
+          { ...lotePublicado, id: 13, tipo_necesidad: "Alimentos" },
+        ]),
+      ),
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([
+        {
+          id: 8,
+          emergencia_id: 31,
+          numero: 1,
+          estado: "ABIERTA",
+          publicada_en: "2026-09-19T18:20:39.102766Z",
+          cierra_en: "2026-09-20T18:20:39.102766Z",
+          emergencia: {
+            zona: "Ribera norte",
+            gravedad: "ALTA",
+            descripcion: "Inundación",
+          },
+          lotes: [
+            { lote_id: 12, tipo_necesidad: "Agua potable", descripcion: null, cantidad_publicada: "1000.000", unidad_publicada: "litros" },
+            { lote_id: 13, tipo_necesidad: "Alimentos", descripcion: null, cantidad_publicada: "1000.000", unidad_publicada: "raciones" },
+          ],
+        },
+      ])),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([])),
+      http.post(`${API_URL}/ofertas`, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json({
+          id: 92,
+          convocatoria_id: 8,
+          emergencia_id: 31,
+          ong_creadora_id: 5,
+          creada_por_usuario_id: 7,
+          estado: "PRESENTADA",
+          version_actual: 1,
+          version_bloqueo: 1,
+          editable: true,
+          observaciones: null,
+          presentada_en: "2026-09-19T18:20:39.102766Z",
+          creada_en: "2026-09-19T18:20:39.102766Z",
+          items: [{ id: 111, lote_id: 13, tipo: "RECURSO", descripcion: "Alimentos", cantidad_ofrecida: "250", unidad: "raciones" }],
+        }, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage("/emergencias/31/lotes");
+
+    const enlace = await screen.findByRole("link", { name: "Crear oferta para Alimentos" });
+    expect(enlace).toHaveAttribute("href", "/ofertas/nueva?loteId=13");
+    await user.click(enlace);
+
+    expect(await screen.findByLabelText("Convocatoria")).toHaveValue("8");
+    expect(screen.getByRole("group", { name: "Alimentos" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Agua potable" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Cantidad ofrecida")).toHaveValue("");
+
+    await user.type(screen.getByLabelText("Cantidad ofrecida"), "250");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+
+    await waitFor(() => expect(cuerpo).toEqual({
+      convocatoria_id: 8,
+      observaciones: null,
+      items: [{ lote_id: 13, tipo: "RECURSO", descripcion: "Alimentos", cantidad_ofrecida: "250", unidad: "raciones" }],
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Oferta 92 presentada correctamente.");
   });
 
   it("rechaza un identificador de emergencia inválido sin consultar la API", () => {

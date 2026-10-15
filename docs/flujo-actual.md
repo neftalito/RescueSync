@@ -254,6 +254,11 @@ elegir una convocatoria, agregar uno o más lotes mediante `useFieldArray`,
 declarar recursos, personal o aportes mixtos y enviar cantidades parciales o
 totales dentro del máximo publicado. Las convocatorias ya ofertadas no aparecen
 como una nueva opción; “Mis ofertas” permite modificar la propuesta vigente.
+Desde “Lotes publicados”, cada lote ofrece el botón “Crear oferta”, que abre
+el formulario con su convocatoria seleccionada y ese lote agregado. Si la ONG
+ya presentó una oferta para esa convocatoria, se ofrece modificar la existente;
+si el lote dejó de estar disponible en una convocatoria abierta, se informa y
+se permite volver a convocatorias.
 Zod valida el formulario y TanStack Query actualiza las consultas luego del alta
 o la edición.
 

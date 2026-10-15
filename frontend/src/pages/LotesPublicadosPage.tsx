@@ -34,6 +34,13 @@ function TarjetaLote({ lote }: { lote: LotePublicadoPublico }): ReactElement {
           {lote.descripcion}
         </p>
       )}
+      <Link
+        to={`/ofertas/nueva?loteId=${lote.id}`}
+        aria-label={`Crear oferta para ${lote.tipo_necesidad}`}
+        className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+      >
+        Crear oferta
+      </Link>
     </article>
   );
 }

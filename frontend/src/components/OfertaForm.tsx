@@ -28,6 +28,7 @@ import {
 interface OfertaFormProps {
   csrfToken: string;
   ofertaId?: number;
+  loteInicialId?: number;
 }
 
 const inputClasses =
@@ -46,7 +47,11 @@ function nuevoItem(lote: LotePublicado): OfertaFormData["items"][number] {
   };
 }
 
-export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactElement {
+export function OfertaForm({
+  csrfToken,
+  ofertaId,
+  loteInicialId,
+}: OfertaFormProps): ReactElement {
   const session = useQueryClient().getQueryData<Session>(sessionQueryKey);
   const convocatoriasQuery = useConvocatoriasAbiertas();
   const ofertasQuery = useMisOfertas();
@@ -54,6 +59,7 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
   const actualizarMutation = useActualizarOferta();
   const [loteParaAgregar, setLoteParaAgregar] = useState("");
   const edicionInicializada = useRef(false);
+  const loteInicializado = useRef(false);
   const {
     control,
     register,
@@ -73,6 +79,12 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
   const editando = ofertaId !== undefined;
   const oferta = ofertasQuery.data?.find((item) => item.id === ofertaId);
   const convocatoriasAbiertas = convocatoriasQuery.data ?? [];
+  const convocatoriaInicial = convocatoriasAbiertas.find((item) =>
+    item.lotes.some((lote) => lote.lote_id === loteInicialId),
+  );
+  const ofertaInicial = ofertasQuery.data?.find(
+    (item) => item.convocatoria_id === convocatoriaInicial?.id,
+  );
   const convocatoriasConOferta = new Set(
     (ofertasQuery.data ?? []).map((item) => item.convocatoria_id),
   );
@@ -149,6 +161,37 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
     });
     edicionInicializada.current = true;
   }, [convocatoria, editando, oferta, reset]);
+
+  useEffect(() => {
+    if (
+      editando ||
+      loteInicializado.current ||
+      !convocatoriasQuery.isSuccess ||
+      !ofertasQuery.isSuccess ||
+      convocatoriaInicial === undefined ||
+      ofertaInicial !== undefined
+    ) {
+      return;
+    }
+    const lote = convocatoriaInicial.lotes.find(
+      (item) => item.lote_id === loteInicialId,
+    );
+    if (lote === undefined) return;
+    reset({
+      convocatoria_id: convocatoriaInicial.id,
+      observaciones: "",
+      items: [nuevoItem(lote)],
+    });
+    loteInicializado.current = true;
+  }, [
+    convocatoriaInicial,
+    convocatoriasQuery.isSuccess,
+    editando,
+    loteInicialId,
+    ofertaInicial,
+    ofertasQuery.isSuccess,
+    reset,
+  ]);
 
   const cambiarConvocatoria = (convocatoriaNuevaId: number): void => {
     reset({
@@ -270,6 +313,40 @@ export function OfertaForm({ csrfToken, ofertaId }: OfertaFormProps): ReactEleme
         </Link>
       </article>
     );
+  }
+
+  if (!editando && loteInicialId !== undefined) {
+    if (convocatoriaInicial === undefined) {
+      return (
+        <article className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <p role="status" className="text-sm leading-6 text-slate-600">
+            El lote seleccionado ya no está disponible en una convocatoria abierta.
+          </p>
+          <Link
+            to="/convocatorias"
+            className="mt-5 inline-flex rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Volver a convocatorias
+          </Link>
+        </article>
+      );
+    }
+    if (ofertaInicial !== undefined) {
+      return (
+        <article className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <p role="status" className="text-sm leading-6 text-slate-600">
+            Tu ONG ya presentó una oferta para esta convocatoria. Podés modificarla
+            para incluir este lote.
+          </p>
+          <Link
+            to={`/ofertas/${ofertaInicial.id}/editar`}
+            className="mt-5 inline-flex rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+          >
+            Modificar oferta existente
+          </Link>
+        </article>
+      );
+    }
   }
 
   if (convocatorias.length === 0) {
