@@ -58,10 +58,11 @@ Para crear un escenario completo:
 docker compose run --rm backend python -m app.scripts.seed
 ```
 
-El seed es idempotente y no duplica registros. Crea cuatro organizaciones y
-cuentas para cada rol, con dos representantes de ONG. Incluye una emergencia
-registrada, otra publicada, lotes, una
-convocatoria abierta y una oferta parcial.
+El seed es idempotente y no duplica registros. Crea seis organizaciones y
+cuentas para cada rol, con dos representantes de ONG. Conserva una emergencia
+registrada, otra publicada y su oferta parcial; agrega una
+[demo del dashboard](./dashboard-auditor.md#demo-ampliada) con 19 emergencias en
+total, tres municipios, varios meses, consorcios y versiones históricas.
 
 | Rol | Correo | Contraseña de desarrollo |
 | --- | --- | --- |
@@ -96,9 +97,10 @@ recargan el usuario y aplican la matriz RBAC antes de responder.
 | Presentar una oferta | Representante de ONG |
 | Gestionar inventario nacional (Entrega 3) | Representante de ONG |
 | Gestionar usuarios y organizaciones | Administrador |
+| Consultar y exportar métricas globales | Auditor / Directivo |
 
-Los cinco roles pueden consultar, cambiar su contraseña y cerrar su sesión. Auditor/Directivo queda
-autenticado y modelado, pero no recibe operaciones funcionales en esta entrega.
+Los cinco roles pueden consultar, cambiar su contraseña y cerrar su sesión.
+Auditor/Directivo dispone del [dashboard de indicadores](./dashboard-auditor.md).
 El frontend puede filtrar la navegación, pero cada endpoint debe volver a
 autorizar mediante `requerir_operacion`.
 

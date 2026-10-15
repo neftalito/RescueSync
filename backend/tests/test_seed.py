@@ -92,6 +92,38 @@ def test_seed_es_idempotente_y_crea_un_usuario_vigente_por_rol(
     assert roles == {cuenta.rol for cuenta in primer_resultado.cuentas}
 
 
+def test_seed_dashboard_cubre_estados_gravedades_historia_y_ofertas_sin_duplicar(
+    db_session: Session,
+) -> None:
+    from datetime import date
+
+    from app.db.models import EstadoEmergencia, GravedadEmergencia, OfertaVersion
+    from app.schemas.metricas import FiltrosMetricas
+    from app.services.metricas import obtener_metricas
+
+    resultado = seed_development_data(db_session)
+    ids_originales = set(db_session.scalars(select(Emergencia.id)).all())
+    seed_development_data(db_session)
+    assert set(db_session.scalars(select(Emergencia.id)).all()) == ids_originales
+    assert resultado.emergencias == 19
+    assert set(db_session.scalars(select(Emergencia.estado)).all()) == set(
+        EstadoEmergencia
+    )
+    assert set(db_session.scalars(select(Emergencia.gravedad)).all()) == set(
+        GravedadEmergencia
+    )
+    reporte = obtener_metricas(
+        db_session, FiltrosMetricas(fecha_desde=date(2020, 1, 1))
+    )
+    assert len([m for m in reporte.evolucion_mensual if m.cantidad]) >= 6
+    assert len(reporte.cantidades_ofrecidas) >= 16
+    assert all(c.cantidad > 0 for c in reporte.tipos_oferta)
+    assert (
+        db_session.scalar(select(func.count()).select_from(OfertaVersion))
+        > resultado.ofertas
+    )
+
+
 def test_seed_migra_los_correos_demo_del_formato_anterior(
     db_session: Session,
 ) -> None:

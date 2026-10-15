@@ -31,7 +31,7 @@ Todas las rutas indicadas a continuación llevan el prefijo `/api/v1`.
 | `OPERADOR_MUNICIPAL` | Registra emergencias, consulta las de su municipio y reintenta su vinculación con Bonita. |
 | `COORDINADOR_REGIONAL` | Ve emergencias registradas disponibles o asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
 | `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, registra una oferta parcial por convocatoria, la modifica durante la ventana y consulta las ofertas de su ONG. |
-| `AUDITOR_DIRECTIVO` | Tiene sesión local, pero todavía no posee operaciones funcionales de la Entrega 2. |
+| `AUDITOR_DIRECTIVO` | Consulta el dashboard global con indicadores locales, tiempos de Bonita y exportación CSV/JSON. |
 | `ADMINISTRADOR` | Gestiona usuarios, roles, organizaciones y contraseñas; no interviene en el recorrido operativo de una emergencia. |
 | Bonita | Usa un token técnico y el `caseId` raíz para ejecutar callbacks internos; no usa una sesión de usuario. |
 

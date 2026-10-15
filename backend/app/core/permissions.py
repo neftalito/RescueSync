@@ -15,6 +15,7 @@ class OperacionProtegida(StrEnum):
     GESTIONAR_CATALOGO_NACIONAL = "GESTIONAR_CATALOGO_NACIONAL"
     REGISTRAR_EMERGENCIA = "REGISTRAR_EMERGENCIA"
     CONSULTAR_EMERGENCIAS = "CONSULTAR_EMERGENCIAS"
+    CONSULTAR_METRICAS = "CONSULTAR_METRICAS"
     GESTIONAR_LOTES = "GESTIONAR_LOTES"
     CONSULTAR_LOTES_PUBLICADOS = "CONSULTAR_LOTES_PUBLICADOS"
     PUBLICAR_CONVOCATORIA = "PUBLICAR_CONVOCATORIA"
@@ -45,6 +46,9 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
             ),
             OperacionProtegida.CONSULTAR_EMERGENCIAS: frozenset(
                 {RolUsuario.OPERADOR_MUNICIPAL, RolUsuario.COORDINADOR_REGIONAL}
+            ),
+            OperacionProtegida.CONSULTAR_METRICAS: frozenset(
+                {RolUsuario.AUDITOR_DIRECTIVO}
             ),
             OperacionProtegida.GESTIONAR_LOTES: frozenset(
                 {RolUsuario.COORDINADOR_REGIONAL}

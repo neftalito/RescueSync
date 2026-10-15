@@ -18,7 +18,9 @@ from app.integrations.bonita.contratos import (
     ContratoInicioProceso,
     DefinicionProceso,
     InstanciaIniciada,
+    TareaBonitaFallida,
     TareaHumana,
+    TransicionTareaArchivada,
     UsuarioBonita,
 )
 
@@ -291,6 +293,65 @@ class ClienteBonita:
                 f"caso {case_id}."
             )
         return len(tareas) > 0
+
+    def listar_tareas_fallidas(self) -> list[TareaBonitaFallida]:
+        """Pagina nodos fallidos; el servicio restringe los casos a emergencias locales."""
+        resultado: list[TareaBonitaFallida] = []
+        for pagina in range(100):
+            respuesta = self._enviar(
+                "GET",
+                "/API/bpm/flowNode",
+                params=[
+                    ("p", pagina),
+                    ("c", 100),
+                    ("f", "state=failed"),
+                    ("o", "name ASC"),
+                ],
+                estados_esperados=(httpx.codes.OK,),
+            )
+            filas = _validar_lista(respuesta, TareaBonitaFallida, "tareas fallidas")
+            resultado.extend(filas)
+            if len(filas) < 100:
+                return resultado
+        raise BonitaRespuestaInvalidaError(
+            "Las tareas fallidas superan el límite de paginación segura."
+        )
+
+    def obtener_historial_tareas(self, case_id: int) -> list[TransicionTareaArchivada]:
+        """Lee todas las transiciones archivadas de un caso, con paginación.
+
+        En Bonita 10.4 `archivedActivity` y `archivedTask` solo devuelven la
+        última versión; `archivedFlowNode` conserva también los estados
+        intermedios. El ID fuente distingue cada ejecución de una tarea.
+        """
+        transiciones: list[TransicionTareaArchivada] = []
+        for pagina in range(100):
+            respuesta = self._enviar(
+                "GET",
+                "/API/bpm/archivedFlowNode",
+                params=[
+                    ("p", pagina),
+                    ("c", 100),
+                    ("f", f"caseId={case_id}"),
+                    ("o", "archivedDate ASC"),
+                ],
+                estados_esperados=(httpx.codes.OK,),
+            )
+            filas = _validar_lista(
+                respuesta, TransicionTareaArchivada, "historial de tareas"
+            )
+            if any(fila.root_case_id != case_id for fila in filas):
+                raise BonitaRespuestaInvalidaError(
+                    "Bonita devolvió historial de otro caso."
+                )
+            transiciones.extend(filas)
+            if len(filas) < 100:
+                break
+        else:
+            raise BonitaRespuestaInvalidaError(
+                "El historial supera el límite de paginación segura."
+            )
+        return transiciones
 
     def ejecutar_tarea(self, tarea_id: int, usuario_actor: str) -> None:
         """Asigna una tarea a un miembro de su actor y la completa sin entradas.

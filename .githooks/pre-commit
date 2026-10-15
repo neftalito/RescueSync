@@ -23,7 +23,7 @@ branch_type=${current_branch%%/*}
 branch_description=${current_branch#*/}
 
 case "$branch_type" in
-  feature | fix | hotfix | refactor | test | docs | ci | chore | release)
+  feat | feature | fix | hotfix | refactor | test | docs | ci | chore | release)
     ;;
   *)
     echo "Tipo de rama no permitido en '$current_branch'." >&2

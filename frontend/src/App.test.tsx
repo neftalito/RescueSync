@@ -57,6 +57,8 @@ function sessionForRole(role: Role, requiresPasswordChange = false): Session {
 
 const session = sessionForRole("OPERADOR_MUNICIPAL");
 const server = setupServer(
+  http.get(`${API_URL}/metricas`, () => HttpResponse.json({ detail: "Sin datos de prueba" }, { status: 503 })),
+  http.get(`${API_URL}/metricas/tiempos`, () => HttpResponse.json({ detail: "Sin datos de prueba" }, { status: 503 })),
   http.get(`${API_URL}/emergencias`, () => HttpResponse.json([], { status: 200 })),
 );
 
@@ -797,7 +799,7 @@ describe("emergencias del municipio", () => {
       renderApp(path);
 
       expect(
-        await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+        await screen.findByRole("heading", { name: role === "AUDITOR_DIRECTIVO" ? "Dashboard de auditoría" : "Bienvenido a RescueSync" }),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Zona afectada")).not.toBeInTheDocument();
       expect(
@@ -837,7 +839,7 @@ describe("navegación por rol", () => {
         http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
       );
       renderApp(path);
-      expect(await screen.findByRole("heading", { name: "Bienvenido a RescueSync" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: /Bienvenido a RescueSync|Dashboard de auditoría/ })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: heading, level: 1 })).not.toBeInTheDocument();
     });
   });
@@ -850,7 +852,7 @@ describe("navegación por rol", () => {
         http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
       );
       renderApp("/catalogo-nacional");
-      expect(await screen.findByRole("heading", { name: "Bienvenido a RescueSync" })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: /Bienvenido a RescueSync|Dashboard de auditoría/ })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Crear capacidad" })).not.toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Gestionar capacidades" })).not.toBeInTheDocument();
     },
@@ -898,12 +900,12 @@ describe("navegación por rol", () => {
     renderApp("/");
 
     expect(
-      await screen.findByRole("heading", { name: "Bienvenido a RescueSync" }),
+      await screen.findByRole("heading", { name: /Bienvenido a RescueSync|Dashboard de auditoría/ }),
     ).toBeInTheDocument();
 
     if (testCase.visible === null) {
       expect(
-        screen.getByRole("heading", { name: "Perfil preparado para auditoría" }),
+        await screen.findByRole("heading", { name: "Panel de indicadores" }),
       ).toBeInTheDocument();
     } else {
       expect(

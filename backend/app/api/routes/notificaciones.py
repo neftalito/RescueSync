@@ -20,7 +20,7 @@ from app.api.dependencies import (
 )
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Usuario
+from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas.notificacion import NotificacionesLeidasResponse, NotificacionResponse
@@ -151,7 +151,9 @@ async def novedades_en_tiempo_real(
     if not isinstance(gestor, GestorTiempoReal):
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         return
-    await gestor.conectar(usuario.id, websocket)
+    await gestor.conectar(
+        usuario.id, websocket, auditor=usuario.rol == RolUsuario.AUDITOR_DIRECTIVO
+    )
     try:
         while True:
             await websocket.receive_text()

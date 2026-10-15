@@ -6,6 +6,8 @@ referencia.
 
 ## Desarrollo
 
+- [Dashboard del auditor/directivo](./dashboard-auditor.md): métricas globales,
+  fórmulas, gráficos, tiempos de Bonita, permisos y exportación CSV/JSON.
 - [Ofertas consolidadas nacionales](./ofertas-consolidadas-nacionales.md): T34,
   referencias publicadas, aportes por participante, consorcios y contrato Bonita.
 - [Autenticación local](./autenticacion-local.md): administrador inicial,

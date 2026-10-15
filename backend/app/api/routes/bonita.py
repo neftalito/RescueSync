@@ -105,6 +105,7 @@ def notificar_apertura(
     case_id: CasoBonitaId,
     datos: NotificacionAperturaRequest,
     session: Annotated[Session, Depends(get_db)],
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> ConvocatoriaBonitaResponse:
     _verificar_emergencia_del_cuerpo(emergencia_id, datos.id_emergencia)
     convocatoria = _ejecutar(
@@ -116,6 +117,7 @@ def notificar_apertura(
             cierra_en=datos.fecha_cierre_ofertas,
         )
     )
+    gestor_tiempo_real.programar_metricas()
     return _respuesta_convocatoria(convocatoria)
 
 

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -52,6 +53,39 @@ def notificar_emergencia_registrada(
         titulo="Nueva emergencia pendiente",
         mensaje=f"Se registró una emergencia en {zona} que requiere lotes.",
         ruta=f"/emergencias/{emergencia_id}/lotes",
+    )
+
+
+def notificar_tarea_bonita_fallida(
+    session: Session, *, tarea_id: int, emergencia_id: int, nombre: str
+) -> list[Notificacion]:
+    """Persiste una alerta por auditor y tarea sin duplicarla entre sondeos o workers."""
+    auditores = session.scalars(
+        select(Usuario.id).where(
+            Usuario.rol == RolUsuario.AUDITOR_DIRECTIVO, Usuario.activo.is_(True)
+        )
+    ).all()
+    if not auditores:
+        return []
+    return list(
+        session.scalars(
+            insert(Notificacion)
+            .values(
+                [
+                    {
+                        "usuario_id": usuario_id,
+                        "clave_evento": f"bonita:tarea:{tarea_id}:fallida",
+                        "tipo": TipoNotificacion.TAREA_BONITA_FALLIDA,
+                        "titulo": "Tarea de Bonita con errores",
+                        "mensaje": f"La tarea {nombre[:160] or 'sin nombre'} de la emergencia #{emergencia_id} está fallida y requiere revisión.",
+                        "ruta": "/",
+                    }
+                    for usuario_id in auditores
+                ]
+            )
+            .on_conflict_do_nothing(constraint="uq_notificacion_usuario_evento")
+            .returning(Notificacion)
+        ).all()
     )
 
 

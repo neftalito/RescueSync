@@ -239,6 +239,33 @@ def test_websocket_entrega_solo_al_usuario_autenticado(
     assert mensaje["notificacion"]["usuario_id"] == usuario.id
 
 
+def test_websocket_actualiza_metricas_solo_en_conexiones_auditoras(
+    client: TestClient, db_session: Session, usuarios: dict[str, Usuario]
+) -> None:
+    auditor = Usuario(
+        email="auditor-socket@prueba.org",
+        rol=RolUsuario.AUDITOR_DIRECTIVO,
+        password_hash=usuarios["ong"].password_hash,
+    )
+    db_session.add(auditor)
+    db_session.flush()
+    client.cookies.set("rescuesync_session", crear_valor_sesion(auditor.id))
+    with client.websocket_connect(
+        "/api/v1/notificaciones/ws", headers={"origin": ORIGEN_FRONTEND}
+    ) as socket_auditor:
+        usuario = usuarios["ong"]
+        client.cookies.set("rescuesync_session", crear_valor_sesion(usuario.id))
+        with client.websocket_connect(
+            "/api/v1/notificaciones/ws", headers={"origin": ORIGEN_FRONTEND}
+        ) as socket_ong:
+            gestor = app.state.gestor_tiempo_real
+            notificacion = _crear_notificacion(db_session, usuario, "socket:control")
+            gestor.programar_metricas()
+            gestor.programar([NotificacionResponse.model_validate(notificacion)])
+            assert socket_auditor.receive_json() == {"evento": "metricas.actualizadas"}
+            assert socket_ong.receive_json()["evento"] == "notificacion.creada"
+
+
 def test_websocket_rechaza_origen_no_permitido(
     client: TestClient,
     usuarios: dict[str, Usuario],

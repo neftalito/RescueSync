@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -13,6 +14,7 @@ from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.integrations.email.cliente import ClienteSMTP, ConfiguracionSMTP
 from app.integrations.nacional.cliente import ClienteNacional
 from app.services.bootstrap import asegurar_admin_inicial
+from app.services.monitor_bonita import monitorizar_bonita
 from app.services.tiempo_real import GestorTiempoReal
 
 settings = get_settings()
@@ -37,7 +39,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
             app.state.cliente_bonita = cliente
-            yield
+            detener_monitor = asyncio.Event()
+            monitor = (
+                asyncio.create_task(
+                    monitorizar_bonita(
+                        cliente,
+                        gestor_tiempo_real,
+                        detener_monitor,
+                        settings.bonita_monitor_interval_seconds,
+                    )
+                )
+                if settings.app_env.casefold() != "test"
+                and settings.bonita_monitor_enabled
+                else None
+            )
+            try:
+                yield
+            finally:
+                detener_monitor.set()
+                if monitor is not None:
+                    await monitor
     finally:
         cliente_nacional.close()
         await gestor_tiempo_real.detener()

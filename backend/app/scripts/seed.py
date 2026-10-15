@@ -336,8 +336,10 @@ def _acceso_nacional_demo(session: Session, ong: Organizacion, referencia: str) 
     session.flush()
 
 
-def seed_development_data(session: Session) -> SeedResult:
-    """Crea o actualiza un escenario reproducible de la Entrega 2 sin duplicarlo."""
+def seed_development_data(
+    session: Session, *, incluir_dashboard: bool = True
+) -> SeedResult:
+    """Carga escenarios operativos y de auditoría reproducibles sin duplicarlos."""
 
     settings = get_settings()
     if settings.app_env.casefold() not in {"development", "test"}:
@@ -391,7 +393,7 @@ def seed_development_data(session: Session) -> SeedResult:
         RolUsuario.REPRESENTANTE_ONG,
         ong,
     )
-    _usuario(
+    representante_red = _usuario(
         session,
         "redmedica@rescuesync.org",
         "redmedica@demo.rescuesync.org",
@@ -470,6 +472,38 @@ def seed_development_data(session: Session) -> SeedResult:
         ahora,
     )
 
+    extras: list[CuentaSeed] = []
+    demo_emergencias = demo_lotes = demo_ofertas = 0
+    if incluir_dashboard:
+        from app.scripts.seed_auditoria import ampliar_demo_auditoria
+
+        municipios_demo = [(municipio, operador)]
+        for sufijo, nombre in [
+            ("rio", "Municipalidad de Villa del Río"),
+            ("sierra", "Municipalidad de Sierra Clara"),
+        ]:
+            organizacion_demo = _organizacion(
+                session, TipoOrganizacion.MUNICIPIO, nombre
+            )
+            email_demo = f"municipio-{sufijo}@rescuesync.org"
+            operador_demo = _usuario(
+                session,
+                email_demo,
+                email_demo,
+                RolUsuario.OPERADOR_MUNICIPAL,
+                organizacion_demo,
+            )
+            municipios_demo.append((organizacion_demo, operador_demo))
+            extras.append(CuentaSeed(email_demo, RolUsuario.OPERADOR_MUNICIPAL, nombre))
+        demo_emergencias, demo_lotes, demo_ofertas = ampliar_demo_auditoria(
+            session,
+            municipios_demo,
+            centro,
+            coordinador,
+            [(ong, representante), (red_medica, representante_red)],
+            ahora,
+        )
+
     return SeedResult(
         cuentas=(
             CuentaSeed(
@@ -502,10 +536,11 @@ def seed_development_data(session: Session) -> SeedResult:
                 RolUsuario.ADMINISTRADOR,
                 None,
             ),
-        ),
-        emergencias=2,
-        lotes_publicados=3,
-        ofertas=1,
+        )
+        + tuple(extras),
+        emergencias=2 + demo_emergencias,
+        lotes_publicados=3 + demo_lotes,
+        ofertas=1 + demo_ofertas,
     )
 
 
@@ -540,7 +575,7 @@ def main() -> int:
     print(
         f"Datos: {resultado.emergencias} emergencias, "
         f"{resultado.lotes_publicados} lotes publicados y "
-        f"{resultado.ofertas} oferta."
+        f"{resultado.ofertas} ofertas."
     )
     return 0
 

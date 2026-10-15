@@ -43,6 +43,34 @@ afterEach(() => {
 });
 
 describe("useNotificacionesTiempoReal", () => {
+  it("refresca las métricas al reconectar y al recibir un cambio sin tocar los filtros", async () => {
+    vi.stubGlobal("WebSocket", WebSocketFalso);
+    const queryClient = new QueryClient();
+    const key = [
+      "metricas",
+      "locales",
+      { fecha_desde: "2026-09-01", estado: "PUBLICADA" },
+    ];
+    queryClient.setQueryData(key, { emergencias: 2 });
+    const invalidar = vi.spyOn(queryClient, "invalidateQueries");
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Probe />
+      </QueryClientProvider>,
+    );
+    const socket = WebSocketFalso.ultimo;
+    if (!socket) throw new Error("No se creó el socket.");
+    act(() => {
+      socket.onopen?.(new Event("open"));
+      socket.emitir({ evento: "metricas.actualizadas" });
+    });
+    await waitFor(() =>
+      expect(invalidar).toHaveBeenCalledWith({ queryKey: ["metricas"] }),
+    );
+    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryData(key)).toEqual({ emergencias: 2 });
+    expect(queryClient.getQueryData(notificacionesQueryKey)).toBeUndefined();
+  });
   it("incorpora la novedad e invalida la bandeja correspondiente", async () => {
     vi.stubGlobal("WebSocket", WebSocketFalso);
     const queryClient = new QueryClient({
@@ -55,7 +83,8 @@ describe("useNotificacionesTiempoReal", () => {
       </QueryClientProvider>,
     );
     const socket = WebSocketFalso.ultimo;
-    if (socket === null) throw new Error("No se creó el WebSocket de novedades.");
+    if (socket === null)
+      throw new Error("No se creó el WebSocket de novedades.");
 
     act(() => {
       socket.emitir({
@@ -79,8 +108,6 @@ describe("useNotificacionesTiempoReal", () => {
       ]);
       expect(invalidar).toHaveBeenCalledWith({ queryKey: emergenciasQueryKey });
     });
-    expect(socket.url).toBe(
-      "ws://localhost:8000/api/v1/notificaciones/ws",
-    );
+    expect(socket.url).toBe("ws://localhost:8000/api/v1/notificaciones/ws");
   });
 });

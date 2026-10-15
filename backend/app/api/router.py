@@ -9,6 +9,7 @@ from app.api.routes import (
     health,
     inventario,
     lotes,
+    metricas,
     notificaciones,
     ofertas,
     organizaciones,
@@ -16,6 +17,7 @@ from app.api.routes import (
 )
 
 api_router = APIRouter()
+api_router.include_router(metricas.router, prefix="/metricas", tags=["métricas"])
 api_router.include_router(
     catalogo.router, prefix="/catalogo-nacional", tags=["catálogo nacional"]
 )

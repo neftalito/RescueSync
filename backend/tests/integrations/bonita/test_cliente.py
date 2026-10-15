@@ -73,6 +73,54 @@ def _contrato(**cambios: object) -> ContratoInicioProceso:
     return ContratoInicioProceso.model_validate(datos)
 
 
+def _transicion(identidad: int, *, root: int = 42) -> dict[str, str]:
+    return {
+        "type": "USER_TASK",
+        "sourceObjectId": str(identidad),
+        "rootCaseId": str(root),
+        "name": "Generar lotes",
+        "state": "ready",
+        "reached_state_date": "2026-10-15 09:00:00",
+    }
+
+
+def test_historial_pagina_estados_intermedios_y_terminales(
+    cliente: ClienteBonita,
+) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        intermedios = router.get(f"{BASE_URL}/API/bpm/archivedFlowNode").mock(
+            side_effect=[
+                httpx.Response(200, json=[_transicion(i + 1) for i in range(100)]),
+                httpx.Response(
+                    200,
+                    json=[
+                        {
+                            **_transicion(1),
+                            "state": "completed",
+                            "reached_state_date": "2026-10-15 10:00:00",
+                        }
+                    ],
+                ),
+            ]
+        )
+        historial = cliente.obtener_historial_tareas(42)
+    assert len(historial) == 101
+    assert intermedios.calls[1].request.url.params["p"] == "1"
+    assert intermedios.calls[0].request.url.params["f"] == "caseId=42"
+    assert historial[-1].state == "completed"
+
+
+def test_historial_rechaza_transiciones_de_otro_caso(cliente: ClienteBonita) -> None:
+    with respx.mock(assert_all_called=True) as router:
+        _login(router)
+        router.get(f"{BASE_URL}/API/bpm/archivedFlowNode").mock(
+            return_value=httpx.Response(200, json=[_transicion(1, root=99)])
+        )
+        with pytest.raises(BonitaRespuestaInvalidaError, match="otro caso"):
+            cliente.obtener_historial_tareas(42)
+
+
 def test_resuelve_el_proceso_habilitado_con_token_csrf(cliente: ClienteBonita) -> None:
     with respx.mock(assert_all_called=True) as router:
         login = _login(router)

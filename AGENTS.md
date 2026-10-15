@@ -24,7 +24,7 @@ que sean necesarios para mantener un contrato claro.
 - Una rama debe corresponder a una sola tarea. No mezclar correcciones o
   refactors ajenos aunque resulten convenientes durante la implementación.
 - Usar el formato `<tipo>/<descripcion>` o `<tipo>/<ticket>-<descripcion>`, con
-  uno de estos tipos: `feature`, `fix`, `hotfix`, `refactor`, `test`, `docs`,
+  uno de estos tipos: `feat`, `feature`, `fix`, `hotfix`, `refactor`, `test`, `docs`,
   `ci`, `chore` o `release`.
 - La descripción usa minúsculas ASCII, números y guiones medios; no usa espacios,
   guiones bajos, acentos, barras adicionales ni guiones al principio o al final.

@@ -5,7 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import ClienteNacionalDep, requerir_operacion
+from app.api.dependencies import (
+    ClienteNacionalDep,
+    GestorTiempoRealDep,
+    requerir_operacion,
+)
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
@@ -89,6 +93,7 @@ def guardar_lotes(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioGestionaLotes,
     cliente_nacional: ClienteNacionalDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> list[LoteResponse]:
     """Valida con Pydantic, guarda en una transacción y devuelve los lotes."""
 
@@ -105,6 +110,7 @@ def guardar_lotes(
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
+    gestor_tiempo_real.programar_metricas()
     return [LoteResponse.model_validate(lote) for lote in lotes]
 
 

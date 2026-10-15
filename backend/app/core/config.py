@@ -1,6 +1,7 @@
 from functools import lru_cache
 from secrets import token_urlsafe
 from typing import Literal, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     AnyHttpUrl,
@@ -53,6 +54,9 @@ class Settings(BaseSettings):
     bonita_password: SecretStr = SecretStr("install")
     bonita_process_name: str = "RescueSync"
     bonita_process_version: str = "1.2"
+    bonita_timezone: str = "UTC"
+    bonita_monitor_enabled: bool = True
+    bonita_monitor_interval_seconds: float = Field(default=30, ge=5, le=3600)
     bonita_callback_token: SecretStr | None = None
     bonita_client_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     bonita_client_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
@@ -122,6 +126,18 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "NACIONAL_ENCRYPTION_KEY debe ser una clave Fernet válida"
                 ) from error
+        return valor
+
+    @field_validator("bonita_timezone")
+    @classmethod
+    def validar_bonita_timezone(cls, valor: str) -> str:
+        """Valida la zona usada por Bonita para serializar fechas sin offset."""
+        try:
+            ZoneInfo(valor)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError(
+                "BONITA_TIMEZONE debe ser una zona IANA válida."
+            ) from error
         return valor
 
     @field_validator("bonita_callback_token")

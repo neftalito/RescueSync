@@ -12,6 +12,9 @@ htmlcov/
 # Frontend
 node_modules/
 dist/
+test-results/
+playwright-report/
+.cache/
 
 # Documentación generada
 docs/generated/

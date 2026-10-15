@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type ReactElement } from "react";
+import { lazy, Suspense, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router";
 
 import { logout } from "../api/auth";
@@ -7,6 +7,12 @@ import { ApiError } from "../api/client";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { NotificationCenter } from "../components/NotificationCenter";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
+
+const DashboardAuditor = lazy(() =>
+  import("../components/DashboardAuditor").then((modulo) => ({
+    default: modulo.DashboardAuditor,
+  })),
+);
 
 const responsabilidadesPorRol: Record<Role, string> = {
   OPERADOR_MUNICIPAL:
@@ -48,6 +54,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
   const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
   const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
   const esOng = session.usuario.rol === "REPRESENTANTE_ONG";
+  const esAuditor = session.usuario.rol === "AUDITOR_DIRECTIVO";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -107,198 +114,217 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
           </p>
         )}
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
-          <div>
-            <span className="rounded-full bg-cyan-100 px-3 py-1 text-sm font-semibold text-cyan-900">
-              Sesión activa
-            </span>
-            <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-950 sm:text-5xl">
-              Bienvenido a RescueSync
+        {esAuditor ? (
+          <>
+            <p className="text-sm font-semibold text-cyan-800">
+              Auditor / Directivo · Consulta global
+            </p>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+              Dashboard de auditoría
             </h1>
-            <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
-              Tu rol es {roleLabels[session.usuario.rol]}.{" "}
-              {responsabilidadesPorRol[session.usuario.rol]}
-            </p>
-          </div>
-
-          <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">
-              Tu perfil
-            </p>
-            <dl className="mt-4 space-y-4 text-sm">
+            <div className="mt-8">
+              <Suspense fallback={<p role="status">Cargando dashboard…</p>}>
+                <DashboardAuditor />
+              </Suspense>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
               <div>
-                <dt className="text-slate-500">Rol</dt>
-                <dd className="mt-1 font-semibold text-slate-950">
-                  {roleLabels[session.usuario.rol]}
-                </dd>
+                <span className="rounded-full bg-cyan-100 px-3 py-1 text-sm font-semibold text-cyan-900">
+                  Sesión activa
+                </span>
+                <h1 className="mt-5 text-3xl font-bold tracking-tight text-slate-950 sm:text-5xl">
+                  Bienvenido a RescueSync
+                </h1>
+                <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
+                  Tu rol es {roleLabels[session.usuario.rol]}.{" "}
+                  {responsabilidadesPorRol[session.usuario.rol]}
+                </p>
               </div>
-              <div>
-                <dt className="text-slate-500">Organización</dt>
-                <dd className="mt-1 font-semibold text-slate-950">
-                  {session.usuario.organizacion?.nombre ?? "Sin organización"}
-                </dd>
-              </div>
-            </dl>
-          </aside>
-        </div>
 
-        <section className="mt-12" aria-labelledby="acciones-rol">
-          <h2
-            id="acciones-rol"
-            className="text-xl font-semibold text-slate-950"
-          >
-            Acciones disponibles para tu rol
-          </h2>
+              <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-xs font-bold tracking-[0.14em] text-slate-500 uppercase">
+                  Tu perfil
+                </p>
+                <dl className="mt-4 space-y-4 text-sm">
+                  <div>
+                    <dt className="text-slate-500">Rol</dt>
+                    <dd className="mt-1 font-semibold text-slate-950">
+                      {roleLabels[session.usuario.rol]}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500">Organización</dt>
+                    <dd className="mt-1 font-semibold text-slate-950">
+                      {session.usuario.organizacion?.nombre ??
+                        "Sin organización"}
+                    </dd>
+                  </div>
+                </dl>
+              </aside>
+            </div>
 
-          {session.usuario.rol === "ADMINISTRADOR" ? (
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Gestionar usuarios
-                </h3>
-                <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                  Creá cuentas, actualizá roles y organizaciones, restablecé
-                  contraseñas y administrá accesos.
-                </p>
-                <Link
-                  to="/usuarios"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-                >
-                  Gestionar usuarios
-                </Link>
-              </article>
-              <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Gestionar organizaciones
-                </h3>
-                <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                  Registrá municipios, centros coordinadores y ONG para
-                  asignarlos a sus usuarios.
-                </p>
-                <Link
-                  to="/organizaciones"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-                >
-                  Gestionar organizaciones
-                </Link>
-              </article>
-              <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">Catálogo nacional</h3>
-                <p className="mt-3 leading-7 text-slate-600">Consultá las capacidades disponibles y registrá nuevas capacidades usando las unidades predefinidas.</p>
-                <Link to="/catalogo-nacional" className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800">Gestionar capacidades</Link>
-              </article>
-            </div>
-          ) : esMunicipio ? (
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Registrar emergencia
-                </h3>
-                <p className="mt-3 leading-7 text-slate-600">
-                  Informá la gravedad, la zona afectada y la descripción inicial
-                  de una nueva emergencia de tu municipio.
-                </p>
-                <Link
-                  to="/emergencias/nueva"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
-                >
-                  Registrar emergencia
-                </Link>
-              </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Mis emergencias
-                </h3>
-                <p className="mt-3 leading-7 text-slate-600">
-                  Consultá las emergencias de tu municipio, revisá su estado y
-                  reintentá la vinculación cuando sea necesario.
-                </p>
-                <Link
-                  to="/mis-emergencias"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
-                >
-                  Ver mis emergencias
-                </Link>
-              </article>
-            </div>
-          ) : esCoordinador ? (
-            <div className="mt-5">
-              <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
-            </div>
-          ) : esOng ? (
-            <div className="mt-5 grid gap-5 md:grid-cols-2">
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Mis recursos
-                </h3>
-                <p className="mt-3 leading-7 text-slate-600">
-                  Registrá recursos y actualizá el inventario nacional de tu
-                  ONG y consultá sus certificaciones y capacidades habilitadas.
-                </p>
-                <Link
-                  to="/mis-recursos"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-                >
-                  Gestionar mis recursos
-                </Link>
-              </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Convocatorias abiertas
-                </h3>
-                <p className="mt-3 leading-7 text-slate-600">
-                  Consultá las convocatorias vigentes y los lotes publicados en
-                  cada una.
-                </p>
-                <Link
-                  to="/convocatorias"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-                >
-                  Ver convocatorias
-                </Link>
-              </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Mis ofertas
-                </h3>
-                <p className="mt-3 leading-7 text-slate-600">
-                  Revisá las ofertas que presentaste y su estado.
-                </p>
-                <Link
-                  to="/mis-ofertas"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-                >
-                  Ver mis ofertas
-                </Link>
-              </article>
-              <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h3 className="text-xl font-semibold text-slate-950">
-                  Presentar oferta
-                </h3>
-                <p className="mt-3 leading-7 text-slate-600">
-                  Recursos y personal para uno o más lotes publicados.
-                </p>
-                <Link
-                  to="/ofertas/nueva"
-                  className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
-                >
-                  Crear oferta
-                </Link>
-              </article>
-            </div>
-          ) : (
-            <article className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-xl font-semibold text-slate-950">
-                Perfil preparado para auditoría
-              </h3>
-              <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                Este perfil no tiene operaciones funcionales en la Entrega 2.
-                Las consultas e indicadores se incorporarán en etapas
-                posteriores.
-              </p>
-            </article>
-          )}
-        </section>
+            <section className="mt-12" aria-labelledby="acciones-rol">
+              <h2
+                id="acciones-rol"
+                className="text-xl font-semibold text-slate-950"
+              >
+                Acciones disponibles para tu rol
+              </h2>
+
+              {session.usuario.rol === "ADMINISTRADOR" ? (
+                <div className="mt-5 grid gap-5 md:grid-cols-2">
+                  <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Gestionar usuarios
+                    </h3>
+                    <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                      Creá cuentas, actualizá roles y organizaciones, restablecé
+                      contraseñas y administrá accesos.
+                    </p>
+                    <Link
+                      to="/usuarios"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Gestionar usuarios
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Gestionar organizaciones
+                    </h3>
+                    <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                      Registrá municipios, centros coordinadores y ONG para
+                      asignarlos a sus usuarios.
+                    </p>
+                    <Link
+                      to="/organizaciones"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Gestionar organizaciones
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-cyan-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Catálogo nacional
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Consultá las capacidades disponibles y registrá nuevas
+                      capacidades usando las unidades predefinidas.
+                    </p>
+                    <Link
+                      to="/catalogo-nacional"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Gestionar capacidades
+                    </Link>
+                  </article>
+                </div>
+              ) : esMunicipio ? (
+                <div className="mt-5 grid gap-5 md:grid-cols-2">
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Registrar emergencia
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Informá la gravedad, la zona afectada y la descripción
+                      inicial de una nueva emergencia de tu municipio.
+                    </p>
+                    <Link
+                      to="/emergencias/nueva"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                    >
+                      Registrar emergencia
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Mis emergencias
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Consultá las emergencias de tu municipio, revisá su estado
+                      y reintentá la vinculación cuando sea necesario.
+                    </p>
+                    <Link
+                      to="/mis-emergencias"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                    >
+                      Ver mis emergencias
+                    </Link>
+                  </article>
+                </div>
+              ) : esCoordinador ? (
+                <div className="mt-5">
+                  <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
+                </div>
+              ) : esOng ? (
+                <div className="mt-5 grid gap-5 md:grid-cols-2">
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Mis recursos
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Registrá recursos y actualizá el inventario nacional de tu
+                      ONG y consultá sus certificaciones y capacidades
+                      habilitadas.
+                    </p>
+                    <Link
+                      to="/mis-recursos"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Gestionar mis recursos
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Convocatorias abiertas
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Consultá las convocatorias vigentes y los lotes publicados
+                      en cada una.
+                    </p>
+                    <Link
+                      to="/convocatorias"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Ver convocatorias
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Mis ofertas
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Revisá las ofertas que presentaste y su estado.
+                    </p>
+                    <Link
+                      to="/mis-ofertas"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Ver mis ofertas
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Presentar oferta
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Recursos y personal para uno o más lotes publicados.
+                    </p>
+                    <Link
+                      to="/ofertas/nueva"
+                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                    >
+                      Crear oferta
+                    </Link>
+                  </article>
+                </div>
+              ) : null}
+            </section>
+          </>
+        )}
       </section>
     </main>
   );

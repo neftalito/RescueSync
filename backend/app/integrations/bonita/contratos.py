@@ -111,3 +111,23 @@ class UsuarioBonita(_ModeloBonita):
 
     id: PositiveInt
     user_name: TextoNoVacio = Field(alias="userName")
+
+
+class TransicionTareaArchivada(_ModeloBonita):
+    """Relaciona transiciones de una misma tarea, sin confundirlas con repeticiones."""
+
+    source_object_id: PositiveInt = Field(alias="sourceObjectId")
+    root_case_id: PositiveInt = Field(alias="rootCaseId")
+    name: str
+    tipo: str = Field(alias="type")
+    state: TextoNoVacio
+    reached_state_date: str
+
+
+class TareaBonitaFallida(_ModeloBonita):
+    """Nodo fallido observado por el monitor; no expone trazas del motor."""
+
+    id: PositiveInt
+    root_case_id: PositiveInt = Field(alias="rootCaseId")
+    name: str
+    state: Literal["failed"]

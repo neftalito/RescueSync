@@ -203,6 +203,7 @@ def modificar_oferta(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPresentaOferta,
     cliente_nacional: ClienteNacionalDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> OfertaResponse:
     """Actualiza el contenido sin perder la versión previamente presentada."""
 
@@ -218,6 +219,7 @@ def modificar_oferta(
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
+    gestor_tiempo_real.programar_metricas()
     return _respuesta(oferta, usuario)
 
 
@@ -300,6 +302,7 @@ def proponer_consorcio(
     datos: ConsorcioRequest,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPresentaOferta,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> OfertaResponse:
     try:
         oferta = consorcios.proponer_consorcio(
@@ -313,6 +316,7 @@ def proponer_consorcio(
         raise HTTPException(
             409, "La propuesta no pudo confirmarse. Actualizá el listado."
         ) from error
+    gestor_tiempo_real.programar_metricas()
     return _respuesta(oferta, usuario)
 
 
@@ -327,6 +331,7 @@ def confirmar_consorcio(
     datos: ConfirmacionConsorcioRequest,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPresentaOferta,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> OfertaResponse:
     try:
         oferta = consorcios.confirmar_consorcio(
@@ -340,6 +345,7 @@ def confirmar_consorcio(
         raise HTTPException(
             409, "La propuesta no pudo confirmarse. Actualizá el listado."
         ) from error
+    gestor_tiempo_real.programar_metricas()
     return _respuesta(oferta, usuario)
 
 
@@ -354,6 +360,7 @@ def desarmar_consorcio(
     datos: ConfirmacionConsorcioRequest,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioPresentaOferta,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> OfertaResponse:
     try:
         oferta = consorcios.desarmar_consorcio(
@@ -362,4 +369,5 @@ def desarmar_consorcio(
     except servicio.OfertaError as error:
         session.rollback()
         raise HTTPException(_CODIGOS_ERROR[type(error)], str(error)) from error
+    gestor_tiempo_real.programar_metricas()
     return _respuesta(oferta, usuario)

@@ -118,6 +118,7 @@ def reintentar_vinculacion_bonita(
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioRegistraEmergencia,
     cliente: ClienteBonitaDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> EmergenciaResponse:
     """Autoriza el reintento y devuelve el estado de sincronización resultante."""
 
@@ -139,6 +140,7 @@ def reintentar_vinculacion_bonita(
             detail=str(error),
         ) from error
     emergencia = vincular_emergencia_con_bonita(session, emergencia, cliente)
+    gestor_tiempo_real.programar_metricas()
     return EmergenciaResponse.model_validate(emergencia)
 
 
