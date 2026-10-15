@@ -21,16 +21,16 @@ disponible durante la carga. Escribe en la base configurada para el backend.
 
 Los valores predeterminados producen:
 
-| Entidad | Cantidad |
-| --- | ---: |
-| Municipios / centros / ONGs | 100 / 10 / 1.000 |
-| Usuarios, incluidos un administrador y un auditor | 1.112 |
-| Emergencias | 5.000 |
-| Lotes | 9.000 |
-| Convocatorias abiertas / cerradas | 1.000 / 1.000 |
-| Ofertas y versiones | 6.000 de cada una |
-| Ítems y aportes nacionales | 18.000 de cada uno |
-| Notificaciones | 5.000 |
+| Entidad                                           |           Cantidad |
+| ------------------------------------------------- | -----------------: |
+| Municipios / centros / ONGs                       |   100 / 10 / 1.000 |
+| Usuarios, incluidos un administrador y un auditor |              1.112 |
+| Emergencias                                       |              5.000 |
+| Lotes                                             |              9.000 |
+| Convocatorias abiertas / cerradas                 |      1.000 / 1.000 |
+| Ofertas y versiones                               |  6.000 de cada una |
+| Ítems y aportes nacionales                        | 18.000 de cada uno |
+| Notificaciones                                    |              5.000 |
 
 También se crean los participantes de cada oferta y 1.000 accesos nacionales
 cifrados. Las emergencias alternan `REGISTRADA`, `EN_COORDINACION`, `PUBLICADA`,
@@ -94,13 +94,13 @@ las ventanas de las convocatorias, se conservan al repetir el comando.
 
 Con el seed predeterminado, las cuentas locales usan `CargaMasiva2026!`:
 
-| Rol | Correo |
-| --- | --- |
-| Administrador | `masivo-2026-admin@example.test` |
-| Auditor | `masivo-2026-auditor@example.test` |
-| Municipio | `masivo-2026-municipio-1@example.test` |
-| Coordinador | `masivo-2026-centro_coordinador-1@example.test` |
-| ONG | `masivo-2026-ong-1@example.test` |
+| Rol           | Correo                                          |
+| ------------- | ----------------------------------------------- |
+| Administrador | `masivo-2026-admin@example.test`                |
+| Auditor       | `masivo-2026-auditor@example.test`              |
+| Municipio     | `masivo-2026-municipio-1@example.test`          |
+| Coordinador   | `masivo-2026-centro_coordinador-1@example.test` |
+| ONG           | `masivo-2026-ong-1@example.test`                |
 
 El último número identifica la organización, desde 1. Son credenciales públicas
 de fixtures de desarrollo; sus hashes Argon2 se calculan una vez por carga para
