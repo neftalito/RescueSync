@@ -5,7 +5,7 @@ import { MisRecursosPage } from "./pages/MisRecursosPage";
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
 import { useNotificacionesTiempoReal } from "./hooks/useNotificacionesTiempoReal";
-import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { OpcionesPage } from "./pages/OpcionesPage";
 import { CatalogoNacionalPage } from "./pages/CatalogoNacionalPage";
 import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -76,9 +76,9 @@ function ProtectedApp(): ReactElement {
 
   if (
     session.data.usuario.requiere_cambio_password &&
-    location.pathname !== "/cambiar-password"
+    location.pathname !== "/opciones"
   ) {
-    return <Navigate to="/cambiar-password" replace />;
+    return <Navigate to="/opciones" replace />;
   }
 
   return (
@@ -135,8 +135,12 @@ function ProtectedApp(): ReactElement {
         }
       />
       <Route
+        path="/opciones"
+        element={<OpcionesPage session={session.data} />}
+      />
+      <Route
         path="/cambiar-password"
-        element={<ChangePasswordPage session={session.data} />}
+        element={<Navigate to="/opciones" replace />}
       />
       <Route
         path="/usuarios"

@@ -44,6 +44,12 @@ El botón **Notificaciones** abre un panel adaptable a móviles y escritorio, co
 desplazamiento interno para listas largas. Se cierra al hacer clic o tocar fuera
 del panel, volver a pulsar el botón o presionar `Escape`.
 
+El engranaje del encabezado abre **Opciones** (`/opciones`), donde la sección
+**Cambiar contraseña** permite actualizar la clave de la cuenta. Las cuentas con
+contraseña temporal deben completar esta sección antes de continuar. La antigua
+ruta `/cambiar-password` redirige a Opciones. El cierre de sesión se encuentra
+separado de estos accesos, en el extremo superior derecho del encabezado.
+
 El mensaje WebSocket funciona como una señal: el frontend invalida la consulta
 TanStack Query afectada y vuelve a obtener el estado por REST. Bonita continúa
 siendo responsable de los temporizadores; sus callbacks producen las novedades

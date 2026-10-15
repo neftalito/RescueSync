@@ -249,6 +249,7 @@ test("los iconos del header muestran novedades y resaltan hover y pulsación", a
     name: "Cerrar sesión",
     exact: true,
   });
+  const opciones = page.getByRole("link", { name: "Opciones", exact: true });
   const colorTema = async (nombre: string): Promise<string> =>
     page.evaluate((color) => {
       const referencia = document.createElement("span");
@@ -261,6 +262,29 @@ test("los iconos del header muestran novedades y resaltan hover y pulsación", a
   await expect(campana).toHaveAccessibleDescription("1 notificación sin leer");
   expect(await campana.textContent()).toBe("");
   expect(await salir.textContent()).toBe("");
+  expect(await opciones.textContent()).toBe("");
+  const posicionSalida = await salir.boundingBox();
+  const posicionOpciones = await opciones.boundingBox();
+  const posicionCampana = await campana.boundingBox();
+  const anchoPantalla = page.viewportSize()?.width;
+  if (
+    !posicionSalida ||
+    !posicionOpciones ||
+    !posicionCampana ||
+    !anchoPantalla
+  ) {
+    throw new Error(
+      "No se pudo medir la posición de los accesos del encabezado.",
+    );
+  }
+  expect(
+    anchoPantalla - posicionSalida.x - posicionSalida.width,
+  ).toBeLessThanOrEqual(24);
+  expect(posicionSalida.y).toBeLessThanOrEqual(20);
+  expect(
+    posicionOpciones.y > posicionSalida.y + posicionSalida.height ||
+      posicionSalida.x - posicionOpciones.x - posicionOpciones.width >= 40,
+  ).toBe(true);
   await expect(campana.locator("svg")).toHaveAttribute(
     "data-estado",
     "sonando",
@@ -291,4 +315,88 @@ test("los iconos del header muestran novedades y resaltan hover y pulsación", a
   // Soltar fuera evita cerrar la sesión durante la comprobación visual.
   await page.mouse.move(0, 0);
   await page.mouse.up();
+  await opciones.hover();
+  await expect(opciones).toHaveCSS(
+    "outline-color",
+    await colorTema("gray-500"),
+  );
+  await expect(opciones).toHaveCSS("outline-width", "2px");
+  await page.mouse.down();
+  await expect(opciones).toHaveCSS(
+    "outline-color",
+    await colorTema("gray-700"),
+  );
+  await page.mouse.up();
+  await expect(page).toHaveURL(/\/opciones$/);
+  await expect(
+    page.getByRole("heading", { name: "Opciones", level: 1 }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Cambiar contraseña" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("Opciones permite cambiar la contraseña y conserva el encabezado en móvil y escritorio", async ({
+  page,
+}, testInfo) => {
+  await simularApi(page);
+  await page.route("**/api/v1/auth/password", async (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe("csrf-e2e");
+    expect(route.request().postDataJSON()).toEqual({
+      password_actual: "Una-clave-actual",
+      password_nueva: "Una-clave-nueva-2026",
+    });
+    await route.fulfill({
+      json: {
+        usuario: {
+          id: 7,
+          email: "auditor@rescuesync.org",
+          rol: "AUDITOR_DIRECTIVO",
+          organizacion: null,
+          requiere_cambio_password: false,
+        },
+        csrf_token: "csrf-renovado-e2e",
+      },
+    });
+  });
+  await page.goto("/cambiar-password");
+  await expect(page).toHaveURL(/\/opciones$/);
+  await page
+    .getByLabel("Contraseña actual", { exact: true })
+    .fill("Una-clave-actual");
+  await page
+    .getByLabel("Contraseña nueva", { exact: true })
+    .fill("Una-clave-nueva-2026");
+  await page
+    .getByLabel("Repetir contraseña nueva")
+    .fill("Una-clave-nueva-2026");
+  await page.getByRole("button", { name: "Guardar contraseña" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Contraseña actualizada.",
+  );
+  await expect(page).toHaveURL(/\/opciones$/);
+  await expect(
+    page.getByLabel("Contraseña actual", { exact: true }),
+  ).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "Cerrar sesión", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("opciones.png"),
+    fullPage: true,
+  });
+  await page.getByRole("link", { name: "Volver al inicio" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Dashboard de auditoría" }),
+  ).toBeVisible();
 });

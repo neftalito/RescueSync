@@ -1,11 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, type ReactElement } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 
-import { logout } from "../api/auth";
-import { ApiError } from "../api/client";
+import { AppHeader } from "../components/AppHeader";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
-import { NotificationCenter } from "../components/NotificationCenter";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
 const DashboardAuditor = lazy(() =>
@@ -32,25 +29,6 @@ interface DashboardPageProps {
 }
 
 export function DashboardPage({ session }: DashboardPageProps): ReactElement {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const mutation = useMutation({
-    mutationFn: () => logout(session.csrf_token),
-    onSuccess: () => {
-      // Limpia todo el caché (no solo la sesión): sin esto, una bandeja
-      // consultada por este usuario podría seguir en caché y mostrarse
-      // brevemente a la siguiente persona que inicie sesión en la misma
-      // pestaña, antes de que ese query vuelva a pedirse.
-      queryClient.clear();
-      navigate("/login", { replace: true });
-    },
-  });
-  const logoutError =
-    mutation.error instanceof ApiError
-      ? mutation.error.message
-      : mutation.isError
-        ? "No pudimos cerrar la sesión. Intentá nuevamente."
-        : null;
   const esMunicipio = session.usuario.rol === "OPERADOR_MUNICIPAL";
   const esCoordinador = session.usuario.rol === "COORDINADOR_REGIONAL";
   const esOng = session.usuario.rol === "REPRESENTANTE_ONG";
@@ -58,78 +36,9 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-6">
-          <div>
-            <p className="text-sm font-black tracking-[0.16em] text-cyan-700 uppercase">
-              RescueSync
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              Coordinación regional ante emergencias
-            </p>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold text-slate-900">
-                {session.usuario.email}
-              </p>
-              <p className="text-xs text-slate-500">
-                {roleLabels[session.usuario.rol]}
-              </p>
-            </div>
-            {session.usuario.rol === "ADMINISTRADOR" && (
-              <Link
-                to="/usuarios"
-                className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800"
-              >
-                Usuarios
-              </Link>
-            )}
-            <NotificationCenter csrfToken={session.csrf_token} />
-            <Link
-              to="/cambiar-password"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Cambiar contraseña
-            </Link>
-            <button
-              type="button"
-              aria-label={mutation.isPending ? "Saliendo…" : "Cerrar sesión"}
-              aria-busy={mutation.isPending}
-              title="Cerrar sesión"
-              disabled={mutation.isPending}
-              onClick={() => mutation.mutate()}
-              className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-600 outline-2 outline-offset-2 outline-transparent transition-colors hover:border-red-500 hover:bg-red-50 hover:text-red-700 hover:outline-red-500 focus-visible:outline-red-600 active:border-red-700 active:bg-red-100 active:text-red-900 active:outline-red-700 disabled:cursor-wait disabled:opacity-60"
-            >
-              <svg
-                aria-hidden="true"
-                focusable="false"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="size-5"
-              >
-                <path d="M9 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
-                <path d="m16 7 5 5-5 5M21 12H9" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader session={session} />
 
       <section className="mx-auto max-w-6xl px-5 py-12 sm:px-6 sm:py-16">
-        {logoutError && (
-          <p
-            role="alert"
-            className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-          >
-            {logoutError}
-          </p>
-        )}
-
         {esAuditor ? (
           <>
             <p className="text-sm font-semibold text-cyan-800">

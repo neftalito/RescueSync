@@ -37,7 +37,7 @@ export function LoginPage(): ReactElement {
       queryClient.clear();
       queryClient.setQueryData(sessionQueryKey, session);
       navigate(
-        session.usuario.requiere_cambio_password ? "/cambiar-password" : "/",
+        session.usuario.requiere_cambio_password ? "/opciones" : "/",
         { replace: true },
       );
     },
