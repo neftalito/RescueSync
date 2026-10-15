@@ -6,7 +6,20 @@ import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { NotificationCenter } from "../components/NotificationCenter";
-import { roleLabels, type Session } from "../schemas/auth";
+import { roleLabels, type Role, type Session } from "../schemas/auth";
+
+const responsabilidadesPorRol: Record<Role, string> = {
+  OPERADOR_MUNICIPAL:
+    "Registrás las emergencias de tu municipio y hacés seguimiento de su estado.",
+  COORDINADOR_REGIONAL:
+    "Organizás las necesidades de las emergencias de tu región en lotes y publicás convocatorias para recibir ofertas de las ONG.",
+  REPRESENTANTE_ONG:
+    "Gestionás los recursos de tu ONG, consultás convocatorias y presentás y actualizás ofertas de ayuda.",
+  AUDITOR_DIRECTIVO:
+    "Tu responsabilidad es supervisar la gestión de emergencias y evaluar sus resultados.",
+  ADMINISTRADOR:
+    "Administrás usuarios, roles y organizaciones, y mantenés el catálogo nacional de capacidades.",
+};
 
 interface DashboardPageProps {
   session: Session;
@@ -103,8 +116,8 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
               Bienvenido a RescueSync
             </h1>
             <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
-              Tu acceso está listo. Las funciones operativas aparecerán según tu
-              rol a medida que se integren las historias de la Entrega 2.
+              Tu rol es {roleLabels[session.usuario.rol]}.{" "}
+              {responsabilidadesPorRol[session.usuario.rol]}
             </p>
           </div>
 
