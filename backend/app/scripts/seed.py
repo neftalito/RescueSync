@@ -2,7 +2,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import generar_password_hash
 from app.db.models import (
+    AccesoNacional,
     Convocatoria,
     ConvocatoriaLote,
     Emergencia,
@@ -32,6 +33,7 @@ from app.db.models import (
     Usuario,
 )
 from app.db.session import SessionLocal
+from app.services.acceso_nacional import cifrador
 from app.services.bootstrap import asegurar_admin_inicial
 
 
@@ -306,10 +308,45 @@ def _oferta(
     return oferta
 
 
+def _acceso_nacional_demo(session: Session, ong: Organizacion, referencia: str) -> None:
+    """Prepara el secreto técnico del seed nacional sin pisar accesos importados."""
+    acceso = session.get(AccesoNacional, ong.id)
+    if acceso is not None:
+        if acceso.ong_id != ong.ong_nacional_id:
+            raise ValueError(
+                "La ONG demo tiene acceso configurado para otro UUID nacional."
+            )
+        return
+    assert ong.ong_nacional_id is not None
+    # Las mismas referencias y credenciales demo se crean en RescueSyncAPI.
+    secreto = f"demo-only-rescuesync-tecnica:{referencia}:2026"
+    session.add(
+        AccesoNacional(
+            organizacion_id=ong.id,
+            ong_id=ong.ong_nacional_id,
+            cuenta_id=uuid5(
+                NAMESPACE_URL, f"rescuesync-demo:cuenta-tecnica:{referencia}"
+            ),
+            configuracion_id=uuid4(),
+            identificador_login=f"demo-tecnica-{referencia}",
+            secreto_cifrado=cifrador().encrypt(secreto.encode()).decode(),
+            requiere_revision=False,
+        )
+    )
+    session.flush()
+
+
 def seed_development_data(session: Session) -> SeedResult:
     """Crea o actualiza un escenario reproducible de la Entrega 2 sin duplicarlo."""
 
-    administrador = asegurar_admin_inicial(session, get_settings())
+    settings = get_settings()
+    if settings.app_env.casefold() not in {"development", "test"}:
+        raise ValueError("El seed sólo está disponible en desarrollo y pruebas.")
+    if settings.nacional_encryption_key is None:
+        raise ValueError(
+            "Configurá NACIONAL_ENCRYPTION_KEY en el backend antes de ejecutar el seed."
+        )
+    administrador = asegurar_admin_inicial(session, settings)
 
     municipio = _organizacion(
         session,
@@ -331,6 +368,7 @@ def seed_development_data(session: Session) -> SeedResult:
         if organizacion.ong_nacional_id not in {None, ong_id}:
             raise ValueError("La ONG demo ya tiene otra vinculación nacional.")
         organizacion.ong_nacional_id = ong_id
+        _acceso_nacional_demo(session, organizacion, referencia)
 
     operador = _usuario(
         session,
@@ -493,7 +531,9 @@ def main() -> int:
     except ValueError as error:
         print(f"No se pudo cargar el seed: {error}", file=sys.stderr)
         return 1
-    print("Seed de desarrollo listo. Usuarios disponibles:")
+    print(
+        "Seed de desarrollo listo con acceso técnico nacional demo. Usuarios disponibles:"
+    )
     for cuenta in resultado.cuentas:
         contexto = f" — {cuenta.organizacion}" if cuenta.organizacion else ""
         print(f"- {cuenta.email} — {cuenta.rol.value}{contexto}")

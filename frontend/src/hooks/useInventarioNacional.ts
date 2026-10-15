@@ -48,7 +48,10 @@ interface InventarioNacional {
   actualizar: () => Promise<void>;
 }
 
-export function useInventarioNacional(session: Session): InventarioNacional {
+export function useInventarioNacional(
+  session: Session,
+  vista: "inventario" | "certificaciones",
+): InventarioNacional {
   const client = useQueryClient();
   const key = ["inventario", session.usuario.id] as const;
   const limpiarCertificaciones = (): void => {
@@ -78,26 +81,26 @@ export function useInventarioNacional(session: Session): InventarioNacional {
   const recursos = useQuery({
     queryKey: [...key, "recursos", conexion.data?.ongId],
     queryFn: () => consultar(consultarRecursos),
-    enabled: conexion.data?.estado === "LISTA",
+    enabled: conexion.data?.estado === "LISTA" && vista === "inventario",
     retry: false,
   });
   const capacidades = useQuery({
     queryKey: [...key, "capacidades", conexion.data?.ongId],
     queryFn: () => consultar(consultarCapacidades),
-    enabled: conexion.data?.estado === "LISTA",
+    enabled: conexion.data?.estado === "LISTA" && vista === "inventario",
     retry: false,
   });
   const certificaciones = useQuery({
     queryKey: [...key, "certificaciones", conexion.data?.ongId],
     queryFn: () => consultar(consultarCertificaciones),
-    enabled: conexion.data?.estado === "LISTA",
+    enabled: conexion.data?.estado === "LISTA" && vista === "certificaciones",
     retry: false,
     refetchInterval: 60_000,
   });
   const catalogoCertificaciones = useQuery({
     queryKey: [...key, "catalogo-certificaciones", conexion.data?.ongId],
     queryFn: () => consultar(consultarCatalogoCertificaciones),
-    enabled: conexion.data?.estado === "LISTA",
+    enabled: conexion.data?.estado === "LISTA" && vista === "certificaciones",
     retry: false,
   });
   const actualizar = async (): Promise<void> => {

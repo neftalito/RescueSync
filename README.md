@@ -78,14 +78,18 @@ persistencia del buzón no depende de ese bus.
    docker compose up --build
    ```
 
-3. Opcionalmente, cargar un escenario completo de desarrollo:
+3. Opcionalmente, cargar un escenario completo de desarrollo. Configurar antes
+   `NACIONAL_ENCRYPTION_KEY` en `.env` y recrear el backend si ya estaba levantado;
+   el seed utiliza esa clave estable para cifrar los accesos nacionales demo:
 
    ```bash
    docker compose run --rm backend python -m app.scripts.seed
    ```
 
-   Para probar inventario, ejecutar también el seed de RescueSyncAPI. El recorrido,
-   configuración están en [Inventario nacional](docs/inventario-nacional.md).
+   Para probar inventario, ejecutar también el seed de RescueSyncAPI. Ambos seeds
+   dejan preparadas las cuentas técnicas y sus accesos: entrar con `ong123` permite
+   abrir Mis recursos sin importaciones manuales. El recorrido y la configuración
+   están en [Inventario nacional](docs/inventario-nacional.md).
    Configurar una sola vez el [alta y acceso nacional automático](docs/acceso-nacional-automatico.md).
    Las nuevas ONG generan su identificador y cuenta técnica al crearlas; el correo de contacto es opcional.
 

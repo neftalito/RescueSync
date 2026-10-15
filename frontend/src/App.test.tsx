@@ -763,7 +763,10 @@ describe("emergencias del municipio", () => {
     },
   );
 
-  it.each(["/emergencias/nueva", "/mis-emergencias"])(
+  it.each([
+    "/emergencias/nueva", "/mis-emergencias",
+    "/mis-recursos/certificaciones", "/mis-recursos/inventario",
+  ])(
     "redirige al login si se abre %s sin sesión",
     async (path) => {
       server.use(
@@ -808,6 +811,37 @@ describe("emergencias del municipio", () => {
 });
 
 describe("navegación por rol", () => {
+  describe.each([
+    ["/mis-recursos/certificaciones", "Certificaciones de mi ONG"],
+    ["/mis-recursos/inventario", "Inventario de mi ONG"],
+  ])("acceso directo a %s", (path, heading) => {
+    it("permite abrir la vista al representante de ONG", async () => {
+      server.use(
+        http.get(`${API_URL}/auth/me`, () =>
+          HttpResponse.json(sessionForRole("REPRESENTANTE_ONG")),
+        ),
+        http.get(`${API_URL}/mi-ong/conexion`, () => HttpResponse.json({
+          estado: "SIN_CONFIGURAR", vinculada: true, conectada: false,
+          ongId: "00000000-0000-4000-8000-000000000001", expiraEn: null,
+        })),
+      );
+      renderApp(path);
+      expect(await screen.findByRole("heading", { name: heading, level: 1 })).toBeInTheDocument();
+    });
+
+    it.each<Role>([
+      "ADMINISTRADOR", "COORDINADOR_REGIONAL", "OPERADOR_MUNICIPAL", "AUDITOR_DIRECTIVO",
+    ])("impide que %s abra la vista de una ONG", async (role) => {
+      server.use(
+        http.get(`${API_URL}/auth/me`, () => HttpResponse.json(sessionForRole(role))),
+        http.get(`${API_URL}/emergencias`, () => HttpResponse.json([])),
+      );
+      renderApp(path);
+      expect(await screen.findByRole("heading", { name: "Bienvenido a RescueSync" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: heading, level: 1 })).not.toBeInTheDocument();
+    });
+  });
+
   it.each<Role>(["OPERADOR_MUNICIPAL", "COORDINADOR_REGIONAL", "REPRESENTANTE_ONG", "AUDITOR_DIRECTIVO"])(
     "impide a %s abrir la administración del catálogo nacional",
     async (role) => {

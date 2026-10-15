@@ -51,7 +51,7 @@ se interpreta dentro del emisor autenticado.
 - La API nacional confirma ONG, cuenta y correlación juntas. Repetir la misma
   referencia y contenido devuelve la misma identidad; cambiar el contenido produce
   `409`. Una cuenta revocada o una ONG suspendida no se reactiva con reintentos.
-- **Mis recursos → Registrar ONG en el Sistema Nacional** aplica el mismo flujo
+- **Mis recursos → Gestionar inventario → Registrar ONG en el Sistema Nacional** aplica el mismo flujo
   a una ONG local anterior sin vínculo. Pide sólo correo opcional, autovincula y
   habilita el inventario al terminar. El administrador también puede iniciar el
   alta con el botón de reintento y sin correo.
@@ -60,7 +60,8 @@ se interpreta dentro del emisor autenticado.
 - La vinculación manual sigue disponible para registros nacionales anteriores.
   No se reclaman registros existentes por nombre ni se reemplazan sus cuentas.
   Una ONG anterior ya vinculada y sin acceso conserva el procedimiento de
-  importación descrito abajo. No hay backfill automático de identidades anteriores.
+  importación descrito abajo. Las dos ONG demo reciben acceso técnico al volver
+  a ejecutar los seeds coordinados; no se modifican otras identidades anteriores.
 - Cambiar o eliminar un vínculo borra la solicitud y el acceso anteriores; una
   respuesta atrasada no puede restablecerlos. Guardar el mismo UUID los conserva.
 
@@ -96,3 +97,12 @@ locales se prueban en ambas direcciones sobre schemas descartables.
 El downgrade local descarta las solicitudes de aprovisionamiento y conserva los
 accesos ya completados. Respaldar las referencias pendientes antes de un rollback:
 un nuevo upgrade no puede reconstruir el secreto de una solicitud descartada.
+
+
+## Seeds de desarrollo
+
+Los seeds coordinados crean las cuentas técnicas de las dos ONG demo y guardan
+sus accesos cifrados localmente. Basta configurar la clave Fernet estable y correr
+ambos seeds; no requieren aprovisionamiento ni importación por consola. No se
+reemplazan accesos importados ni se recuperan revocaciones. El recorrido está en
+[Inventario nacional](./inventario-nacional.md).

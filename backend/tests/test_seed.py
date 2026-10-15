@@ -1,8 +1,19 @@
+import json
+from collections.abc import Iterator
+from uuid import NAMESPACE_URL, uuid5
+
+import httpx
+import pytest
+import respx
+from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.models import (
+    AccesoNacional,
     Convocatoria,
     Emergencia,
     Lote,
@@ -10,8 +21,20 @@ from app.db.models import (
     Organizacion,
     Usuario,
 )
+from app.db.session import get_db
+from app.main import app
 from app.scripts.seed import seed_development_data
 from app.services.auth import autenticar_usuario
+
+
+@pytest.fixture(autouse=True)
+def cifrado_demo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        get_settings(),
+        "nacional_encryption_key",
+        SecretStr(Fernet.generate_key().decode()),
+    )
+
 
 EMAILS = (
     "municipio@rescuesync.org",
@@ -146,3 +169,109 @@ def test_seed_vincula_las_dos_ongs_a_sus_uuid_nacionales(db_session: Session) ->
         assert ong.ong_nacional_id == uuid5(
             NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}"
         )
+
+
+@pytest.mark.parametrize(
+    "referencia,email",
+    [
+        ("ayuda-sin-fronteras", "ong@rescuesync.org"),
+        ("red-medica-solidaria", "redmedica@rescuesync.org"),
+    ],
+)
+def test_login_seed_permite_ver_recursos_sin_importar_credenciales(
+    db_session: Session,
+    referencia: str,
+    email: str,
+) -> None:
+    seed_development_data(db_session)
+    db_session.commit()
+    ong_id = uuid5(NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}")
+    cuenta_id = uuid5(NAMESPACE_URL, f"rescuesync-demo:cuenta-tecnica:{referencia}")
+    ong = db_session.scalar(
+        select(Organizacion).where(Organizacion.ong_nacional_id == ong_id)
+    )
+    assert ong is not None
+    acceso = db_session.get(AccesoNacional, ong.id)
+    assert acceso is not None and acceso.cuenta_id == cuenta_id
+    secreto = f"demo-only-rescuesync-tecnica:{referencia}:2026"
+    assert secreto not in acceso.secreto_cifrado
+
+    def database() -> Iterator[Session]:
+        yield db_session
+
+    def login_nacional(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {
+            "identificadorLogin": f"demo-tecnica-{referencia}",
+            "password": secreto,
+        }
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "jwt-demo",
+                "token_type": "bearer",
+                "expires_in": 300,
+            },
+        )
+
+    base = str(get_settings().nacional_base_url).rstrip("/")
+    app.dependency_overrides[get_db] = database
+    try:
+        with respx.mock as mock, TestClient(app) as client:
+            mock.post(f"{base}/login").mock(side_effect=login_nacional)
+            mock.get(f"{base}/me").respond(
+                200,
+                json={
+                    "id": str(cuenta_id),
+                    "ongId": str(ong_id),
+                    "rol": "ONG",
+                    "proposito": "TECNICA_ONG",
+                },
+            )
+            mock.get(f"{base}/ongs/{ong_id}/recursos").respond(200, json=[])
+            login = client.post(
+                "/api/v1/auth/login",
+                json={"email": email, "password": email.partition("@")[0] + "123"},
+            )
+            assert login.status_code == 200
+            assert client.get("/api/v1/mi-ong/conexion").json()["estado"] == "LISTA"
+            assert client.get("/api/v1/mi-ong/recursos").status_code == 200
+            assert secreto not in login.text
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_seed_conserva_acceso_importado_o_marcado_para_revision(
+    db_session: Session,
+) -> None:
+    seed_development_data(db_session)
+    acceso = db_session.scalar(select(AccesoNacional))
+    assert acceso is not None
+    acceso.secreto_cifrado = "credencial-importada-conservada"
+    acceso.requiere_revision = True
+    original = (acceso.configuracion_id, acceso.cuenta_id, acceso.secreto_cifrado)
+    seed_development_data(db_session)
+    db_session.flush()
+    assert (
+        acceso.configuracion_id,
+        acceso.cuenta_id,
+        acceso.secreto_cifrado,
+    ) == original
+    assert acceso.requiere_revision is True
+    assert db_session.scalar(select(func.count()).select_from(AccesoNacional)) == 2
+
+
+def test_seed_sin_clave_no_confirma_un_acceso_incompleto(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "nacional_encryption_key", None)
+    with pytest.raises(ValueError, match="NACIONAL_ENCRYPTION_KEY"):
+        seed_development_data(db_session)
+    assert db_session.scalar(select(func.count()).select_from(Organizacion)) == 0
+
+
+def test_seed_no_guarda_credenciales_demo_en_produccion(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "app_env", "production")
+    with pytest.raises(ValueError, match="desarrollo y pruebas"):
+        seed_development_data(db_session)

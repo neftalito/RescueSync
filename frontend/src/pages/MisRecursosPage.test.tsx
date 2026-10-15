@@ -1,10 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import {
   afterAll,
   afterEach,
@@ -16,6 +16,7 @@ import {
 } from "vitest";
 import type { Session } from "../schemas/auth";
 import { MisRecursosPage } from "./MisRecursosPage";
+import { CertificacionesOngPage, InventarioOngPage } from "./GestionRecursosOngPage";
 
 const base = "http://localhost:8000/api/v1/mi-ong";
 const ong = "00000000-0000-4000-8000-000000000001";
@@ -114,20 +115,98 @@ afterEach(() => {
   server.resetHandlers();
 });
 afterAll(() => server.close());
-function renderPage(): void {
+function renderPage(vista: "inicio" | "inventario" | "certificaciones" = "inventario"): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
-        <MisRecursosPage session={session} />
+      <MemoryRouter initialEntries={[vista === "inicio" ? "/mis-recursos" : `/mis-recursos/${vista}`]}>
+        <Routes>
+          <Route path="/mis-recursos" element={<MisRecursosPage session={session} />} />
+          <Route path="/mis-recursos/inventario" element={<InventarioOngPage session={session} />} />
+          <Route path="/mis-recursos/certificaciones" element={<CertificacionesOngPage session={session} />} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
 describe("Mis recursos nacionales", () => {
+  it("ofrece dos tarjetas y navega a vistas independientes sin cargar datos ajenos", async () => {
+    let consultasInventario = 0;
+    let consultasCertificaciones = 0;
+    server.use(
+      http.get(`${base}/recursos`, () => {
+        consultasInventario++;
+        return HttpResponse.json(recursos);
+      }),
+      http.get(`${base}/certificaciones`, () => {
+        consultasCertificaciones++;
+        return HttpResponse.json(perfil);
+      }),
+    );
+    renderPage("inicio");
+    const user = userEvent.setup();
+    const header = screen.getByRole("heading", { name: "Mis recursos", level: 1 }).closest("header");
+    expect(within(header!).getByText("RescueSync")).toBeInTheDocument();
+    expect(within(header!).getByRole("link", { name: "Volver al inicio" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Ver mis certificaciones" })).toHaveAttribute("href", "/mis-recursos/certificaciones");
+    expect(screen.getByRole("link", { name: "Gestionar inventario" })).toHaveAttribute("href", "/mis-recursos/inventario");
+    expect(consultasInventario).toBe(0);
+    expect(consultasCertificaciones).toBe(0);
+    await user.click(screen.getByRole("link", { name: "Ver mis certificaciones" }));
+    expect(await screen.findByText("Habilitada")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Certificaciones de mi ONG", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Registrar recurso" })).not.toBeInTheDocument();
+    expect(consultasInventario).toBe(0);
+    const consultasPerfil = consultasCertificaciones;
+    await user.click(screen.getByRole("link", { name: "Volver a Mis recursos" }));
+    await user.click(screen.getByRole("link", { name: "Gestionar inventario" }));
+    expect(await screen.findByRole("heading", { name: "Ambulancias de rescate" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Inventario de mi ONG", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registrar recurso" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Mis certificaciones" })).not.toBeInTheDocument();
+    expect(consultasCertificaciones).toBe(consultasPerfil);
+    expect(consultasInventario).toBe(1);
+  });
+
+  it("separa estado, capacidades, historial y catálogo en secciones identificables", async () => {
+    renderPage("certificaciones");
+    const estado = await screen.findByRole("region", { name: "Estado institucional" });
+    expect(await within(estado).findByText("Habilitada")).toBeInTheDocument();
+    const capacidades = screen.getByRole("region", { name: "Capacidades habilitadas" });
+    expect(within(capacidades).getByText(/Tu ONG no tiene capacidades habilitadas/)).toBeInTheDocument();
+    const historial = screen.getByRole("region", { name: "Historial de acreditaciones" });
+    expect(within(historial).getByText("Tu ONG todavía no tiene acreditaciones registradas.")).toBeInTheDocument();
+    const catalogo = screen.getByRole("region", { name: "Catálogo nacional de certificaciones" });
+    expect(within(catalogo).getByText(/Estar en este catálogo no acredita a tu ONG/)).toBeInTheDocument();
+    const certificacionCatalogo = await within(catalogo).findByText("Respuesta sanitaria");
+    const detalle = certificacionCatalogo.closest("details");
+    expect(detalle).not.toHaveAttribute("open");
+    await userEvent.click(certificacionCatalogo);
+    expect(detalle).toHaveAttribute("open");
+    expect(within(catalogo).getByRole("list", {
+      name: "Listado de certificaciones nacionales",
+    })).toHaveAttribute("tabindex", "0");
+    expect(within(catalogo).getByText("Riesgo máximo: Medio")).toBeVisible();
+    expect(within(historial).queryByText("Respuesta sanitaria")).not.toBeInTheDocument();
+  });
+
+  it("conserva el estado institucional cuando falla únicamente el catálogo", async () => {
+    server.use(http.get(`${base}/catalogo-certificaciones`, () =>
+      HttpResponse.json({ detail: "No pudimos cargar el catálogo nacional." }, { status: 504 }),
+    ));
+    renderPage("certificaciones");
+    const catalogo = await screen.findByRole("region", { name: "Catálogo nacional de certificaciones" });
+    expect(await within(catalogo).findByRole("alert")).toHaveTextContent("No pudimos cargar el catálogo nacional.");
+    expect(await within(screen.getByRole("region", {
+      name: "Estado institucional",
+    })).findByText("Habilitada")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Capacidades habilitadas" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Historial de acreditaciones" })).toBeInTheDocument();
+  });
+
   it("muestra vigencia, vencimiento y niveles de competencia por capacidad", async () => {
     const credencial = {
       id: "00000000-0000-4000-8000-000000000011",
@@ -177,15 +256,23 @@ describe("Mis recursos nacionales", () => {
         }),
       ),
     );
-    renderPage();
+    renderPage("certificaciones");
     expect(
-      await screen.findByText("Vigente · DEMO-VIGENTE"),
+      await screen.findByText("DEMO-VIGENTE"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Vencida · DEMO-VENCIDA")).toBeInTheDocument();
-    expect(screen.getByText("La acreditación venció.")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Niveles permitidos: BAJA, MEDIA/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("DEMO-VENCIDA")).toBeInTheDocument();
+    expect(screen.getByText("Vigente", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("Vencida", { exact: true })).toBeInTheDocument();
+    const acreditacionVencida = screen.getByText("DEMO-VENCIDA").closest("details");
+    expect(acreditacionVencida).not.toHaveAttribute("open");
+    await userEvent.click(screen.getByText("DEMO-VENCIDA"));
+    expect(acreditacionVencida).toHaveAttribute("open");
+    expect(screen.getByText("La acreditación venció.")).toBeVisible();
+    expect(screen.getByRole("list", { name: "Listado de acreditaciones" })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("list", { name: "Listado de capacidades habilitadas" })).toHaveAttribute("tabindex", "0");
+    const niveles = screen.getByRole("list", { name: "Niveles permitidos para Ambulancias" });
+    expect(within(niveles).getByText("Bajo")).toBeInTheDocument();
+    expect(within(niveles).getByText("Medio")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Otorgar|Renovar|Revocar/ }),
     ).not.toBeInTheDocument();
@@ -206,9 +293,9 @@ describe("Mis recursos nacionales", () => {
         }),
       ),
     );
-    renderPage();
+    renderPage("certificaciones");
     expect(
-      await screen.findByText("Estado institucional: PENDIENTE"),
+      await screen.findByText("Pendiente de revisión"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Tu ONG todavía no tiene acreditaciones registradas."),
@@ -226,7 +313,7 @@ describe("Mis recursos nacionales", () => {
         ),
       ),
     );
-    renderPage();
+    renderPage("certificaciones");
     expect(
       await screen.findByText("El Sistema Nacional demoró en responder."),
     ).toBeInTheDocument();
@@ -237,7 +324,7 @@ describe("Mis recursos nacionales", () => {
       screen.getByRole("button", { name: "Actualizar certificaciones" }),
     );
     expect(
-      await screen.findByText("Estado institucional: HABILITADA"),
+      await screen.findByText("Habilitada"),
     ).toBeInTheDocument();
   });
   it("muestra revisión administrativa ante revocación del acceso", async () => {
@@ -250,7 +337,7 @@ describe("Mis recursos nacionales", () => {
         );
       }),
     );
-    renderPage();
+    renderPage("certificaciones");
     expect(
       await screen.findByRole("heading", { name: "El acceso nacional requiere revisión" }),
     ).toBeInTheDocument();
@@ -431,7 +518,7 @@ describe("Mis recursos nacionales", () => {
     expect(screen.queryByLabelText("Identificador institucional")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Nueva contraseña nacional")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Crear registro nacional" }));
-    expect(await screen.findByRole("heading", { name: "Acceso nacional automático" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Recursos de mi ONG" })).toBeInTheDocument();
   });
 
   it("conserva el correo opcional ante un error y permite reintentar", async () => {

@@ -9,6 +9,10 @@ import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 import { CatalogoNacionalPage } from "./pages/CatalogoNacionalPage";
 import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import {
+  CertificacionesOngPage,
+  InventarioOngPage,
+} from "./pages/GestionRecursosOngPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
 import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
@@ -105,6 +109,26 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
             <MisRecursosPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-recursos/certificaciones"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <CertificacionesOngPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-recursos/inventario"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <InventarioOngPage session={session.data} />
           ) : (
             <Navigate to="/" replace />
           )
