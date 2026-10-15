@@ -92,6 +92,12 @@ persistencia del buzón no depende de ese bus.
    docker compose run --rm backend python -m app.scripts.seed
    ```
 
+   Para medir el sistema con miles de registros, usar el
+   [seed masivo configurable](docs/seed-masivo.md):
+   `docker compose run --rm backend python -m app.scripts.seed_masivo`.
+   La carga predeterminada incluye 5.000 emergencias y evita duplicados al repetirla.
+   Reconstruir primero la imagen de desarrollo para instalar Faker.
+
    Para probar inventario, ejecutar también el seed de RescueSyncAPI. Ambos seeds
    dejan preparadas las cuentas técnicas y sus accesos: entrar con `ong123` permite
    abrir Mis recursos sin importaciones manuales. El recorrido y la configuración
