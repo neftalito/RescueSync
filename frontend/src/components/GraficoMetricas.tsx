@@ -1,3 +1,4 @@
+import { ListadoLocal } from "./ListadoProgresivo";
 import type { ReactElement } from "react";
 import {
   Bar,
@@ -151,43 +152,40 @@ export function GraficoMetricas({
         <summary className="cursor-pointer font-semibold text-cyan-800">
           Ver datos de {titulo.toLowerCase()}
         </summary>
-        <div
-          className="mt-3 max-h-56 overflow-auto overscroll-contain rounded-lg focus-visible:outline-cyan-700"
-          tabIndex={0}
-          role="region"
-          aria-label={`Datos de ${titulo.toLowerCase()}`}
-        >
-          <table className="w-full text-left">
-            <caption className="sr-only">{titulo}</caption>
-            <thead className="sticky top-0 bg-white">
-              <tr>
-                <th className="py-2">Categoría</th>
-                <th className="py-2 text-right">{unidad}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {datos.map((d) => (
-                <tr key={d.nombre} className="border-t border-slate-100">
-                  <td className="py-2 break-words">
-                    {d.color && (
-                      <span
-                        aria-hidden="true"
-                        className="mr-2 inline-block size-2 rounded-full"
-                        style={{ backgroundColor: d.color }}
-                      />
-                    )}
-                    {d.nombre}
-                  </td>
-                  <td className="py-2 text-right">
-                    {d.valor.toLocaleString("es-AR", {
-                      maximumFractionDigits: 2,
-                    })}
-                  </td>
+        <ListadoLocal items={datos} etiqueta={`Datos de ${titulo.toLowerCase()}`} className="mt-3">
+          {(visibles) => (
+            <table className="w-full text-left">
+              <caption className="sr-only">{titulo}</caption>
+              <thead className="sticky top-0 bg-white">
+                <tr>
+                  <th className="py-2">Categoría</th>
+                  <th className="py-2 text-right">{unidad}</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visibles.map((d) => (
+                  <tr key={d.nombre} className="border-t border-slate-100">
+                    <td className="py-2 break-words">
+                      {d.color && (
+                        <span
+                          aria-hidden="true"
+                          className="mr-2 inline-block size-2 rounded-full"
+                          style={{ backgroundColor: d.color }}
+                        />
+                      )}
+                      {d.nombre}
+                    </td>
+                    <td className="py-2 text-right">
+                      {d.valor.toLocaleString("es-AR", {
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ListadoLocal>
       </details>
     </article>
   );

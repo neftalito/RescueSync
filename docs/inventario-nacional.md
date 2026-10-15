@@ -9,6 +9,12 @@ con las otras vistas:
 - **Gestionar inventario** → `/mis-recursos/inventario`: registrar recursos,
   consultar cantidades totales/comprometidas/disponibles y editar el total.
 
+Al editar un recurso registrado, el formulario se abre en un modal centrado,
+con foco en la cantidad actual. Se cierra con Cancelar, la X o Escape y devuelve
+el foco al botón de edición. Mientras guarda, los controles y el cierre quedan
+deshabilitados. Si la operación falla, el modal conserva la cantidad ingresada
+y muestra el error para permitir corregirla o reintentar.
+
 La vista de certificaciones distingue cuatro tarjetas: estado institucional,
 capacidades habilitadas, historial de acreditaciones y catálogo nacional. Las
 capacidades, el historial y el catálogo tienen desplazamiento vertical dentro de

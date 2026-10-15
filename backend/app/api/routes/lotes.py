@@ -10,6 +10,7 @@ from app.api.dependencies import (
     GestorTiempoRealDep,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
@@ -157,6 +158,7 @@ def capacidades_nacionales(
     ),
 )
 def listar_lotes(
+    paginacion: PaginacionDep,
     emergencia_id: EmergenciaId,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaLotes,
@@ -164,7 +166,7 @@ def listar_lotes(
     """Consulta los lotes del centro autenticado sin modificar la emergencia."""
 
     try:
-        lotes = servicio.listar_lotes(session, usuario, emergencia_id)
+        lotes = servicio.listar_lotes(session, usuario, emergencia_id, paginacion)
     except servicio.LoteError as error:
         raise _error_http(error) from error
     if usuario.rol is RolUsuario.REPRESENTANTE_ONG:

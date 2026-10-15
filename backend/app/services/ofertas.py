@@ -30,6 +30,7 @@ from app.schemas.oferta import (
     OfertaItemRequest,
     OfertaUpdateRequest,
 )
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 from app.services.notificaciones import notificar_oferta_recibida
 
@@ -281,7 +282,11 @@ def actualizar_oferta(
     return recargar_oferta(session, oferta_id)
 
 
-def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
+def listar_ofertas_propias(
+    session: Session,
+    usuario: Usuario,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Oferta]:
     """Devuelve las ofertas de la ONG activa del usuario, sin importar quién las creó.
 
     Nunca incluye ofertas de otra organización: la consulta filtra siempre
@@ -335,7 +340,9 @@ def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
                     OfertaVersion.participantes
                 ),
             )
-            .order_by(Oferta.creada_en.desc())
+            .order_by(Oferta.creada_en.desc(), Oferta.id.desc())
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         ).all()
     )
 

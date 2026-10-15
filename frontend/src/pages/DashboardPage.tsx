@@ -2,7 +2,6 @@ import { lazy, Suspense, type ReactElement } from "react";
 import { Link } from "react-router";
 
 import { AppHeader } from "../components/AppHeader";
-import { BandejaEmergencias } from "../components/BandejaEmergencias";
 import { roleLabels, type Role, type Session } from "../schemas/auth";
 
 const DashboardAuditor = lazy(() =>
@@ -111,7 +110,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/usuarios"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Gestionar usuarios
                     </Link>
@@ -126,7 +125,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/organizaciones"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Gestionar organizaciones
                     </Link>
@@ -141,7 +140,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/catalogo-nacional"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Gestionar capacidades
                     </Link>
@@ -159,7 +158,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/emergencias/nueva"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                      className="action-button action-primary mt-6"
                     >
                       Registrar emergencia
                     </Link>
@@ -174,15 +173,44 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/mis-emergencias"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+                      className="action-button action-primary mt-6"
                     >
                       Ver mis emergencias
                     </Link>
                   </article>
                 </div>
               ) : esCoordinador ? (
-                <div className="mt-5">
-                  <BandejaEmergencias rol="COORDINADOR_REGIONAL" />
+                <div className="mt-5 grid gap-5 md:grid-cols-2">
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Emergencias pendientes
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Revisá las emergencias que todavía no tienen lotes y
+                      organizá sus necesidades para comenzar la coordinación.
+                    </p>
+                    <Link
+                      to="/emergencias/pendientes"
+                      className="action-button action-primary mt-6"
+                    >
+                      Ver emergencias pendientes
+                    </Link>
+                  </article>
+                  <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h3 className="text-xl font-semibold text-slate-950">
+                      Emergencias no pendientes
+                    </h3>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      Consultá las emergencias con lotes ya creados y filtrá por
+                      estado para seguir su evolución.
+                    </p>
+                    <Link
+                      to="/emergencias/con-lotes"
+                      className="action-button action-primary mt-6"
+                    >
+                      Ver emergencias no pendientes
+                    </Link>
+                  </article>
                 </div>
               ) : esOng ? (
                 <div className="mt-5 grid gap-5 md:grid-cols-2">
@@ -197,7 +225,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/mis-recursos"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Gestionar mis recursos
                     </Link>
@@ -212,7 +240,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/convocatorias"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Ver convocatorias
                     </Link>
@@ -226,7 +254,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/mis-ofertas"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Ver mis ofertas
                     </Link>
@@ -240,7 +268,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </p>
                     <Link
                       to="/ofertas/nueva"
-                      className="mt-6 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+                      className="action-button action-primary mt-6"
                     >
                       Crear oferta
                     </Link>

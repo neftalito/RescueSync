@@ -1,8 +1,10 @@
 import { type ReactElement } from "react";
 import { Link } from "react-router";
 
+import { ListadoLocal, ListadoRemoto } from "../components/ListadoProgresivo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
-import { useConvocatoriasAbiertas } from "../hooks/useConvocatoriasAbiertas";
+import { useConvocatoriasPaginadas } from "../hooks/useConvocatoriasAbiertas";
 import type { Convocatoria } from "../schemas/convocatoria";
 import { gravedadLabels } from "../schemas/emergencia";
 import { formatearCantidad } from "../utils/cantidades";
@@ -43,17 +45,21 @@ function TarjetaConvocatoria({
           ? "1 lote publicado"
           : `${convocatoria.lotes.length} lotes publicados`}
       </p>
-      <ul className="mt-3 space-y-1 text-sm text-slate-700">
-        {convocatoria.lotes.map((lote) => (
-          <li key={lote.lote_id}>
-            {lote.tipo_necesidad}: {formatearCantidad(lote.cantidad_publicada)}{" "}
-            {lote.unidad_publicada}
-          </li>
-        ))}
-      </ul>
+      <ListadoLocal items={convocatoria.lotes} etiqueta={`Lotes de convocatoria ${convocatoria.id}`} className="mt-3">
+        {(visibles) => (
+          <ul className="mt-3 space-y-1 text-sm text-slate-700">
+            {visibles.map((lote) => (
+              <li key={lote.lote_id}>
+                {lote.tipo_necesidad}: {formatearCantidad(lote.cantidad_publicada)}{" "}
+                {lote.unidad_publicada}
+              </li>
+            ))}
+          </ul>
+        )}
+      </ListadoLocal>
       <Link
         to={`/emergencias/${convocatoria.emergencia_id}/lotes`}
-        className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+        className="action-button action-primary mt-4"
       >
         Ver lotes
       </Link>
@@ -62,7 +68,7 @@ function TarjetaConvocatoria({
 }
 
 export function ConvocatoriasAbiertasPage(): ReactElement {
-  const query = useConvocatoriasAbiertas();
+  const query = useConvocatoriasPaginadas();
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -78,9 +84,11 @@ export function ConvocatoriasAbiertasPage(): ReactElement {
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -93,7 +101,7 @@ export function ConvocatoriasAbiertasPage(): ReactElement {
           >
             Cargando convocatorias…
           </section>
-        ) : query.isError ? (
+        ) : query.data === undefined ? (
           <section
             role="alert"
             className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm leading-6 text-red-800 shadow-sm"
@@ -106,9 +114,11 @@ export function ConvocatoriasAbiertasPage(): ReactElement {
             <button
               type="button"
               onClick={() => void query.refetch()}
-              className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+              className="action-button action-danger action-icon mt-4"
+              title="Reintentar"
             >
-              Reintentar
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Reintentar</span>
             </button>
           </section>
         ) : query.data.length === 0 ? (
@@ -119,14 +129,16 @@ export function ConvocatoriasAbiertasPage(): ReactElement {
             No hay convocatorias abiertas por el momento.
           </p>
         ) : (
-          <div className="space-y-4">
-            {query.data.map((convocatoria) => (
-              <TarjetaConvocatoria
-                key={convocatoria.id}
-                convocatoria={convocatoria}
-              />
-            ))}
-          </div>
+          <ListadoRemoto query={query} etiqueta="Convocatorias abiertas">
+            <div className="space-y-4">
+              {query.data.map((convocatoria) => (
+                <TarjetaConvocatoria
+                  key={convocatoria.id}
+                  convocatoria={convocatoria}
+                />
+              ))}
+            </div>
+          </ListadoRemoto>
         )}
       </div>
     </main>

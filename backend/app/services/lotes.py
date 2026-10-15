@@ -19,6 +19,7 @@ from app.db.models import (
 )
 from app.schemas.inventario import CapacidadResponse
 from app.schemas.lote import LoteItem
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 
 
@@ -151,7 +152,12 @@ def guardar_lotes(
     return resultado
 
 
-def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list[Lote]:
+def listar_lotes(
+    session: Session,
+    usuario: Usuario,
+    emergencia_id: int,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Lote]:
     """Devuelve los lotes de la emergencia según quién consulta.
 
     El centro coordinador asignado ve todos los lotes, en borrador o
@@ -181,6 +187,8 @@ def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list
                     Lote.estado == EstadoLote.PUBLICADO,
                 )
                 .order_by(Lote.id)
+                .offset(paginacion.offset)
+                .limit(paginacion.limit)
             ).all()
         )
 
@@ -193,7 +201,11 @@ def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list
         )
     return list(
         session.scalars(
-            select(Lote).where(Lote.emergencia_id == emergencia.id).order_by(Lote.id)
+            select(Lote)
+            .where(Lote.emergencia_id == emergencia.id)
+            .order_by(Lote.id)
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         ).all()
     )
 

@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { Link } from "react-router";
+import { ActionIcon } from "../components/ActionIcon";
 import type { Session } from "../schemas/auth";
 
 export function MisRecursosPage({ session }: { session: Session }): ReactElement {
@@ -15,9 +16,11 @@ export function MisRecursosPage({ session }: { session: Session }): ReactElement
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -40,7 +43,7 @@ export function MisRecursosPage({ session }: { session: Session }): ReactElement
             </p>
             <Link
               to="/mis-recursos/certificaciones"
-              className="mt-6 inline-flex self-start rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+              className="action-button action-primary mt-6 self-start"
             >
               Ver mis certificaciones
             </Link>
@@ -53,7 +56,7 @@ export function MisRecursosPage({ session }: { session: Session }): ReactElement
             </p>
             <Link
               to="/mis-recursos/inventario"
-              className="mt-6 inline-flex self-start rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+              className="action-button action-primary mt-6 self-start"
             >
               Gestionar inventario
             </Link>

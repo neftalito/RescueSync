@@ -10,12 +10,17 @@ from app.api.dependencies import (
     GestorTiempoRealDep,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Usuario
+from app.db.models import EstadoEmergencia, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.emergencia import EmergenciaCreate, EmergenciaResponse
+from app.schemas.emergencia import (
+    EmergenciaCreate,
+    EmergenciaEnBandejaResponse,
+    EmergenciaResponse,
+)
 from app.services import emergencias as servicio
 from app.services.notificaciones import clave_emergencia_registrada
 from app.services.tiempo_real import programar_evento_confirmado
@@ -152,7 +157,7 @@ UsuarioConsultaEmergencias = Annotated[
 
 @router.get(
     "",
-    response_model=list[EmergenciaResponse],
+    response_model=list[EmergenciaEnBandejaResponse],
     status_code=status.HTTP_200_OK,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
@@ -161,19 +166,25 @@ UsuarioConsultaEmergencias = Annotated[
     summary="Consultar la bandeja de emergencias del rol autenticado",
     description=(
         "Un municipio ve únicamente sus propias emergencias con su estado "
-        "actual. Un centro coordinador ve las emergencias en REGISTRADA sin "
-        "centro asignado o ya asignadas al suyo. El filtro se aplica en el "
-        "backend según el rol autenticado, no en la interfaz."
+        "actual. Un centro coordinador ve las emergencias REGISTRADA sin "
+        "centro asignado y todas las asignadas al suyo, en cualquier estado. "
+        "Cada resultado indica si tiene lotes para separar pendientes de "
+        "emergencias con lotes creados. La autorización se aplica en el backend."
     ),
 )
 def listar_bandeja_emergencias(
+    paginacion: PaginacionDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaEmergencias,
-) -> list[EmergenciaResponse]:
+    tiene_lotes: bool | None = None,
+    estado: EstadoEmergencia | None = None,
+) -> list[EmergenciaEnBandejaResponse]:
     """Devuelve la bandeja de emergencias filtrada por rol y organización vigente."""
 
     try:
-        emergencias = servicio.listar_emergencias(session, usuario)
+        emergencias = servicio.listar_emergencias(
+            session, usuario, paginacion, tiene_lotes=tiene_lotes, estado=estado
+        )
     except servicio.MunicipioInvalidoError as error:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -184,4 +195,11 @@ def listar_bandeja_emergencias(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(error),
         ) from error
-    return [EmergenciaResponse.model_validate(emergencia) for emergencia in emergencias]
+    con_lotes = servicio.ids_emergencias_con_lotes(session, emergencias)
+    return [
+        EmergenciaEnBandejaResponse(
+            **EmergenciaResponse.model_validate(emergencia).model_dump(),
+            tiene_lotes=emergencia.id in con_lotes,
+        )
+        for emergencia in emergencias
+    ]

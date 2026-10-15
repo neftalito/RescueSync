@@ -10,6 +10,7 @@ from app.api.dependencies import (
     GestorTiempoRealDep,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Convocatoria, ConvocatoriaLote, Usuario
@@ -166,12 +167,13 @@ def publicar_convocatoria(
     ),
 )
 def listar_convocatorias_abiertas(
+    paginacion: PaginacionDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaConvocatorias,
 ) -> list[ConvocatoriaAbiertaResponse]:
     """Consulta las convocatorias abiertas sin reclamar ni modificar nada."""
 
-    convocatorias = servicio.listar_convocatorias_abiertas(session)
+    convocatorias = servicio.listar_convocatorias_abiertas(session, paginacion)
     return [
         ConvocatoriaAbiertaResponse(
             requiere_desglose_nacional=bool(convocatoria.sistema_origen_ref),

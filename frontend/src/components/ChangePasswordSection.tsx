@@ -4,6 +4,7 @@ import { useState, type ReactElement } from "react";
 import { useForm, type UseFormRegisterReturn } from "react-hook-form";
 import { useNavigate } from "react-router";
 
+import { ActionIcon } from "./ActionIcon";
 import { changePassword } from "../api/auth";
 import { ApiError } from "../api/client";
 import { sessionQueryKey } from "../hooks/useSession";
@@ -84,6 +85,7 @@ export function ChangePasswordSection({
         <PasswordField
           id="password-actual"
           label="Contraseña actual"
+          placeholder="Ingresá tu contraseña actual"
           visible={showPasswords}
           error={errors.password_actual?.message}
           registration={register("password_actual")}
@@ -92,6 +94,7 @@ export function ChangePasswordSection({
         <PasswordField
           id="password-nueva"
           label="Contraseña nueva"
+          placeholder="Usá entre 8 y 128 caracteres"
           visible={showPasswords}
           error={errors.password_nueva?.message}
           registration={register("password_nueva")}
@@ -100,6 +103,7 @@ export function ChangePasswordSection({
         <PasswordField
           id="confirmacion"
           label="Repetir contraseña nueva"
+          placeholder="Volvé a ingresar la contraseña nueva"
           visible={showPasswords}
           error={errors.confirmacion?.message}
           registration={register("confirmacion")}
@@ -144,15 +148,17 @@ export function ChangePasswordSection({
                 setShowPasswords(false);
                 mutation.reset();
               }}
-              className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700"
+              className="action-button action-icon"
+              title="Cancelar"
             >
-              Cancelar
+              <ActionIcon name="close" />
+              <span className="sr-only">Cancelar</span>
             </button>
           )}
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60"
+            className="action-button action-primary"
           >
             {mutation.isPending ? "Guardando…" : "Guardar contraseña"}
           </button>
@@ -165,6 +171,7 @@ export function ChangePasswordSection({
 interface PasswordFieldProps {
   id: string;
   label: string;
+  placeholder: string;
   visible: boolean;
   error?: string;
   registration: UseFormRegisterReturn;
@@ -174,6 +181,7 @@ interface PasswordFieldProps {
 function PasswordField({
   id,
   label,
+  placeholder,
   visible,
   error,
   registration,
@@ -192,6 +200,7 @@ function PasswordField({
         id={id}
         type={visible ? "text" : "password"}
         autoComplete={autoComplete}
+        placeholder={placeholder}
         aria-invalid={error !== undefined}
         aria-describedby={error ? errorId : undefined}
         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"

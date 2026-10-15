@@ -1,3 +1,4 @@
+import { ListadoLocal } from "../components/ListadoProgresivo";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactElement } from "react";
@@ -11,6 +12,7 @@ import {
   crearCapacidad,
   unidadesQueryKey,
 } from "../api/catalogo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
 import {
@@ -102,9 +104,11 @@ export function CatalogoNacionalPage({
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -132,9 +136,11 @@ export function CatalogoNacionalPage({
                 type="button"
                 disabled={unidades.isFetching}
                 onClick={() => void unidades.refetch()}
-                className="mt-2 font-semibold underline"
+                className="action-button action-icon mt-2"
+                title="Reintentar unidades"
               >
-                Reintentar unidades
+                <ActionIcon name="refresh" />
+                <span className="sr-only">Reintentar unidades</span>
               </button>
             </div>
           )}
@@ -280,7 +286,7 @@ export function CatalogoNacionalPage({
               </div>
               <button
                 type="submit"
-                className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 disabled:opacity-60 sm:col-span-2"
+                className="action-button action-primary sm:col-span-2"
               >
                 {mutation.isPending ? "Creando…" : "Crear capacidad"}
               </button>
@@ -319,9 +325,11 @@ export function CatalogoNacionalPage({
               type="button"
               disabled={catalogo.isFetching}
               onClick={() => void catalogo.refetch()}
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              className="action-button action-icon"
+              title="Actualizar catálogo"
             >
-              Actualizar catálogo
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Actualizar catálogo</span>
             </button>
           </div>
           {catalogo.isPending && (
@@ -340,29 +348,33 @@ export function CatalogoNacionalPage({
             </p>
           )}
           {catalogo.data && (
-            <ul className="mt-5 grid gap-4 sm:grid-cols-2">
-              {catalogo.data.map((capacidad) => (
-                <li
-                  key={capacidad.id}
-                  className="min-w-0 rounded-xl border border-slate-200 p-4"
-                >
-                  <h3 className="font-semibold break-words text-slate-950">
-                    {capacidad.nombre}
-                  </h3>
-                  <p className="mt-1 text-sm break-words text-slate-500">
-                    {capacidad.codigo}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-700">
-                    {tipoCapacidadLabels[capacidad.tipo]} · {capacidad.unidad}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {capacidad.admiteFracciones
-                      ? "Admite fracciones"
-                      : "Cantidades enteras"}
-                  </p>
-                </li>
-              ))}
-            </ul>
+            <ListadoLocal items={catalogo.data} etiqueta="Capacidades disponibles" className="mt-4">
+              {(visibles) => (
+                <ul className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {visibles.map((capacidad) => (
+                    <li
+                      key={capacidad.id}
+                      className="min-w-0 rounded-xl border border-slate-200 p-4"
+                    >
+                      <h3 className="font-semibold break-words text-slate-950">
+                        {capacidad.nombre}
+                      </h3>
+                      <p className="mt-1 text-sm break-words text-slate-500">
+                        {capacidad.codigo}
+                      </p>
+                      <p className="mt-2 text-sm text-slate-700">
+                        {tipoCapacidadLabels[capacidad.tipo]} · {capacidad.unidad}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        {capacidad.admiteFracciones
+                          ? "Admite fracciones"
+                          : "Cantidades enteras"}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ListadoLocal>
           )}
         </section>
       </div>

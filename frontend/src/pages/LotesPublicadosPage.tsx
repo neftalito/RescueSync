@@ -1,8 +1,10 @@
 import { type ReactElement } from "react";
 import { Link, useParams } from "react-router";
 
+import { ListadoRemoto } from "../components/ListadoProgresivo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
-import { useLotesPublicados } from "../hooks/useLotes";
+import { useLotesPublicadosPaginados } from "../hooks/useLotes";
 import {
   estadoLoteLabels,
   type LotePublicadoPublico,
@@ -15,7 +17,7 @@ function parsearId(valor: string | undefined): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-function TarjetaLote({ lote }: { lote: LotePublicadoPublico }): ReactElement {
+function TarjetaLote({ lote }: { lote: LotePublicadoPublico; }): ReactElement {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-4">
@@ -37,7 +39,7 @@ function TarjetaLote({ lote }: { lote: LotePublicadoPublico }): ReactElement {
       <Link
         to={`/ofertas/nueva?loteId=${lote.id}`}
         aria-label={`Crear oferta para ${lote.tipo_necesidad}`}
-        className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+        className="action-button action-primary mt-4"
       >
         Crear oferta
       </Link>
@@ -45,7 +47,7 @@ function TarjetaLote({ lote }: { lote: LotePublicadoPublico }): ReactElement {
   );
 }
 
-function Contenido({ emergenciaId }: { emergenciaId: number | null }): ReactElement {
+function Contenido({ emergenciaId }: { emergenciaId: number | null; }): ReactElement {
   if (emergenciaId === null) {
     return (
       <section
@@ -60,8 +62,8 @@ function Contenido({ emergenciaId }: { emergenciaId: number | null }): ReactElem
   return <ListadoLotes emergenciaId={emergenciaId} />;
 }
 
-function ListadoLotes({ emergenciaId }: { emergenciaId: number }): ReactElement {
-  const query = useLotesPublicados(emergenciaId);
+function ListadoLotes({ emergenciaId }: { emergenciaId: number; }): ReactElement {
+  const query = useLotesPublicadosPaginados(emergenciaId);
 
   if (query.isPending) {
     return (
@@ -74,7 +76,7 @@ function ListadoLotes({ emergenciaId }: { emergenciaId: number }): ReactElement 
     );
   }
 
-  if (query.isError) {
+  if (query.data === undefined) {
     const mensaje =
       query.error instanceof ApiError
         ? query.error.message
@@ -88,9 +90,11 @@ function ListadoLotes({ emergenciaId }: { emergenciaId: number }): ReactElement 
         <button
           type="button"
           onClick={() => void query.refetch()}
-          className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          className="action-button action-danger action-icon mt-4"
+          title="Reintentar"
         >
-          Reintentar
+          <ActionIcon name="refresh" />
+          <span className="sr-only">Reintentar</span>
         </button>
       </section>
     );
@@ -108,11 +112,13 @@ function ListadoLotes({ emergenciaId }: { emergenciaId: number }): ReactElement 
   }
 
   return (
-    <div className="space-y-4">
-      {query.data.map((lote) => (
-        <TarjetaLote key={lote.id} lote={lote} />
-      ))}
-    </div>
+    <ListadoRemoto query={query} etiqueta="Lotes publicados">
+      <div className="space-y-4">
+        {query.data.map((lote) => (
+          <TarjetaLote key={lote.id} lote={lote} />
+        ))}
+      </div>
+    </ListadoRemoto>
   );
 }
 
@@ -133,9 +139,11 @@ export function LotesPublicadosPage(): ReactElement {
           </div>
           <Link
             to="/convocatorias"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver a convocatorias"
           >
-            Volver a convocatorias
+            <ActionIcon name="back" />
+            <span className="sr-only">Volver a convocatorias</span>
           </Link>
         </div>
       </header>

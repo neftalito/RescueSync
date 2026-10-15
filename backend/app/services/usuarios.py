@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.core.roles import TIPO_ORGANIZACION_POR_ROL
 from app.core.security import generar_password_hash
 from app.db.models import Organizacion, RolUsuario, Usuario
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.schemas.usuarios import UsuarioCreate, UsuarioUpdate
 from app.services.admin_lock import bloquear_gestion_administradores
 
@@ -37,7 +38,10 @@ class ResultadoAltaUsuario:
     password_temporal: SecretStr
 
 
-def listar_usuarios(session: Session) -> list[Usuario]:
+def listar_usuarios(
+    session: Session,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Usuario]:
     """Lista todas las cuentas, incluidas las inactivas, ordenadas por correo."""
 
     return list(
@@ -45,6 +49,8 @@ def listar_usuarios(session: Session) -> list[Usuario]:
             select(Usuario)
             .options(joinedload(Usuario.organizacion))
             .order_by(func.lower(Usuario.email), Usuario.id)
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         )
     )
 

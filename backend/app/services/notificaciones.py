@@ -13,6 +13,7 @@ from app.db.models import (
     TipoNotificacion,
     Usuario,
 )
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 
 LIMITE_NOTIFICACIONES = 50
 
@@ -177,6 +178,7 @@ def notificar_oferta_recibida(
 def listar_notificaciones(
     session: Session,
     usuario: Usuario,
+    paginacion: Paginacion = SIN_PAGINACION,
 ) -> list[Notificacion]:
     """Devuelve las últimas novedades del usuario sin exponer otros buzones."""
 
@@ -185,7 +187,8 @@ def listar_notificaciones(
             select(Notificacion)
             .where(Notificacion.usuario_id == usuario.id)
             .order_by(Notificacion.creada_en.desc(), Notificacion.id.desc())
-            .limit(LIMITE_NOTIFICACIONES)
+            .offset(paginacion.offset)
+            .limit(paginacion.limit or LIMITE_NOTIFICACIONES)
         ).all()
     )
 

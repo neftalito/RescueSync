@@ -26,6 +26,7 @@ from app.db.models import (
     TipoOrganizacion,
     Usuario,
 )
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 from app.services.notificaciones import notificar_convocatoria_publicada
 
@@ -184,7 +185,10 @@ def publicar_convocatoria(
     return convocatoria
 
 
-def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
+def listar_convocatorias_abiertas(
+    session: Session,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Convocatoria]:
     """Devuelve las convocatorias abiertas visibles para cualquier ONG activa.
 
     No filtra por organización: una convocatoria abierta es pública por
@@ -203,7 +207,9 @@ def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
                 selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
                 joinedload(Convocatoria.emergencia),
             )
-            .order_by(Convocatoria.publicada_en.desc())
+            .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         ).all()
     )
 

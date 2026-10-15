@@ -12,11 +12,15 @@ import {
   marcarNotificacionLeida,
   marcarTodasLasNotificacionesLeidas,
 } from "../api/notificaciones";
+import { ListadoRemoto } from "./ListadoProgresivo";
+import { ActionIcon } from "./ActionIcon";
 import { ApiError } from "../api/client";
 import {
   notificacionesQueryKey,
   useNotificaciones,
+  useNotificacionesPaginadas,
 } from "../hooks/useNotificaciones";
+import { actualizarPaginas } from "../utils/actualizarPaginas";
 import type { Notificacion } from "../schemas/notificacion";
 
 interface NotificationCenterProps {
@@ -103,11 +107,14 @@ export function NotificationCenter({
   }, [abierto]);
 
   const query = useNotificaciones();
+  const historial = useNotificacionesPaginadas(abierto);
   const queryClient = useQueryClient();
   const marcarLeida = useMutation({
     mutationFn: (notificacionId: number) =>
       marcarNotificacionLeida(notificacionId, csrfToken),
     onSuccess: (actualizada) => {
+      actualizarPaginas<Notificacion>(queryClient, notificacionesQueryKey,
+        (notificacion) => notificacion.id === actualizada.id ? actualizada : notificacion);
       queryClient.setQueryData<Notificacion[]>(
         notificacionesQueryKey,
         (anteriores = []) =>
@@ -120,6 +127,8 @@ export function NotificationCenter({
   const marcarTodasLeidas = useMutation({
     mutationFn: () => marcarTodasLasNotificacionesLeidas(csrfToken),
     onSuccess: (resultado) => {
+      actualizarPaginas<Notificacion>(queryClient, notificacionesQueryKey,
+        (notificacion) => notificacion.leida_en === null ? { ...notificacion, leida_en: resultado.leida_en } : notificacion);
       queryClient.setQueryData<Notificacion[]>(
         notificacionesQueryKey,
         (anteriores = []) =>
@@ -206,7 +215,7 @@ export function NotificationCenter({
                 title="Marcar todas como vistas"
                 disabled={noLeidas === 0 || marcarTodasLeidas.isPending}
                 onClick={() => marcarTodasLeidas.mutate()}
-                className="inline-flex size-8 items-center justify-center rounded-lg text-cyan-800 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                className="action-button action-primary action-icon"
               >
                 <svg
                   aria-hidden="true"
@@ -225,67 +234,74 @@ export function NotificationCenter({
             </div>
           </div>
 
-          {query.isPending ? (
+          {historial.isPending ? (
             <p role="status" className="py-6 text-sm text-slate-500">
               Cargando notificaciones…
             </p>
-          ) : query.isError ? (
+          ) : historial.data === undefined ? (
             <div role="alert" className="py-5 text-sm text-red-800">
               <p>No pudimos cargar las notificaciones.</p>
               <button
                 type="button"
-                onClick={() => void query.refetch()}
-                className="mt-3 font-semibold underline"
+                onClick={() => void historial.refetch()}
+                className="action-button action-icon mt-3"
+                title="Reintentar"
               >
-                Reintentar
+                <ActionIcon name="refresh" />
+                <span className="sr-only">Reintentar</span>
               </button>
             </div>
-          ) : query.data.length === 0 ? (
+          ) : historial.data.length === 0 ? (
             <p role="status" className="py-6 text-sm text-slate-500">
               No hay novedades todavía.
             </p>
           ) : (
-            <ul className="mt-3 min-h-0 space-y-2 overflow-y-auto overscroll-contain">
-              {query.data.map((notificacion) => (
-                <li
-                  key={notificacion.id}
-                  className={`rounded-xl border p-3 [overflow-wrap:anywhere] ${
-                    notificacion.leida_en === null
-                      ? "border-cyan-200 bg-cyan-50"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-slate-950">
-                    {notificacion.titulo}
-                  </p>
-                  <p className="mt-1 text-sm leading-5 text-slate-600">
-                    {notificacion.mensaje}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    <time className="text-xs text-slate-500">
-                      {formatearFecha(notificacion.creada_en)}
-                    </time>
-                    {notificacion.ruta ? (
-                      <Link
-                        to={notificacion.ruta}
-                        onClick={() => leer(notificacion)}
-                        className="text-xs font-semibold text-cyan-800 underline"
-                      >
-                        Ver detalle
-                      </Link>
-                    ) : notificacion.leida_en === null ? (
-                      <button
-                        type="button"
-                        onClick={() => leer(notificacion)}
-                        className="text-xs font-semibold text-cyan-800 underline"
-                      >
-                        Marcar como leída
-                      </button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <ListadoRemoto query={historial} etiqueta="Historial de notificaciones" className="mt-3">
+              <ul className="space-y-2">
+                {historial.data.map((notificacion) => (
+                  <li
+                    key={notificacion.id}
+                    className={`rounded-xl border p-3 [overflow-wrap:anywhere] ${notificacion.leida_en === null
+                        ? "border-cyan-200 bg-cyan-50"
+                        : "border-slate-200 bg-white"
+                      }`}
+                  >
+                    <p className="text-sm font-semibold text-slate-950">
+                      {notificacion.titulo}
+                    </p>
+                    <p className="mt-1 text-sm leading-5 text-slate-600">
+                      {notificacion.mensaje}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                      <time className="text-xs text-slate-500">
+                        {formatearFecha(notificacion.creada_en)}
+                      </time>
+                      {notificacion.ruta ? (
+                        <Link
+                          to={notificacion.ruta}
+                          onClick={() => leer(notificacion)}
+                          className="action-button action-primary action-icon"
+                          title="Ver detalle"
+                        >
+                          <ActionIcon name="eye" />
+                          <span className="sr-only">Ver detalle</span>
+                        </Link>
+                      ) : notificacion.leida_en === null ? (
+                        <button
+                          type="button"
+                          onClick={() => leer(notificacion)}
+                          className="action-button action-primary action-icon"
+                          title="Marcar como leída"
+                        >
+                          <ActionIcon name="check" />
+                          <span className="sr-only">Marcar como leída</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </ListadoRemoto>
           )}
           {errorMutacion && (
             <p role="alert" className="mt-3 shrink-0 text-sm text-red-800">

@@ -6,6 +6,8 @@ referencia.
 
 ## Desarrollo
 
+- [Listados, carga progresiva y scroll](./listados-y-paginacion.md): ventanas de
+  consulta, filtros, compatibilidad y alcance de los datos nacionales/reportes.
 - [CORS y dominios](./cors.md): configuración desde `.env`, nuevos dominios,
   despliegue, preflight, cookies y WebSocket.
 - [Monitoreo de procesos](./monitoreo-procesos.md): indicadores BAM, tareas

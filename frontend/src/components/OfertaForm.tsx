@@ -1,9 +1,11 @@
+import { ScrollListado } from "./ListadoProgresivo";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactElement, useEffect, useRef, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
+import { ActionIcon } from "./ActionIcon";
 import { ApiError } from "../api/client";
 import { consultarRecursos } from "../api/inventario";
 import { sessionQueryKey } from "../hooks/useSession";
@@ -90,11 +92,11 @@ export function OfertaForm({
   );
   const convocatorias = editando
     ? convocatoriasAbiertas.filter(
-        (item) => oferta === undefined || item.id === oferta.convocatoria_id,
-      )
+      (item) => oferta === undefined || item.id === oferta.convocatoria_id,
+    )
     : convocatoriasAbiertas.filter(
-        (item) => !convocatoriasConOferta.has(item.id),
-      );
+      (item) => !convocatoriasConOferta.has(item.id),
+    );
   const convocatoriaBuscadaId =
     editando && oferta !== undefined ? oferta.convocatoria_id : convocatoriaId;
   const convocatoria = convocatoriasAbiertas.find(
@@ -244,7 +246,7 @@ export function OfertaForm({
         </div>
         <Link
           to="/mis-ofertas"
-          className="mt-5 inline-flex rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+          className="action-button action-primary mt-5"
         >
           Ver mis ofertas
         </Link>
@@ -278,9 +280,11 @@ export function OfertaForm({
             void convocatoriasQuery.refetch();
             void ofertasQuery.refetch();
           }}
-          className="mt-4 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+          className="action-button action-primary action-icon mt-4"
+          title="Reintentar"
         >
-          Reintentar
+          <ActionIcon name="refresh" />
+          <span className="sr-only">Reintentar</span>
         </button>
       </article>
     );
@@ -307,9 +311,11 @@ export function OfertaForm({
         </p>
         <Link
           to="/mis-ofertas"
-          className="mt-5 inline-flex rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          className="action-button action-icon mt-5"
+          title="Volver a mis ofertas"
         >
-          Volver a mis ofertas
+          <ActionIcon name="back" />
+          <span className="sr-only">Volver a mis ofertas</span>
         </Link>
       </article>
     );
@@ -324,9 +330,11 @@ export function OfertaForm({
           </p>
           <Link
             to="/convocatorias"
-            className="mt-5 inline-flex rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon mt-5"
+            title="Volver a convocatorias"
           >
-            Volver a convocatorias
+            <ActionIcon name="back" />
+            <span className="sr-only">Volver a convocatorias</span>
           </Link>
         </article>
       );
@@ -340,9 +348,11 @@ export function OfertaForm({
           </p>
           <Link
             to={`/ofertas/${ofertaInicial.id}/editar`}
-            className="mt-5 inline-flex rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+            className="action-button action-primary action-icon mt-5"
+            title="Modificar oferta existente"
           >
-            Modificar oferta existente
+            <ActionIcon name="edit" />
+            <span className="sr-only">Modificar oferta existente</span>
           </Link>
         </article>
       );
@@ -449,9 +459,11 @@ export function OfertaForm({
                 type="button"
                 onClick={agregarLote}
                 disabled={loteParaAgregar === ""}
-                className="mt-2 rounded-xl border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-50 sm:mt-7"
+                className="action-button action-primary action-icon mt-2 sm:mt-7"
+                title="Agregar lote"
               >
-                Agregar lote
+                <ActionIcon name="plus" />
+                <span className="sr-only">Agregar lote</span>
               </button>
             </div>
 
@@ -461,142 +473,148 @@ export function OfertaForm({
               </p>
             )}
 
-            <div className="mt-5 space-y-4">
-              {fields.map((field, index) => {
-                const lote = lotes.find(
-                  (opcion) => opcion.lote_id === items[index]?.lote_id,
-                );
-                const itemErrors = errors.items?.[index];
-                return (
-                  <fieldset
-                    key={field.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4"
-                  >
-                    <legend className="px-1 text-sm font-semibold text-slate-900">
-                      {lote?.tipo_necesidad ?? `Lote ${index + 1}`}
-                    </legend>
-                    {lote && (
-                      <p className="mb-4 text-sm text-slate-600">
-                        Publicado: {formatearCantidad(lote.cantidad_publicada)}{" "}
-                        {lote.unidad_publicada}
-                      </p>
-                    )}
-                    {lote?.capacidad_nacional_id && <>
-                      {recursosQuery.isPending && <p role="status">Cargando tu inventario…</p>}
-                      {recursosQuery.isError && <p role="alert">{recursosQuery.error instanceof ApiError ? recursosQuery.error.message : "No pudimos consultar el inventario."} <Link to="/mis-recursos">Ir a Mis recursos</Link></p>}
-                      <RecursosOferta index={index} control={control} register={register} errores={errors} recursos={(recursosQuery.isError ? [] : recursosQuery.data ?? []).filter((r) => r.activo && r.capacidadId === lote.capacidad_nacional_id && r.unidad === lote.unidad_publicada)} />
-                    </>}
-                    <input
-                      type="hidden"
-                      {...register(`items.${index}.lote_id`, {
-                        valueAsNumber: true,
-                      })}
-                    />
-                    <input
-                      type="hidden"
-                      {...register(`items.${index}.unidad`)}
-                    />
-                    <input
-                      type="hidden"
-                      {...register(`items.${index}.cantidad_publicada`)}
-                    />
+            <ScrollListado etiqueta="Ítems de la oferta" className="mt-5">
+              <div className="mt-5 space-y-4">
+                {fields.map((field, index) => {
+                  const lote = lotes.find(
+                    (opcion) => opcion.lote_id === items[index]?.lote_id,
+                  );
+                  const itemErrors = errors.items?.[index];
+                  return (
+                    <fieldset
+                      key={field.id}
+                      className="rounded-xl border border-slate-200 bg-white p-4"
+                    >
+                      <legend className="px-1 text-sm font-semibold text-slate-900">
+                        {lote?.tipo_necesidad ?? `Lote ${index + 1}`}
+                      </legend>
+                      {lote && (
+                        <p className="mb-4 text-sm text-slate-600">
+                          Publicado: {formatearCantidad(lote.cantidad_publicada)}{" "}
+                          {lote.unidad_publicada}
+                        </p>
+                      )}
+                      {lote?.capacidad_nacional_id && <>
+                        {recursosQuery.isPending && <p role="status">Cargando tu inventario…</p>}
+                        {recursosQuery.isError && <p role="alert">{recursosQuery.error instanceof ApiError ? recursosQuery.error.message : "No pudimos consultar el inventario."} <Link to="/mis-recursos">Ir a Mis recursos</Link></p>}
+                        <RecursosOferta index={index} control={control} register={register} errores={errors} recursos={(recursosQuery.isError ? [] : recursosQuery.data ?? []).filter((r) => r.activo && r.capacidadId === lote.capacidad_nacional_id && r.unidad === lote.unidad_publicada)} />
+                      </>}
+                      <input
+                        type="hidden"
+                        {...register(`items.${index}.lote_id`, {
+                          valueAsNumber: true,
+                        })}
+                      />
+                      <input
+                        type="hidden"
+                        {...register(`items.${index}.unidad`)}
+                      />
+                      <input
+                        type="hidden"
+                        {...register(`items.${index}.cantidad_publicada`)}
+                      />
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label
-                          htmlFor={`items.${index}.tipo`}
-                          className="block text-sm font-semibold text-slate-800"
-                        >
-                          Tipo de aporte
-                        </label>
-                        <select
-                          id={`items.${index}.tipo`}
-                          className={inputClasses}
-                          {...register(`items.${index}.tipo`)}
-                        >
-                          {tiposAporte.map((tipo) => (
-                            <option key={tipo} value={tipo}>
-                              {tipoAporteLabels[tipo]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label
-                          htmlFor={`items.${index}.cantidad_ofrecida`}
-                          className="block text-sm font-semibold text-slate-800"
-                        >
-                          Cantidad ofrecida
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            id={`items.${index}.cantidad_ofrecida`}
-                            type="text"
-                            inputMode="decimal"
-                            aria-invalid={itemErrors?.cantidad_ofrecida !== undefined}
-                            aria-describedby={
-                              itemErrors?.cantidad_ofrecida
-                                ? `cantidad-${index}-error`
-                                : undefined
-                            }
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label
+                            htmlFor={`items.${index}.tipo`}
+                            className="block text-sm font-semibold text-slate-800"
+                          >
+                            Tipo de aporte
+                          </label>
+                          <select
+                            id={`items.${index}.tipo`}
                             className={inputClasses}
-                            {...register(`items.${index}.cantidad_ofrecida`)}
-                          />
-                          <span className="mt-2 shrink-0 text-sm text-slate-600">
-                            {lote?.unidad_publicada}
-                          </span>
+                            {...register(`items.${index}.tipo`)}
+                          >
+                            {tiposAporte.map((tipo) => (
+                              <option key={tipo} value={tipo}>
+                                {tipoAporteLabels[tipo]}
+                              </option>
+                            ))}
+                          </select>
                         </div>
-                        {itemErrors?.cantidad_ofrecida && (
+                        <div>
+                          <label
+                            htmlFor={`items.${index}.cantidad_ofrecida`}
+                            className="block text-sm font-semibold text-slate-800"
+                          >
+                            Cantidad ofrecida
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`items.${index}.cantidad_ofrecida`}
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Ej.: 100"
+                              aria-invalid={itemErrors?.cantidad_ofrecida !== undefined}
+                              aria-describedby={
+                                itemErrors?.cantidad_ofrecida
+                                  ? `cantidad-${index}-error`
+                                  : undefined
+                              }
+                              className={inputClasses}
+                              {...register(`items.${index}.cantidad_ofrecida`)}
+                            />
+                            <span className="mt-2 shrink-0 text-sm text-slate-600">
+                              {lote?.unidad_publicada}
+                            </span>
+                          </div>
+                          {itemErrors?.cantidad_ofrecida && (
+                            <p
+                              id={`cantidad-${index}-error`}
+                              className="mt-2 text-sm text-red-700"
+                            >
+                              {itemErrors.cantidad_ofrecida.message}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <label
+                          htmlFor={`items.${index}.descripcion`}
+                          className="block text-sm font-semibold text-slate-800"
+                        >
+                          Descripción del aporte
+                        </label>
+                        <input
+                          id={`items.${index}.descripcion`}
+                          type="text"
+                          maxLength={2000}
+                          placeholder="Detallá los recursos y las condiciones del aporte"
+                          aria-invalid={itemErrors?.descripcion !== undefined}
+                          aria-describedby={
+                            itemErrors?.descripcion
+                              ? `descripcion-${index}-error`
+                              : undefined
+                          }
+                          className={inputClasses}
+                          {...register(`items.${index}.descripcion`)}
+                        />
+                        {itemErrors?.descripcion && (
                           <p
-                            id={`cantidad-${index}-error`}
+                            id={`descripcion-${index}-error`}
                             className="mt-2 text-sm text-red-700"
                           >
-                            {itemErrors.cantidad_ofrecida.message}
+                            {itemErrors.descripcion.message}
                           </p>
                         )}
                       </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <label
-                        htmlFor={`items.${index}.descripcion`}
-                        className="block text-sm font-semibold text-slate-800"
+                      <button
+                        type="button"
+                        onClick={() => remove(index)}
+                        className="action-button action-danger action-icon mt-4"
+                        title="Quitar lote"
                       >
-                        Descripción del aporte
-                      </label>
-                      <input
-                        id={`items.${index}.descripcion`}
-                        type="text"
-                        maxLength={2000}
-                        aria-invalid={itemErrors?.descripcion !== undefined}
-                        aria-describedby={
-                          itemErrors?.descripcion
-                            ? `descripcion-${index}-error`
-                            : undefined
-                        }
-                        className={inputClasses}
-                        {...register(`items.${index}.descripcion`)}
-                      />
-                      {itemErrors?.descripcion && (
-                        <p
-                          id={`descripcion-${index}-error`}
-                          className="mt-2 text-sm text-red-700"
-                        >
-                          {itemErrors.descripcion.message}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => remove(index)}
-                      className="mt-4 rounded-lg px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
-                    >
-                      Quitar lote
-                    </button>
-                  </fieldset>
-                );
-              })}
-            </div>
+                        <ActionIcon name="trash" />
+                        <span className="sr-only">Quitar lote</span>
+                      </button>
+                    </fieldset>
+                  );
+                })}
+              </div>
+            </ScrollListado>
           </section>
         )}
 
@@ -610,6 +628,7 @@ export function OfertaForm({
           <textarea
             id="observaciones"
             rows={3}
+            placeholder="Disponibilidad, plazos de entrega o información adicional"
             aria-invalid={errors.observaciones !== undefined}
             aria-describedby={
               errors.observaciones ? "observaciones-error" : undefined
@@ -636,7 +655,7 @@ export function OfertaForm({
         <button
           type="submit"
           disabled={mutationIsPending}
-          className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+          className="action-button action-primary w-full"
         >
           {mutationIsPending
             ? `${editando ? "Actualizando" : "Presentando"} oferta…`

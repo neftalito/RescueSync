@@ -43,3 +43,9 @@ class EmergenciaResponse(BaseModel):
     bonita_ultimo_intento_en: AwareDatetime | None
     creada_en: AwareDatetime
     actualizada_en: AwareDatetime
+
+
+class EmergenciaEnBandejaResponse(EmergenciaResponse):
+    """Agrega la existencia de lotes para clasificar la bandeja del coordinador."""
+
+    tiene_lotes: bool

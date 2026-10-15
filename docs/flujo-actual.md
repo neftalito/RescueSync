@@ -29,7 +29,7 @@ Todas las rutas indicadas a continuación llevan el prefijo `/api/v1`.
 | Rol | Participación en el flujo actual |
 | --- | --- |
 | `OPERADOR_MUNICIPAL` | Registra emergencias, consulta las de su municipio y reintenta su vinculación con Bonita. |
-| `COORDINADOR_REGIONAL` | Ve emergencias registradas disponibles o asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
+| `COORDINADOR_REGIONAL` | Consulta emergencias disponibles y las asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
 | `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, registra una oferta parcial por convocatoria, la modifica durante la ventana y consulta las ofertas de su ONG. |
 | `AUDITOR_DIRECTIVO` | Consulta el dashboard global con indicadores locales, tiempos de Bonita y exportación CSV/JSON. |
 | `ADMINISTRADOR` | Gestiona usuarios, roles, organizaciones y contraseñas; no interviene en el recorrido operativo de una emergencia. |
@@ -141,9 +141,20 @@ actor **Coordinador Regional**.
 
 ### 3. El centro coordinador genera lotes
 
-La bandeja del coordinador usa `GET /emergencias`. Solo muestra emergencias en
-`REGISTRADA` sin centro o ya asignadas a su propio centro. Desde
-`frontend/src/pages/LotesPage.tsx`, el formulario
+El inicio del coordinador presenta dos tarjetas que abren vistas independientes:
+**Emergencias pendientes** (`/emergencias/pendientes`) lista únicamente emergencias
+sin lotes; **Emergencias no pendientes** (`/emergencias/con-lotes`) lista las que
+tienen al menos un lote, incluso en borrador, y permite filtrar por estado. El
+filtro se conserva en el parámetro `estado` de la URL.
+
+Ambas consultan `GET /emergencias`, cuya respuesta incluye `tiene_lotes`, calculado
+en bloque a partir de los lotes persistidos. El backend permite ver las emergencias
+`REGISTRADA` sin centro y todas las asignadas al propio centro, en cualquier estado;
+las de otros centros siguen excluidas. Crear el primer lote retira la emergencia
+de pendientes aunque siga `REGISTRADA`; eliminar el último borrador la devuelve.
+Los lotes se muestran como consulta cuando la emergencia ya no admite edición.
+
+Desde `frontend/src/pages/LotesPage.tsx`, el formulario
 `frontend/src/components/LotesForm.tsx` usa:
 
 | Endpoint | Efecto |

@@ -710,6 +710,7 @@ describe("autenticación", () => {
       zona: "Ribera norte",
       descripcion: "Inundación con familias evacuadas",
       estado: "REGISTRADA",
+      tiene_lotes: false,
       bonita_sync: "PENDIENTE",
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
@@ -756,8 +757,9 @@ describe("autenticación", () => {
       screen.getByRole("button", { name: "Ingresar a RescueSync" }),
     );
 
+    await user.click(await screen.findByRole("link", { name: "Ver emergencias pendientes" }));
     expect(
-      await screen.findByText("No hay emergencias registradas pendientes."),
+      await screen.findByText("No hay emergencias pendientes sin lotes."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
   });
@@ -772,6 +774,7 @@ describe("autenticación", () => {
       zona: "Ribera norte",
       descripcion: "Inundación con familias evacuadas",
       estado: "REGISTRADA",
+      tiene_lotes: false,
       bonita_sync: "PENDIENTE",
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
@@ -822,8 +825,9 @@ describe("autenticación", () => {
       screen.getByRole("button", { name: "Ingresar a RescueSync" }),
     );
 
+    await user.click(await screen.findByRole("link", { name: "Ver emergencias pendientes" }));
     expect(
-      await screen.findByText("No hay emergencias registradas pendientes."),
+      await screen.findByText("No hay emergencias pendientes sin lotes."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
   });
@@ -841,6 +845,7 @@ describe("emergencias del municipio", () => {
       zona: "Ribera norte",
       descripcion: "Inundación con familias evacuadas",
       estado: "REGISTRADA",
+      tiene_lotes: false,
       bonita_sync: "PENDIENTE",
       bonita_process_instance_id: null,
       creada_en: "2026-09-19T18:20:39.102766Z",
@@ -926,6 +931,7 @@ describe("emergencias del municipio", () => {
   it.each([
     "/emergencias/nueva", "/mis-emergencias",
     "/mis-recursos/certificaciones", "/mis-recursos/inventario",
+    "/emergencias/pendientes", "/emergencias/con-lotes",
   ])(
     "redirige al login si se abre %s sin sesión",
     async (path) => {
@@ -1077,4 +1083,17 @@ describe("navegación por rol", () => {
       ).not.toBeInTheDocument();
     }
   });
+});
+
+
+describe.each(["/emergencias/pendientes", "/emergencias/con-lotes"])("acceso a la bandeja del coordinador %s", (path) => {
+  it.each<Role>(["OPERADOR_MUNICIPAL", "REPRESENTANTE_ONG", "AUDITOR_DIRECTIVO", "ADMINISTRADOR"])(
+    "impide el acceso a %s",
+    async (role) => {
+      server.use(http.get(`${API_URL}/auth/me`, () => HttpResponse.json(sessionForRole(role))));
+      renderApp(path);
+      expect(await screen.findByRole("heading", { name: /Bienvenido a RescueSync|Dashboard de auditoría/ })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { level: 1, name: /Emergencias pendientes|Emergencias no pendientes/ })).not.toBeInTheDocument();
+    },
+  );
 });

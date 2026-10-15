@@ -1520,3 +1520,30 @@ def test_openapi_documenta_eliminacion_de_borradores(client: TestClient) -> None
     assert operacion["summary"]
     assert operacion["description"]
     assert {"204", "401", "403", "404", "409"} <= set(operacion["responses"])
+
+
+def test_pagina_lotes_despues_de_filtrar_por_emergencia_y_rol(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    db_session.flush()
+    _lote(db_session, emergencia, coordinador, tipo="Borrador")
+    publicados = [
+        _lote(
+            db_session,
+            emergencia,
+            coordinador,
+            tipo=f"Publicado {indice}",
+            estado=EstadoLote.PUBLICADO,
+        )
+        for indice in range(3)
+    ]
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+    response = client.get(f"/api/v1/emergencias/{emergencia.id}/lotes?limit=1&offset=1")
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [publicados[1].id]

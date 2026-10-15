@@ -1,5 +1,6 @@
 import { useFieldArray, type Control, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import type { ReactElement } from "react";
+import { ActionIcon } from "./ActionIcon";
 import type { OfertaFormData } from "../schemas/oferta";
 import type { Recurso } from "../schemas/inventario";
 interface Props {
@@ -23,13 +24,29 @@ export function RecursosOferta({ index, control, register, errores, recursos }: 
         </select>
       </label>
       <label>Cantidad del recurso
-        <input className="mt-1 w-full rounded border border-slate-300 bg-white p-2" inputMode="decimal" {...register(`items.${index}.aportes.${aporteIndex}.cantidad`)}/>
+        <input className="mt-1 w-full rounded border border-slate-300 bg-white p-2" inputMode="decimal" placeholder="Ej.: 10" {...register(`items.${index}.aportes.${aporteIndex}.cantidad`)}/>
       </label>
-      <button type="button" className="self-end rounded border border-slate-300 p-2" onClick={() => remove(aporteIndex)}>Quitar recurso</button>
+      <button
+        type="button"
+        className="action-button action-danger action-icon self-end"
+        onClick={() => remove(aporteIndex)}
+        title="Quitar recurso"
+      >
+        <ActionIcon name="trash" />
+        <span className="sr-only">Quitar recurso</span>
+      </button>
       {error?.[aporteIndex]?.recurso_nacional_id && <p role="alert">{error[aporteIndex].recurso_nacional_id.message}</p>}
       {error?.[aporteIndex]?.cantidad && <p role="alert">{error[aporteIndex].cantidad.message}</p>}
     </div>)}
-    <button type="button" className="mt-3 rounded border border-cyan-700 bg-white px-3 py-2" onClick={() => append({ recurso_nacional_id: "", cantidad: "" })}>Agregar recurso</button>
+    <button
+      type="button"
+      className="action-button action-primary action-icon mt-3"
+      onClick={() => append({ recurso_nacional_id: "", cantidad: "" })}
+      title="Agregar recurso"
+    >
+      <ActionIcon name="plus" />
+      <span className="sr-only">Agregar recurso</span>
+    </button>
     {recursos.length === 0 && <p className="mt-2 text-sm">No hay recursos compatibles. Revisá tu inventario nacional.</p>}
     {(error?.message || error?.root?.message) && <p role="alert" className="mt-2 text-red-800">{error.message ?? error.root?.message}</p>}
   </div>;

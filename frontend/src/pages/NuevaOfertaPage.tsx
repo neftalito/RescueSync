@@ -1,6 +1,7 @@
 import { type ReactElement } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 
+import { ActionIcon } from "../components/ActionIcon";
 import { OfertaForm } from "../components/OfertaForm";
 
 interface NuevaOfertaPageProps {
@@ -37,9 +38,11 @@ export function NuevaOfertaPage({ csrfToken }: NuevaOfertaPageProps): ReactEleme
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>

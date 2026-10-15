@@ -1,3 +1,4 @@
+import { ListadoLocal } from "./ListadoProgresivo";
 import type { ReactElement, ReactNode } from "react";
 import type { IndicadoresProceso as Indicadores } from "../schemas/metricas";
 import { gravedadLabels } from "../schemas/emergencia";
@@ -10,17 +11,19 @@ export function TablaMonitoreo({ titulo, columnas, filas, vacio = "Sin hechos co
   return <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
     <h3 className="text-lg font-bold text-slate-900">{titulo}</h3>
     {filas.length === 0 ? <p className="mt-3 text-sm text-slate-600">{vacio}</p> :
-      <div className="mt-3 max-h-96 overflow-auto" role="region" aria-label={titulo} tabIndex={0}>
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">{titulo}</caption>
-          <thead className="sticky top-0 bg-white"><tr>{columnas.map(c => <th key={c} className="px-3 py-2">{c}</th>)}</tr></thead>
-          <tbody>{filas.map((fila, i) => <tr key={i} className="border-t border-slate-100">{fila.map((celda, j) => <td key={j} className="px-3 py-3 tabular-nums">{celda}</td>)}</tr>)}</tbody>
-        </table>
-      </div>}
+      <ListadoLocal items={filas} etiqueta={titulo} className="mt-3">
+        {(visibles) => (
+          <table className="w-full text-left text-sm">
+            <caption className="sr-only">{titulo}</caption>
+            <thead className="sticky top-0 bg-white"><tr>{columnas.map(c => <th key={c} className="px-3 py-2">{c}</th>)}</tr></thead>
+            <tbody>{visibles.map((fila, i) => <tr key={i} className="border-t border-slate-100">{fila.map((celda, j) => <td key={j} className="px-3 py-3 tabular-nums">{celda}</td>)}</tr>)}</tbody>
+          </table>
+        )}
+      </ListadoLocal>}
   </article>;
 }
 
-export function IndicadoresProceso({ datos }: { datos: Indicadores }): ReactElement {
+export function IndicadoresProceso({ datos }: { datos: Indicadores; }): ReactElement {
   const cobertura = datos.cobertura_cierres;
   return <section aria-labelledby="indicadores-proceso" className="min-w-0 space-y-4">
     <h3 id="indicadores-proceso" className="text-xl font-bold text-slate-900">Resultados del proceso</h3>

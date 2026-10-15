@@ -813,3 +813,34 @@ def test_openapi_documenta_listar_convocatorias(client: TestClient) -> None:
     assert operacion["responses"]["200"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
+
+
+def test_pagina_convocatorias_abiertas_con_un_orden_estable(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    abiertas = []
+    for indice in range(3):
+        nueva = Emergencia(
+            municipio_id=emergencia.municipio_id,
+            creada_por_usuario_id=emergencia.creada_por_usuario_id,
+            centro_coordinador_id=emergencia.centro_coordinador_id,
+            gravedad=GravedadEmergencia.ALTA,
+            zona=f"Zona paginada {indice}",
+            descripcion="Emergencia de prueba",
+        )
+        db_session.add(nueva)
+        db_session.flush()
+        lote = _lote(db_session, nueva, coordinador, tipo="Agua")
+        abiertas.append(_convocatoria(db_session, nueva, [lote]))
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+    primera = client.get("/api/v1/convocatorias?limit=2&offset=0")
+    ultima = client.get("/api/v1/convocatorias?limit=2&offset=2")
+    assert primera.status_code == ultima.status_code == 200
+    assert [item["id"] for item in primera.json() + ultima.json()] == [
+        convocatoria.id for convocatoria in reversed(abiertas)
+    ]

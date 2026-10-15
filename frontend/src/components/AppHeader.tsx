@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { Link, useNavigate } from "react-router";
 
+import { ActionIcon } from "./ActionIcon";
 import { logout } from "../api/auth";
 import { ApiError } from "../api/client";
 import { roleLabels, type Session } from "../schemas/auth";
@@ -53,9 +54,11 @@ export function AppHeader({ session }: AppHeaderProps): ReactElement {
             {session.usuario.rol === "ADMINISTRADOR" && (
               <Link
                 to="/usuarios"
-                className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-800"
+                className="action-button action-primary action-icon"
+                title="Usuarios"
               >
-                Usuarios
+                <ActionIcon name="users" />
+                <span className="sr-only">Usuarios</span>
               </Link>
             )}
             <NotificationCenter csrfToken={session.csrf_token} />

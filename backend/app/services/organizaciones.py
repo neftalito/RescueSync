@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Organizacion, TipoOrganizacion, Usuario
 from app.schemas.organizaciones import OrganizacionCreate, OrganizacionUpdate
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 
 
 class OrganizacionDuplicadaError(ValueError):
@@ -18,16 +19,23 @@ class TipoOrganizacionEnUsoError(ValueError):
     """Impide cambiar el tipo mientras existan usuarios relacionados."""
 
 
-def listar_organizaciones(session: Session) -> list[Organizacion]:
+def listar_organizaciones(
+    session: Session,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Organizacion]:
     """Lista organizaciones activas e inactivas para su administración."""
 
     return list(
         session.scalars(
-            select(Organizacion).order_by(
+            select(Organizacion)
+            .order_by(
                 Organizacion.activa.desc(),
                 Organizacion.tipo,
                 Organizacion.nombre,
+                Organizacion.id,
             )
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         )
     )
 

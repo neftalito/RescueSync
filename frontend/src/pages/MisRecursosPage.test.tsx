@@ -77,7 +77,16 @@ const server = setupServer();
 let conectada = true;
 let recursos = [recurso];
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+  // JSDOM no implementa la apertura y el cierre de diálogos nativos.
+  HTMLDialogElement.prototype.showModal = function (): void {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function (): void {
+    this.open = false;
+  };
+});
 beforeEach(() => {
   conectada = true;
   recursos = [recurso];
@@ -186,8 +195,8 @@ describe("Mis recursos nacionales", () => {
     expect(detalle).not.toHaveAttribute("open");
     await userEvent.click(certificacionCatalogo);
     expect(detalle).toHaveAttribute("open");
-    expect(within(catalogo).getByRole("list", {
-      name: "Listado de certificaciones nacionales",
+    expect(within(catalogo).getByRole("region", {
+      name: "Desplazamiento de certificaciones nacionales",
     })).toHaveAttribute("tabindex", "0");
     expect(within(catalogo).getByText("Riesgo máximo: Medio")).toBeVisible();
     expect(within(historial).queryByText("Respuesta sanitaria")).not.toBeInTheDocument();
@@ -268,8 +277,8 @@ describe("Mis recursos nacionales", () => {
     await userEvent.click(screen.getByText("DEMO-VENCIDA"));
     expect(acreditacionVencida).toHaveAttribute("open");
     expect(screen.getByText("La acreditación venció.")).toBeVisible();
-    expect(screen.getByRole("list", { name: "Listado de acreditaciones" })).toHaveAttribute("tabindex", "0");
-    expect(screen.getByRole("list", { name: "Listado de capacidades habilitadas" })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("region", { name: "Desplazamiento de acreditaciones" })).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("region", { name: "Desplazamiento de capacidades habilitadas" })).toHaveAttribute("tabindex", "0");
     const niveles = screen.getByRole("list", { name: "Niveles permitidos para Ambulancias" });
     expect(within(niveles).getByText("Bajo")).toBeInTheDocument();
     expect(within(niveles).getByText("Medio")).toBeInTheDocument();
@@ -384,7 +393,7 @@ describe("Mis recursos nacionales", () => {
         const body = await request.json();
         expect(body).toEqual({
           capacidadId,
-          codigoInterno: "AMB-01",
+          codigoInterno: "Ambulancia de guardia",
           nombre: "Ambulancias",
           cantidadTotal: "3",
         });
@@ -398,7 +407,10 @@ describe("Mis recursos nacionales", () => {
       await screen.findByLabelText("Capacidad y unidad"),
       capacidadId,
     );
-    await user.type(screen.getByLabelText("Código interno"), "AMB-01");
+    await user.type(
+      screen.getByLabelText("Descripción corta"),
+      "Ambulancia de guardia",
+    );
     await user.type(screen.getByLabelText("Nombre del recurso"), "Ambulancias");
     await user.type(screen.getByLabelText(/Cantidad total/), "0");
     await user.click(screen.getByRole("button", { name: "Registrar recurso" }));
@@ -418,6 +430,32 @@ describe("Mis recursos nacionales", () => {
     await user.click(screen.getByRole("button", { name: "Registrar recurso" }));
     expect(await screen.findByText("Recurso registrado.")).toBeInTheDocument();
   });
+  it("abre la edición en un modal y descarta los cambios al cancelar", async () => {
+    renderPage();
+    const user = userEvent.setup();
+    const editar = await screen.findByRole("button", { name: "Editar AMB-01" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(editar);
+    const dialog = screen.getByRole("dialog", {
+      name: "Editar cantidad: Ambulancias de rescate",
+    });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    const cantidad = within(dialog).getByLabelText(/Nuevo total/);
+    expect(cantidad).toHaveValue("10.000");
+    expect(cantidad).toHaveFocus();
+    await user.clear(cantidad);
+    await user.type(cantidad, "15");
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(editar);
+    expect(screen.getByLabelText(/Nuevo total/)).toHaveValue("10.000");
+    await user.click(screen.getByRole("button", { name: "Cerrar edición" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cantidad actualizada.")).not.toBeInTheDocument();
+  });
+
   it("no reduce el total por debajo del comprometido y envía la versión al editar", async () => {
     let llamadas = 0;
     server.use(
@@ -451,6 +489,7 @@ describe("Mis recursos nacionales", () => {
     expect(
       await screen.findByText("Cantidad actualizada."),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(await screen.findByText("12.000")).toBeInTheDocument();
   });
   it("muestra revisión administrativa sin pedir contraseña", async () => {
@@ -486,7 +525,8 @@ describe("Mis recursos nacionales", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("El recurso cambió."),
     );
-    expect(screen.getByLabelText(/Nuevo total/)).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByLabelText(/Nuevo total/))
+      .toBeInTheDocument();
   });
 
   it("activa el acceso nacional sin pedir identificadores ni contraseñas", async () => {

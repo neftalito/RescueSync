@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Link } from "react-router";
 
+import { ActionIcon } from "../components/ActionIcon";
 import { AppHeader } from "../components/AppHeader";
 import { ChangePasswordSection } from "../components/ChangePasswordSection";
 import type { Session } from "../schemas/auth";
@@ -17,22 +18,11 @@ export function OpcionesPage({ session }: OpcionesPageProps): ReactElement {
         {!session.usuario.requiere_cambio_password && (
           <Link
             to="/"
-            className="inline-flex min-h-11 items-center gap-2 self-start rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 shadow-sm transition-colors hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600 active:bg-cyan-100"
+            className="action-button action-icon self-start"
+            title="Volver al inicio"
           >
-            <svg
-              aria-hidden="true"
-              focusable="false"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-5"
-            >
-              <path d="m12 19-7-7 7-7M5 12h14" />
-            </svg>
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         )}
         <h1 className="mt-6 text-center text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">

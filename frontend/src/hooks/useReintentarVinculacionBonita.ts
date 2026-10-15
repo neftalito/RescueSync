@@ -8,6 +8,8 @@ import { ApiError } from "../api/client";
 import { reintentarVinculacionBonita } from "../api/emergencias";
 import type { Emergencia } from "../schemas/emergencia";
 import { emergenciasQueryKey } from "./useEmergencias";
+import { actualizarPaginas } from "../utils/actualizarPaginas";
+import type { EmergenciaEnBandeja } from "../schemas/emergencia";
 
 interface ReintentoVariables {
   emergenciaId: number;
@@ -24,9 +26,13 @@ export function useReintentarVinculacionBonita(): UseMutationResult<
     mutationFn: ({ emergenciaId, csrfToken }) =>
       reintentarVinculacionBonita(emergenciaId, csrfToken),
     onSuccess: (actualizada) => {
+      actualizarPaginas<EmergenciaEnBandeja>(queryClient, [...emergenciasQueryKey, "bandeja"],
+        (emergencia) => emergencia.id === actualizada.id ? { ...emergencia, ...actualizada } : emergencia);
       queryClient.setQueryData<Emergencia[]>(emergenciasQueryKey, (actuales) =>
         actuales?.map((emergencia) =>
-          emergencia.id === actualizada.id ? actualizada : emergencia,
+          emergencia.id === actualizada.id
+            ? { ...emergencia, ...actualizada }
+            : emergencia,
         ),
       );
     },

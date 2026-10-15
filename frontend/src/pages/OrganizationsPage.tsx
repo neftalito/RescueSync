@@ -1,14 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
+import { useListadoPaginado } from "../hooks/useListadoPaginado";
+import { ListadoRemoto } from "../components/ListadoProgresivo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import {
   createOrganization,
   deactivateOrganization,
-  getOrganizations,
   linkNationalOrganization,
   organizationsQueryKey,
   reactivateOrganization,
@@ -18,6 +20,7 @@ import {
 import type { Session } from "../schemas/auth";
 import { vinculoFormSchema, type VinculoForm } from "../schemas/inventario";
 import {
+  organizationsSchema,
   createOrganizationSchema,
   editOrganizationSchema,
   organizationTypeLabels,
@@ -38,10 +41,7 @@ export function OrganizationsPage({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [editingOrganization, setEditingOrganization] =
     useState<Organization | null>(null);
-  const organizations = useQuery({
-    queryKey: organizationsQueryKey,
-    queryFn: getOrganizations,
-  });
+  const organizations = useListadoPaginado(organizationsQueryKey, "/organizaciones", organizationsSchema);
   const {
     register,
     control,
@@ -138,9 +138,11 @@ export function OrganizationsPage({
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -164,6 +166,7 @@ export function OrganizationsPage({
               <input
                 type="text"
                 autoComplete="organization"
+                placeholder="Ej.: Cruz Roja Argentina"
                 className="form-input mt-2"
                 aria-invalid={errors.nombre ? "true" : undefined}
                 {...register("nombre")}
@@ -191,6 +194,7 @@ export function OrganizationsPage({
                   type="email"
                   className="form-input mt-2"
                   autoComplete="email"
+                  placeholder="contacto@organizacion.org"
                   {...register("email_contacto")}
                 />
                 {errors.email_contacto && (
@@ -212,7 +216,7 @@ export function OrganizationsPage({
               <button
                 type="submit"
                 disabled={mutation.isPending}
-                className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 disabled:opacity-60"
+                className="action-button action-primary"
               >
                 {mutation.isPending ? "Creando…" : "Crear organización"}
               </button>
@@ -266,7 +270,7 @@ export function OrganizationsPage({
             <p role="status" className="mt-5 text-slate-600">
               Cargando organizaciones…
             </p>
-          ) : organizations.isError ? (
+          ) : organizations.data === undefined ? (
             <p
               role="alert"
               className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
@@ -278,62 +282,68 @@ export function OrganizationsPage({
               Todavía no hay organizaciones registradas.
             </p>
           ) : (
-            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {organizations.data.map((organization) => (
-                <article
-                  key={organization.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                >
-                  <p className="text-xs font-bold tracking-[0.12em] text-cyan-800 uppercase">
-                    {organizationTypeLabels[organization.tipo]}
-                  </p>
-                  <h3 className="mt-2 font-semibold text-slate-950">
-                    {organization.nombre}
-                  </h3>
-                  <p className="mt-2 text-sm text-slate-600">
-                    {organization.activa ? "Activa" : "Inactiva"}
-                  </p>
-                  {organization.tipo === "ONG" && (
-                    <p className="mt-2 break-all text-xs text-slate-500">
-                      {organization.ong_nacional_id
-                        ? `UUID nacional: ${organization.ong_nacional_id}`
-                        : "Sin vinculación nacional"}
+            <ListadoRemoto query={organizations} etiqueta="Listado de organizaciones registradas" className="mt-5">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {organizations.data.map((organization) => (
+                  <article
+                    key={organization.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <p className="text-xs font-bold tracking-[0.12em] text-cyan-800 uppercase">
+                      {organizationTypeLabels[organization.tipo]}
                     </p>
-                  )}
-                  {organization.tipo === "ONG" && organization.activa && !organization.ong_nacional_id && (
-                    <button
-                      type="button"
-                      className="mt-3 rounded-lg border border-cyan-700 px-3 py-2 text-sm text-cyan-800"
-                      disabled={provisioning.isPending}
-                      onClick={() => provisioning.mutate(organization)}
-                    >
-                      Reintentar alta nacional
-                    </button>
-                  )}
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingOrganization(organization)}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      disabled={statusMutation.isPending}
-                      onClick={() => changeStatus(organization)}
-                      className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
-                        organization.activa
-                          ? "bg-red-50 text-red-800 hover:bg-red-100"
-                          : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                      }`}
-                    >
-                      {organization.activa ? "Eliminar" : "Recuperar"}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+                    <h3 className="mt-2 font-semibold text-slate-950">
+                      {organization.nombre}
+                    </h3>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {organization.activa ? "Activa" : "Inactiva"}
+                    </p>
+                    {organization.tipo === "ONG" && (
+                      <p className="mt-2 break-all text-xs text-slate-500">
+                        {organization.ong_nacional_id
+                          ? `UUID nacional: ${organization.ong_nacional_id}`
+                          : "Sin vinculación nacional"}
+                      </p>
+                    )}
+                    {organization.tipo === "ONG" && organization.activa && !organization.ong_nacional_id && (
+                      <button
+                        type="button"
+                        className="action-button action-primary action-icon mt-3"
+                        disabled={provisioning.isPending}
+                        onClick={() => provisioning.mutate(organization)}
+                        title="Reintentar alta nacional"
+                      >
+                        <ActionIcon name="refresh" />
+                        <span className="sr-only">Reintentar alta nacional</span>
+                      </button>
+                    )}
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingOrganization(organization)}
+                        className="action-button action-icon"
+                        title="Editar"
+                      >
+                        <ActionIcon name="edit" />
+                        <span className="sr-only">Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={statusMutation.isPending}
+                        onClick={() => changeStatus(organization)}
+                        className={`action-button action-icon ${organization.activa ? "action-danger" : "action-success"}`}
+                        title={organization.activa ? "Eliminar" : "Recuperar"}
+                      >
+                        <ActionIcon name={organization.activa ? "trash" : "restore"} />
+                        <span className="sr-only">
+                          {organization.activa ? "Eliminar" : "Recuperar"}
+                        </span>
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </ListadoRemoto>
           )}
         </section>
       </div>
@@ -402,9 +412,10 @@ function EditOrganizationPanel({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+            className="action-button action-icon"
+            title="Cerrar"
           >
-            ✕
+            <ActionIcon name="close" />
           </button>
         </div>
         <form
@@ -420,6 +431,7 @@ function EditOrganizationPanel({
               type="text"
               className="form-input mt-2"
               aria-invalid={errors.nombre ? "true" : undefined}
+              placeholder="Ej.: Cruz Roja Argentina"
               {...register("nombre")}
             />
             {errors.nombre && (
@@ -447,14 +459,16 @@ function EditOrganizationPanel({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700"
+              className="action-button action-icon"
+              title="Cancelar"
             >
-              Cancelar
+              <ActionIcon name="close" />
+              <span className="sr-only">Cancelar</span>
             </button>
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+              className="action-button action-primary"
             >
               {mutation.isPending ? "Guardando…" : "Guardar cambios"}
             </button>
@@ -514,7 +528,11 @@ function NationalLinkForm({
     >
       <label className="block text-sm font-semibold">
         UUID de la ONG nacional
-        <input className="form-input mt-2" {...register("ong_nacional_id")} />
+        <input
+          className="form-input mt-2"
+          placeholder="Ej.: 550e8400-e29b-41d4-a716-446655440000"
+          {...register("ong_nacional_id")}
+        />
         {errors.ong_nacional_id && (
           <span role="alert" className="text-red-800">
             {errors.ong_nacional_id.message}
@@ -532,7 +550,7 @@ function NationalLinkForm({
         </p>
       )}
       <button
-        className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+        className="action-button action-primary"
         disabled={mutation.isPending}
       >
         {mutation.isPending ? "Guardando…" : "Guardar vinculación nacional"}

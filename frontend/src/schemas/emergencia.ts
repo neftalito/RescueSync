@@ -86,7 +86,12 @@ export const emergenciaSchema = z.object({
   actualizada_en: z.string().min(1),
 });
 
-export const emergenciasSchema = z.array(emergenciaSchema);
+export const emergenciaEnBandejaSchema = emergenciaSchema.extend({
+  tiene_lotes: z.boolean(),
+});
+
+export const emergenciasSchema = z.array(emergenciaEnBandejaSchema);
 
 export type EmergenciaFormData = z.infer<typeof emergenciaFormSchema>;
 export type Emergencia = z.infer<typeof emergenciaSchema>;
+export type EmergenciaEnBandeja = z.infer<typeof emergenciaEnBandejaSchema>;

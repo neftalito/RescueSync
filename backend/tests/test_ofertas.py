@@ -818,6 +818,8 @@ def test_lista_solo_las_ofertas_de_la_ong_propia(
     cuerpo = response.json()
     assert [oferta["id"] for oferta in cuerpo] == [propia.json()["id"]]
     assert all(oferta["ong_creadora_id"] == escenario.ong.id for oferta in cuerpo)
+    assert client.get("/api/v1/ofertas?limit=1&offset=0").json() == cuerpo
+    assert client.get("/api/v1/ofertas?limit=1&offset=1").json() == []
 
 
 def test_lista_vacia_sin_ofertas_presentadas(

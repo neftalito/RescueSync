@@ -13,6 +13,7 @@ from app.api.dependencies import (
     GestorTiempoRealDep,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import (
@@ -236,13 +237,14 @@ def modificar_oferta(
     ),
 )
 def listar_mis_ofertas(
+    paginacion: PaginacionDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaOfertas,
 ) -> list[OfertaPropiaResponse]:
     """Consulta las ofertas de la ONG del usuario sin modificar nada."""
 
     try:
-        ofertas = servicio.listar_ofertas_propias(session, usuario)
+        ofertas = servicio.listar_ofertas_propias(session, usuario, paginacion)
     except servicio.OfertaError as error:
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactElement } from "react";
+import { ActionIcon } from "./ActionIcon";
 import type { ReporteMetricas, ReporteTiempos } from "../schemas/metricas";
 import { descargarMetricas } from "../utils/exportarMetricas";
 
@@ -68,23 +69,24 @@ export function ExportarMetricasMenu({
         aria-expanded={abierto}
         aria-controls="formatos-exportacion"
         onClick={() => setAbierto(!abierto)}
-        className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+        className="action-button action-icon"
+        title={exportando ? "Exportando…" : "Exportar"}
       >
-        {exportando ? "Exportando…" : "Exportar"}{" "}
-        <span aria-hidden="true">▾</span>
+        <ActionIcon name="download" />
+        <span className="sr-only">{exportando ? "Exportando…" : "Exportar"}</span>
       </button>
       {abierto && (
         <div
           id="formatos-exportacion"
           aria-label="Formato de exportación"
-          className="absolute right-0 z-10 mt-2 min-w-40 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+          className="absolute right-0 z-10 mt-2 grid min-w-40 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg"
         >
           {(["csv", "json", "pdf"] as const).map((formato) => (
             <button
               type="button"
               key={formato}
               onClick={() => void exportar(formato)}
-              className="block w-full rounded-lg px-4 py-2 text-left text-sm font-medium text-slate-700 hover:bg-cyan-50 focus-visible:bg-cyan-50"
+              className="action-button action-primary w-full"
             >
               Exportar {formato.toUpperCase()}
             </button>

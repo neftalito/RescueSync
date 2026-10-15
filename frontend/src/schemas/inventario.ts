@@ -56,7 +56,11 @@ export const recursoSchema = z.object({
 });
 export const recursoFormSchema = z.object({
   capacidadId: z.uuid("Seleccioná una capacidad."),
-  codigoInterno: z.string().trim().min(1, "Ingresá un código interno.").max(80),
+  codigoInterno: z
+    .string()
+    .trim()
+    .min(1, "Ingresá una descripción corta.")
+    .max(80, "La descripción corta no puede superar los 80 caracteres."),
   nombre: z.string().trim().min(1, "Ingresá el nombre del recurso.").max(160),
   cantidadTotal: cantidadPositivaSchema,
 });

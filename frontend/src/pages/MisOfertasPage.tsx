@@ -1,9 +1,11 @@
 import { type ReactElement } from "react";
 import { Link } from "react-router";
 
+import { ListadoRemoto } from "../components/ListadoProgresivo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import { ConsorcioOferta } from "../components/ConsorcioOferta";
-import { useMisOfertas } from "../hooks/useMisOfertas";
+import { useMisOfertasPaginadas } from "../hooks/useMisOfertas";
 import { gravedadLabels } from "../schemas/emergencia";
 import { estadoOfertaLabels, tipoAporteLabels, type Oferta } from "../schemas/oferta";
 import { formatearCantidad } from "../utils/cantidades";
@@ -15,7 +17,7 @@ function formatearFecha(iso: string): string {
   });
 }
 
-function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
+function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
@@ -45,9 +47,11 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
         {oferta.editable && (
           <Link
             to={`/ofertas/${oferta.id}/editar`}
-            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+            className="action-button action-primary action-icon mt-4"
+            title="Modificar oferta"
           >
-            Modificar oferta
+            <ActionIcon name="edit" />
+            <span className="sr-only">Modificar oferta</span>
           </Link>
         )}
         {oferta.requiere_desglose_nacional && <ConsorcioOferta oferta={oferta} />}
@@ -57,7 +61,7 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
 }
 
 export function MisOfertasPage(): ReactElement {
-  const query = useMisOfertas();
+  const query = useMisOfertasPaginadas();
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -71,9 +75,11 @@ export function MisOfertasPage(): ReactElement {
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -86,7 +92,7 @@ export function MisOfertasPage(): ReactElement {
           >
             Cargando tus ofertas…
           </section>
-        ) : query.isError ? (
+        ) : query.data === undefined ? (
           <section
             role="alert"
             className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm leading-6 text-red-800 shadow-sm"
@@ -99,9 +105,11 @@ export function MisOfertasPage(): ReactElement {
             <button
               type="button"
               onClick={() => void query.refetch()}
-              className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+              className="action-button action-danger action-icon mt-4"
+              title="Reintentar"
             >
-              Reintentar
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Reintentar</span>
             </button>
           </section>
         ) : query.data.length === 0 ? (
@@ -112,11 +120,13 @@ export function MisOfertasPage(): ReactElement {
             Todavía no presentaste ofertas.
           </p>
         ) : (
-          <div className="space-y-4">
-            {query.data.map((oferta) => (
-              <TarjetaOferta key={oferta.id} oferta={oferta} />
-            ))}
-          </div>
+          <ListadoRemoto query={query} etiqueta="Mis ofertas">
+            <div className="space-y-4">
+              {query.data.map((oferta) => (
+                <TarjetaOferta key={oferta.id} oferta={oferta} />
+              ))}
+            </div>
+          </ListadoRemoto>
         )}
       </div>
     </main>

@@ -31,10 +31,10 @@ export function ConsorcioOferta({ oferta }: {
     <p className="mt-1 text-sm">Cada ONG presenta sus recursos y confirma la versión conjunta. Si una oferta individual cambia, la propuesta debe renovarse.</p>
     {conjunta ? <>
       <ul className="mt-2">{participantes.map((p) => <li key={p.ong_id}>{p.nombre} · {p.rol === "LIDER" ? "Líder" : "Integrante"} · {p.confirmada ? "Confirmada" : "Confirmación pendiente"}</li>)}</ul>
-      {oferta.consorcio_editable && oferta.estado === "BORRADOR" && propio && !propio.confirmada && <button type="button" disabled={accion.isPending || !session.data} onClick={() => accion.mutate("confirmar")} className="mt-3 rounded bg-cyan-700 px-4 py-2 text-white">Confirmar mis aportes al consorcio</button>}
-      {oferta.consorcio_editable && propio && ["BORRADOR", "PRESENTADA"].includes(oferta.estado) && <button type="button" disabled={accion.isPending || !session.data} onClick={() => accion.mutate("desarmar")} className="ml-2 mt-3 rounded border border-slate-400 bg-white px-4 py-2">Rechazar o desarmar consorcio</button>}
+      {oferta.consorcio_editable && oferta.estado === "BORRADOR" && propio && !propio.confirmada && <button type="button" disabled={accion.isPending || !session.data} onClick={() => accion.mutate("confirmar")} className="action-button action-primary mt-3">Confirmar mis aportes al consorcio</button>}
+      {oferta.consorcio_editable && propio && ["BORRADOR", "PRESENTADA"].includes(oferta.estado) && <button type="button" disabled={accion.isPending || !session.data} onClick={() => accion.mutate("desarmar")} className="action-button ml-2 mt-3">Rechazar o desarmar consorcio</button>}
     </> : oferta.editable ? <>
-      <button type="button" className="mt-3 rounded border border-cyan-700 bg-white px-4 py-2" onClick={() => setMostrando(true)}>Invitar una ONG</button>
+      <button type="button" className="action-button action-primary mt-3" onClick={() => setMostrando(true)}>Invitar una ONG</button>
       {mostrando && <>
         {candidatas.isPending && <p role="status">Cargando ONGs disponibles…</p>}
         {candidatas.isError && <p role="alert">No pudimos consultar las ONGs disponibles.</p>}
@@ -45,7 +45,7 @@ export function ConsorcioOferta({ oferta }: {
           </select>
         </label>}
         {candidatas.data?.length === 0 && <p>No hay otras ofertas individuales con recursos nacionales en esta convocatoria.</p>}
-        <button type="button" disabled={!seleccionada || accion.isPending || !session.data} onClick={() => accion.mutate("proponer")} className="mt-3 rounded bg-cyan-700 px-4 py-2 text-white">Enviar propuesta de consorcio</button>
+        <button type="button" disabled={!seleccionada || accion.isPending || !session.data} onClick={() => accion.mutate("proponer")} className="action-button action-primary mt-3">Enviar propuesta de consorcio</button>
       </>}
     </> : <p className="mt-2">La oferta ya no admite nuevas propuestas.</p>}
     {accion.isPending && <p role="status">Guardando propuesta…</p>}

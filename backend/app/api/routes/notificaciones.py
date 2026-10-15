@@ -18,6 +18,7 @@ from app.api.dependencies import (
     UsuarioWebSocket,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
@@ -63,11 +64,12 @@ UsuarioActualizaNotificacion = Annotated[Usuario, Depends(exigir_usuario_con_csr
     responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
     summary="Listar las notificaciones propias",
     description=(
-        "Devuelve hasta 50 novedades recientes del usuario autenticado. "
+        "Devuelve novedades del usuario autenticado. Admite limit (1–100) y offset; sin limit devuelve las últimas 50. "
         "El filtro de destinatario se aplica siempre en PostgreSQL."
     ),
 )
 def listar_notificaciones(
+    paginacion: PaginacionDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaNotificaciones,
 ) -> list[NotificacionResponse]:
@@ -75,7 +77,7 @@ def listar_notificaciones(
 
     return [
         NotificacionResponse.model_validate(notificacion)
-        for notificacion in servicio.listar_notificaciones(session, usuario)
+        for notificacion in servicio.listar_notificaciones(session, usuario, paginacion)
     ]
 
 

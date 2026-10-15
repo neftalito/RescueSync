@@ -1,11 +1,12 @@
 import { type ReactElement, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import { LotesForm } from "../components/LotesForm";
 import { useEmergencias } from "../hooks/useEmergencias";
 import { useLotes } from "../hooks/useLotes";
-import { estadoLabels, gravedadLabels } from "../schemas/emergencia";
+import { estadoLabels, gravedadLabels, type Estado } from "../schemas/emergencia";
 import type { Session } from "../schemas/auth";
 
 interface LotesPageProps {
@@ -62,9 +63,11 @@ function ErrorConReintento({
       <button
         type="button"
         onClick={onReintentar}
-        className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+        className="action-button action-danger action-icon mt-4"
+        title="Reintentar"
       >
-        Reintentar
+        <ActionIcon name="refresh" />
+        <span className="sr-only">Reintentar</span>
       </button>
     </Aviso>
   );
@@ -86,9 +89,11 @@ function AvisoRefresco({
       <button
         type="button"
         onClick={onReintentar}
-        className="mt-2 rounded-lg border border-amber-700 bg-white px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700"
+        className="action-button action-warning action-icon mt-2"
+        title="Reintentar actualización"
       >
-        Reintentar actualización
+        <ActionIcon name="refresh" />
+        <span className="sr-only">Reintentar actualización</span>
       </button>
     </section>
   );
@@ -98,10 +103,12 @@ function SeccionLotes({
   emergenciaId,
   csrfToken,
   convocatoriaPublicada,
+  estadoEmergencia,
 }: {
   emergenciaId: number;
   csrfToken: string;
   convocatoriaPublicada: boolean;
+  estadoEmergencia: Estado;
 }): ReactElement {
   const query = useLotes(emergenciaId);
 
@@ -135,6 +142,9 @@ function SeccionLotes({
         emergenciaId={emergenciaId}
         csrfToken={csrfToken}
         convocatoriaPublicada={convocatoriaPublicada}
+        soloLectura={
+          estadoEmergencia !== "REGISTRADA" && estadoEmergencia !== "EN_COORDINACION"
+        }
         lotes={query.data}
       />
     </div>
@@ -177,7 +187,7 @@ function Contenido({
     return (
       <Aviso tono="neutro">
         La emergencia no está disponible en tu bandeja. Puede que la gestione
-        otro centro coordinador o que ya no esté pendiente.
+        otro centro coordinador.
       </Aviso>
     );
   }
@@ -236,6 +246,7 @@ function Contenido({
           emergenciaId={emergencia.id}
           csrfToken={csrfToken}
           convocatoriaPublicada={emergencia.estado === "PUBLICADA"}
+          estadoEmergencia={emergencia.estado}
         />
       </div>
     </div>
@@ -244,6 +255,12 @@ function Contenido({
 
 export function LotesPage({ session }: LotesPageProps): ReactElement {
   const { emergenciaId } = useParams();
+  const id = parsearId(emergenciaId);
+  const emergencias = useEmergencias();
+  const conLotes = emergencias.data?.find((item) => item.id === id)?.tiene_lotes;
+  const volver = conLotes
+    ? "Volver a emergencias no pendientes"
+    : "Volver a emergencias pendientes";
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -254,21 +271,33 @@ export function LotesPage({ session }: LotesPageProps): ReactElement {
               RescueSync
             </p>
             <h1 className="mt-1 text-xl font-bold text-slate-950">
-              Generar lotes
+              Lotes de la emergencia
             </h1>
           </div>
-          <Link
-            to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Volver al inicio
-          </Link>
+          <nav aria-label="Navegación de lotes" className="flex flex-wrap gap-3">
+            <Link
+              to={conLotes ? "/emergencias/con-lotes" : "/emergencias/pendientes"}
+              className="action-button action-icon"
+              title={volver}
+            >
+              <ActionIcon name="back" />
+              <span className="sr-only">{volver}</span>
+            </Link>
+            <Link
+              to="/"
+              className="action-button action-icon"
+              title="Volver al inicio"
+            >
+              <ActionIcon name="home" />
+              <span className="sr-only">Volver al inicio</span>
+            </Link>
+          </nav>
         </div>
       </header>
 
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6">
         <Contenido
-          emergenciaId={parsearId(emergenciaId)}
+          emergenciaId={id}
           csrfToken={session.csrf_token}
         />
       </div>

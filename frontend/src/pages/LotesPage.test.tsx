@@ -34,6 +34,7 @@ const emergencia = {
   zona: "Ribera norte",
   descripcion: "Inundación con familias evacuadas.",
   estado: "REGISTRADA",
+  tiene_lotes: false,
   bonita_sync: "VINCULADA",
   bonita_process_instance_id: 1001,
   creada_en: "2026-09-19T18:20:39.102766Z",
@@ -126,10 +127,10 @@ describe("LotesPage", () => {
     expect(screen.getByLabelText("Cantidad requerida")).toHaveValue("500,00");
   });
 
-  it("deshabilita publicar si la emergencia ya tiene una convocatoria", async () => {
+  it.each(["PUBLICADA", "EN_EVALUACION", "EN_EJECUCION", "RESUELTA", "CANCELADA"])("permite consultar lotes en %s sin ofrecer su edición", async (estado) => {
     server.use(
       http.get(`${API_URL}/emergencias`, () =>
-        HttpResponse.json([{ ...emergencia, estado: "PUBLICADA" }]),
+        HttpResponse.json([{ ...emergencia, estado, tiene_lotes: true }]),
       ),
       http.get(`${API_URL}/emergencias/31/lotes`, () =>
         HttpResponse.json([
@@ -152,8 +153,11 @@ describe("LotesPage", () => {
     renderPage("/emergencias/31/lotes");
 
     expect(
-      await screen.findByRole("button", { name: "Convocatoria publicada" }),
-    ).toBeDisabled();
+      await screen.findByRole("heading", { name: "Lotes registrados" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Agua potable")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Guardar borrador" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Publicar convocatoria" })).not.toBeInTheDocument();
   });
 
   it("conserva las ediciones si falla una actualización en segundo plano", async () => {

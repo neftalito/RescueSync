@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,7 @@ from app.db.models import (
     EstadoEmergencia,
     EstadoSincronizacionBonita,
     GravedadEmergencia,
+    Lote,
     Organizacion,
     RolUsuario,
     TipoOrganizacion,
@@ -540,19 +542,19 @@ def test_lista_emergencias_de_coordinador_devuelve_vacio_sin_pendientes(
     client: TestClient, db_session: Session, usuario_coordinador: Usuario
 ) -> None:
     # Neutraliza, solo dentro de esta transacción de prueba, cualquier
-    # emergencia REGISTRADA sin centro que ya existiera en la base (por
+    # emergencia visible que ya existiera en la base (por
     # ejemplo, datos de un seed de desarrollo), para que la ausencia de
     # pendientes sea determinista sin depender del estado previo de la base.
     db_session.execute(
         update(Emergencia)
         .where(
-            Emergencia.estado == EstadoEmergencia.REGISTRADA,
             or_(
-                Emergencia.centro_coordinador_id.is_(None),
+                (Emergencia.estado == EstadoEmergencia.REGISTRADA)
+                & Emergencia.centro_coordinador_id.is_(None),
                 Emergencia.centro_coordinador_id == usuario_coordinador.organizacion_id,
             ),
         )
-        .values(estado=EstadoEmergencia.CANCELADA)
+        .values(estado=EstadoEmergencia.CANCELADA, centro_coordinador_id=None)
     )
     _autenticar(client, usuario_coordinador)
 
@@ -649,4 +651,91 @@ def test_openapi_documenta_la_bandeja_de_emergencias(client: TestClient) -> None
     assert operacion["responses"]["200"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
-    assert "EmergenciaResponse" in str(operacion["responses"]["200"])
+    assert "EmergenciaEnBandejaResponse" in str(operacion["responses"]["200"])
+
+
+@pytest.mark.parametrize("estado", list(EstadoEmergencia))
+def test_coordinador_consulta_todos_los_estados_solo_de_su_centro(
+    client: TestClient,
+    db_session: Session,
+    municipio: Organizacion,
+    usuario_municipal: Usuario,
+    usuario_coordinador: Usuario,
+    centro_coordinador: Organizacion,
+    estado: EstadoEmergencia,
+) -> None:
+    propia = _crear_emergencia(
+        db_session,
+        municipio,
+        usuario_municipal,
+        estado=estado,
+        centro_coordinador_id=centro_coordinador.id,
+    )
+    otro_centro = Organizacion(
+        tipo=TipoOrganizacion.CENTRO_COORDINADOR, nombre="Centro ajeno"
+    )
+    db_session.add(otro_centro)
+    db_session.flush()
+    ajena = _crear_emergencia(
+        db_session,
+        municipio,
+        usuario_municipal,
+        estado=estado,
+        centro_coordinador_id=otro_centro.id,
+    )
+    _autenticar(client, usuario_coordinador)
+
+    response = client.get("/api/v1/emergencias")
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()}
+    assert propia.id in ids
+    assert ajena.id not in ids
+
+
+def test_bandeja_clasifica_por_lotes_reales_y_recalcula_al_eliminar_el_ultimo(
+    client: TestClient,
+    db_session: Session,
+    municipio: Organizacion,
+    usuario_municipal: Usuario,
+    usuario_coordinador: Usuario,
+    centro_coordinador: Organizacion,
+) -> None:
+    con_lotes = _crear_emergencia(
+        db_session,
+        municipio,
+        usuario_municipal,
+        centro_coordinador_id=centro_coordinador.id,
+    )
+    sin_lotes = _crear_emergencia(
+        db_session,
+        municipio,
+        usuario_municipal,
+        estado=EstadoEmergencia.EN_COORDINACION,
+        centro_coordinador_id=centro_coordinador.id,
+    )
+    lote = Lote(
+        emergencia_id=con_lotes.id,
+        creado_por_usuario_id=usuario_coordinador.id,
+        tipo_necesidad="Agua potable",
+        cantidad_requerida=Decimal(100),
+        unidad="litros",
+    )
+    db_session.add(lote)
+    db_session.flush()
+    csrf = _autenticar(client, usuario_coordinador)
+
+    response = client.get("/api/v1/emergencias")
+
+    assert response.status_code == 200
+    por_id = {item["id"]: item for item in response.json()}
+    assert por_id[con_lotes.id]["estado"] == "REGISTRADA"
+    assert por_id[con_lotes.id]["tiene_lotes"] is True
+    assert por_id[sin_lotes.id]["tiene_lotes"] is False
+    eliminacion = client.delete(
+        f"/api/v1/emergencias/{con_lotes.id}/lotes/{lote.id}",
+        headers={"X-CSRF-Token": csrf},
+    )
+    assert eliminacion.status_code == 204
+    por_id = {item["id"]: item for item in client.get("/api/v1/emergencias").json()}
+    assert por_id[con_lotes.id]["tiene_lotes"] is False

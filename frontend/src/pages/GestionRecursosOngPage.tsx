@@ -1,7 +1,9 @@
+import { ListadoLocal } from "../components/ListadoProgresivo";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState, type ReactElement } from "react";
+import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import { CertificacionesOngPanel } from "../components/CertificacionesOng";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
@@ -18,15 +20,13 @@ import {
   type RegistroNacionalForm,
 } from "../schemas/inventario";
 
-const boton =
-  "rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 disabled:opacity-50";
 const panel = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
 function mensaje(error: unknown): string {
   return error instanceof ApiError
     ? error.message
     : "No pudimos completar la operación. Intentá nuevamente.";
 }
-function ErrorMensaje({ error }: { error: unknown }): ReactElement | null {
+function ErrorMensaje({ error }: { error: unknown; }): ReactElement | null {
   return error ? (
     <p role="alert" className="mt-3 text-sm text-red-800">
       {mensaje(error)}
@@ -34,7 +34,7 @@ function ErrorMensaje({ error }: { error: unknown }): ReactElement | null {
   ) : null;
 }
 
-export function InventarioOngPage({ session }: { session: Session }): ReactElement {
+export function InventarioOngPage({ session }: { session: Session; }): ReactElement {
   return <GestionRecursosOngPage session={session} vista="inventario" />;
 }
 
@@ -74,15 +74,19 @@ function GestionRecursosOngPage({
           <nav aria-label="Navegación de recursos" className="flex flex-wrap gap-3">
             <Link
               to="/mis-recursos"
-              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="action-button action-icon"
+              title="Volver a Mis recursos"
             >
-              Volver a Mis recursos
+              <ActionIcon name="back" />
+              <span className="sr-only">Volver a Mis recursos</span>
             </Link>
             <Link
               to="/"
-              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="action-button action-icon"
+              title="Volver al inicio"
             >
-              Volver al inicio
+              <ActionIcon name="home" />
+              <span className="sr-only">Volver al inicio</span>
             </Link>
           </nav>
         </div>
@@ -114,10 +118,12 @@ function GestionRecursosOngPage({
             <ErrorMensaje error={inventario.conexion.error} />
             <button
               type="button"
-              className={`${boton} mt-4`}
+              className="action-button action-icon mt-4"
               onClick={() => void inventario.conexion.refetch()}
+              title="Reintentar"
             >
-              Reintentar
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Reintentar</span>
             </button>
           </section>
         ) : !inventario.conexion.data.vinculada ? (
@@ -158,7 +164,7 @@ function GestionRecursosOngPage({
             ) : (
               <button
                 type="button"
-                className={`${boton} mt-4`}
+                className="action-button action-primary mt-4"
                 onClick={() => setMostrarRegistro(true)}
               >
                 Registrar ONG en el Sistema Nacional
@@ -166,11 +172,13 @@ function GestionRecursosOngPage({
             )}
             <button
               type="button"
-              className="mt-4 block rounded-xl border border-slate-300 px-4 py-2.5"
+              className="action-button action-icon mt-4"
               disabled={inventario.conexion.isFetching}
               onClick={() => void inventario.conexion.refetch()}
+              title="Volver a consultar vinculación"
             >
-              Volver a consultar vinculación
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Volver a consultar vinculación</span>
             </button>
           </section>
         ) : inventario.conexion.data.estado !== "LISTA" ? (
@@ -186,10 +194,12 @@ function GestionRecursosOngPage({
             </p>
             <button
               type="button"
-              className={`${boton} mt-4`}
+              className="action-button action-icon mt-4"
               onClick={() => void inventario.conexion.refetch()}
+              title="Volver a consultar acceso"
             >
-              Volver a consultar acceso
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Volver a consultar acceso</span>
             </button>
           </section>
         ) : vista === "certificaciones" ? (
@@ -219,10 +229,12 @@ function GestionRecursosOngPage({
                 <>
                   <ErrorMensaje error={inventario.capacidades.error} />
                   <button
-                    className={`${boton} mt-3`}
+                    className="action-button action-icon mt-3"
                     onClick={() => void inventario.capacidades.refetch()}
+                    title="Reintentar capacidades"
                   >
-                    Reintentar capacidades
+                    <ActionIcon name="refresh" />
+                    <span className="sr-only">Reintentar capacidades</span>
                   </button>
                 </>
               ) : inventario.capacidades.data.length === 0 ? (
@@ -252,13 +264,15 @@ function GestionRecursosOngPage({
                 <button
                   type="button"
                   disabled={inventario.recursos.isFetching}
-                  className={boton}
+                  className="action-button action-icon"
                   onClick={() => {
                     setEditando(null);
                     void inventario.actualizar();
                   }}
+                  title="Actualizar listado"
                 >
-                  Actualizar listado
+                  <ActionIcon name="refresh" />
+                  <span className="sr-only">Actualizar listado</span>
                 </button>
               </div>
               {inventario.recursos.isPending ? (
@@ -272,76 +286,74 @@ function GestionRecursosOngPage({
                   Tu ONG todavía no tiene recursos registrados.
                 </p>
               ) : (
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  {inventario.recursos.data.map((recurso) => (
-                    <article
-                      key={recurso.id}
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                    >
-                      <p className="text-xs font-bold text-cyan-800">
-                        {recurso.codigoInterno} · {recurso.capacidad}
-                      </p>
-                      <h4 className="mt-2 text-lg font-bold">
-                        {recurso.nombre}
-                      </h4>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Unidad: {recurso.unidad}
-                        {!recurso.activo && " · Inactivo"}
-                      </p>
-                      <dl className="my-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
-                        {[
-                          ["Total", recurso.cantidadTotal],
-                          ["Comprometido", recurso.cantidadComprometida],
-                          ["Disponible", recurso.cantidadDisponible],
-                        ].map(([label, value]) => (
-                          <div key={label}>
-                            <dt className="text-slate-600">{label}</dt>
-                            <dd className="mt-1 break-all font-bold">
-                              {value}
-                            </dd>
-                          </div>
-                        ))}
-                      </dl>
-                      <button
-                        type="button"
-                        className={boton}
-                        onClick={() => {
-                          inventario.editar.reset();
-                          setEditando(recurso);
-                          setFeedback("");
-                        }}
-                      >
-                        Editar {recurso.codigoInterno}
-                      </button>
-                    </article>
-                  ))}
-                </div>
+                <ListadoLocal items={inventario.recursos.data} etiqueta="Recursos registrados" className="mt-4">
+                  {(visibles) => (
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      {visibles.map((recurso) => (
+                        <article
+                          key={recurso.id}
+                          className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <p className="text-xs font-bold text-cyan-800">
+                            {recurso.codigoInterno} · {recurso.capacidad}
+                          </p>
+                          <h4 className="mt-2 text-lg font-bold">
+                            {recurso.nombre}
+                          </h4>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Unidad: {recurso.unidad}
+                            {!recurso.activo && " · Inactivo"}
+                          </p>
+                          <dl className="my-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
+                            {[
+                              ["Total", recurso.cantidadTotal],
+                              ["Comprometido", recurso.cantidadComprometida],
+                              ["Disponible", recurso.cantidadDisponible],
+                            ].map(([label, value]) => (
+                              <div key={label}>
+                                <dt className="text-slate-600">{label}</dt>
+                                <dd className="mt-1 break-all font-bold">
+                                  {value}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                          <button
+                            type="button"
+                            className="action-button action-icon"
+                            onClick={() => {
+                              inventario.editar.reset();
+                              setEditando(recurso);
+                              setFeedback("");
+                            }}
+                            title={`Editar ${recurso.codigoInterno}`}
+                          >
+                            <ActionIcon name="edit" />
+                            <span className="sr-only">Editar {recurso.codigoInterno}</span>
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </ListadoLocal>
               )}
             </section>
             {editando && (
-              <section
-                className="mt-6 border-t border-slate-200 pt-6"
-                aria-labelledby="editar-recurso"
-              >
-                <h3 id="editar-recurso" className="text-xl font-bold">
-                  Editar cantidad: {editando.nombre}
-                </h3>
-                <CantidadFormView
-                  key={`${editando.id}:${editando.actualizadoEn}`}
-                  recurso={editando}
-                  pendiente={inventario.editar.isPending}
-                  error={inventario.editar.error}
-                  onCancel={() => setEditando(null)}
-                  onSubmit={async (cantidadTotal) => {
-                    await inventario.editar.mutateAsync({
-                      recurso: editando,
-                      cantidadTotal,
-                    });
-                    setEditando(null);
-                    setFeedback("Cantidad actualizada.");
-                  }}
-                />
-              </section>
+              <EditarRecursoModal
+                key={`${editando.id}:${editando.actualizadoEn}`}
+                recurso={editando}
+                pendiente={inventario.editar.isPending}
+                error={inventario.editar.error}
+                onCancel={() => setEditando(null)}
+                onSubmit={async (cantidadTotal) => {
+                  await inventario.editar.mutateAsync({
+                    recurso: editando,
+                    cantidadTotal,
+                  });
+                  setEditando(null);
+                  setFeedback("Cantidad actualizada.");
+                }}
+              />
             )}
           </section>
         )}
@@ -396,6 +408,7 @@ function RegistroNacionalFormView({
           className="form-input mt-2"
           type="email"
           autoComplete="email"
+          placeholder="contacto@organizacion.org"
           {...register("emailContacto")}
         />
         {errors.emailContacto && (
@@ -404,16 +417,18 @@ function RegistroNacionalFormView({
       </label>
       <ErrorMensaje error={error} />
       <div className="flex flex-wrap gap-3">
-        <button className={boton} disabled={pendiente}>
+        <button className="action-button action-primary" disabled={pendiente}>
           {pendiente ? "Registrando…" : "Crear registro nacional"}
         </button>
         <button
           type="button"
-          className="rounded-xl border border-slate-300 px-4 py-2.5"
+          className="action-button action-icon"
           disabled={pendiente}
           onClick={onCancel}
+          title="Cancelar registro"
         >
-          Cancelar registro
+          <ActionIcon name="close" />
+          <span className="sr-only">Cancelar registro</span>
         </button>
       </div>
     </form>
@@ -487,15 +502,24 @@ function RecursoFormView({
         )}
       </label>
       <label className="text-sm font-semibold">
-        Código interno
-        <input className="form-input mt-2" {...register("codigoInterno")} />
+        Descripción corta
+        <input
+          className="form-input mt-2"
+          placeholder="Ej.: Ambulancia de guardia"
+          maxLength={80}
+          {...register("codigoInterno")}
+        />
         {errors.codigoInterno && (
           <span role="alert">{errors.codigoInterno.message}</span>
         )}
       </label>
       <label className="text-sm font-semibold">
         Nombre del recurso
-        <input className="form-input mt-2" {...register("nombre")} />
+        <input
+          className="form-input mt-2"
+          placeholder="Ej.: Ambulancia equipada para rescate"
+          {...register("nombre")}
+        />
         {errors.nombre && <span role="alert">{errors.nombre.message}</span>}
       </label>
       <label className="text-sm font-semibold">
@@ -503,6 +527,7 @@ function RecursoFormView({
         <input
           className="form-input mt-2"
           inputMode="decimal"
+          placeholder="Ej.: 10"
           {...register("cantidadTotal")}
         />
         {errors.cantidadTotal && (
@@ -511,11 +536,73 @@ function RecursoFormView({
       </label>
       <div className="sm:col-span-2">
         <ErrorMensaje error={error} />
-        <button className={boton} disabled={pendiente}>
+        <button className="action-button action-primary" disabled={pendiente}>
           {pendiente ? "Guardando…" : "Registrar recurso"}
         </button>
       </div>
     </form>
+  );
+}
+
+interface EdicionRecursoProps {
+  recurso: Recurso;
+  pendiente: boolean;
+  error: unknown;
+  onSubmit: (cantidad: string) => Promise<void>;
+  onCancel: () => void;
+}
+
+function EditarRecursoModal(props: EdicionRecursoProps): ReactElement {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const overflowAnterior = document.body.style.overflow;
+    dialog.showModal();
+    dialog.querySelector("input")?.focus();
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog.close();
+      document.body.style.overflow = overflowAnterior;
+    };
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-modal="true"
+      aria-labelledby="editar-recurso"
+      aria-describedby="editar-recurso-detalle"
+      className="fixed inset-0 m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 text-slate-950 shadow-2xl backdrop:bg-slate-950/55 sm:p-6"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!props.pendiente) props.onCancel();
+      }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <h2 id="editar-recurso" className="min-w-0 text-xl font-bold break-words">
+          Editar cantidad: {props.recurso.nombre}
+        </h2>
+        <button
+          type="button"
+          aria-label="Cerrar edición"
+          disabled={props.pendiente}
+          onClick={props.onCancel}
+          className="action-button action-icon"
+          title="Cerrar edición"
+        >
+          <ActionIcon name="close" />
+        </button>
+      </div>
+      <p
+        id="editar-recurso-detalle"
+        className="mt-2 text-sm text-slate-600 break-words"
+      >
+        {props.recurso.codigoInterno} · {props.recurso.capacidad}
+      </p>
+      <CantidadFormView {...props} />
+    </dialog>
   );
 }
 
@@ -525,13 +612,7 @@ function CantidadFormView({
   error,
   onSubmit,
   onCancel,
-}: {
-  recurso: Recurso;
-  pendiente: boolean;
-  error: unknown;
-  onSubmit: (cantidad: string) => Promise<void>;
-  onCancel: () => void;
-}): ReactElement {
+}: EdicionRecursoProps): ReactElement {
   const {
     register,
     handleSubmit,
@@ -573,24 +654,34 @@ function CantidadFormView({
         <input
           className="form-input mt-2"
           inputMode="decimal"
+          disabled={pendiente}
+          placeholder="Ingresá la nueva cantidad total"
+          aria-invalid={errors.cantidadTotal ? "true" : undefined}
+          aria-describedby={
+            errors.cantidadTotal ? "editar-cantidad-error" : undefined
+          }
           {...register("cantidadTotal")}
         />
         {errors.cantidadTotal && (
-          <span role="alert">{errors.cantidadTotal.message}</span>
+          <span id="editar-cantidad-error" role="alert">
+            {errors.cantidadTotal.message}
+          </span>
         )}
       </label>
       <ErrorMensaje error={error} />
       <div className="flex flex-wrap gap-3">
-        <button className={boton} disabled={pendiente}>
+        <button className="action-button action-primary" disabled={pendiente}>
           {pendiente ? "Guardando…" : "Guardar cantidad"}
         </button>
         <button
           type="button"
-          className="rounded-xl border border-slate-300 px-4 py-2.5"
+          className="action-button action-icon"
           disabled={pendiente}
           onClick={onCancel}
+          title="Cancelar"
         >
-          Cancelar
+          <ActionIcon name="close" />
+          <span className="sr-only">Cancelar</span>
         </button>
       </div>
     </form>

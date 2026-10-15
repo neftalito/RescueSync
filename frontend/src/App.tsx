@@ -1,5 +1,6 @@
 import { type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
+import { ActionIcon } from "./components/ActionIcon";
 import { MisRecursosPage } from "./pages/MisRecursosPage";
 
 import { ApiError } from "./api/client";
@@ -9,6 +10,7 @@ import { OpcionesPage } from "./pages/OpcionesPage";
 import { CatalogoNacionalPage } from "./pages/CatalogoNacionalPage";
 import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { EmergenciasCoordinadorPage } from "./pages/EmergenciasCoordinadorPage";
 import {
   CertificacionesOngPage,
   InventarioOngPage,
@@ -65,9 +67,11 @@ function ProtectedApp(): ReactElement {
           <button
             type="button"
             onClick={() => void session.refetch()}
-            className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"
+            className="action-button action-primary action-icon mt-6"
+            title="Reintentar"
           >
-            Reintentar
+            <ActionIcon name="refresh" />
+            <span className="sr-only">Reintentar</span>
           </button>
         </section>
       </main>
@@ -84,6 +88,26 @@ function ProtectedApp(): ReactElement {
   return (
     <Routes>
       <Route path="/" element={<DashboardPage session={session.data} />} />
+      <Route
+        path="/emergencias/pendientes"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <EmergenciasCoordinadorPage vista="pendientes" />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/emergencias/con-lotes"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <EmergenciasCoordinadorPage vista="con-lotes" />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
       <Route
         path="/emergencias/nueva"
         element={

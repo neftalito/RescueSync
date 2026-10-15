@@ -1,6 +1,8 @@
+import { ListadoLocal } from "./ListadoProgresivo";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useState, type ReactElement } from "react";
 import { useForm } from "react-hook-form";
+import { ActionIcon } from "./ActionIcon";
 import { ApiError } from "../api/client";
 import { useMetricas } from "../hooks/useMetricas";
 import {
@@ -37,8 +39,6 @@ const resumenLabels = {
 };
 const estiloCampo =
   "mt-1 block w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 focus-visible:outline-cyan-700";
-const estiloBoton =
-  "rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-50";
 
 export function DashboardAuditor(): ReactElement {
   const [filtros, setFiltros] = useState(filtrosInicialesMetricas);
@@ -74,14 +74,18 @@ export function DashboardAuditor(): ReactElement {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className={estiloBoton}
+            className="action-button action-icon"
             disabled={actualizando}
             onClick={() => {
               void locales.refetch();
               void tiempos.refetch();
             }}
+            title={actualizando ? "Actualizando…" : "Actualizar métricas"}
           >
-            {actualizando ? "Actualizando…" : "Actualizar métricas"}
+            <ActionIcon name="refresh" />
+            <span className="sr-only">
+              {actualizando ? "Actualizando…" : "Actualizar métricas"}
+            </span>
           </button>
           <ExportarMetricasMenu
             reporte={reporte}
@@ -179,7 +183,7 @@ export function DashboardAuditor(): ReactElement {
             relacionados.
           </p>
           <button
-            className="rounded-xl bg-cyan-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-cyan-700"
+            className="action-button action-primary"
             type="submit"
           >
             Aplicar filtros
@@ -202,11 +206,13 @@ export function DashboardAuditor(): ReactElement {
               : "No pudimos cargar las métricas."}
           </p>
           <button
-            className={`${estiloBoton} mt-3`}
+            className="action-button action-icon mt-3"
             onClick={() => void locales.refetch()}
             type="button"
+            title="Reintentar métricas"
           >
-            Reintentar métricas
+            <ActionIcon name="refresh" />
+            <span className="sr-only">Reintentar métricas</span>
           </button>
         </div>
       )}
@@ -307,39 +313,36 @@ export function DashboardAuditor(): ReactElement {
                 No hay cantidades ofrecidas para estos filtros.
               </p>
             ) : (
-              <div
-                className="mt-4 max-h-80 overflow-auto overscroll-contain rounded-lg focus-visible:outline-cyan-700"
-                tabIndex={0}
-                role="region"
-                aria-label="Cantidades ofrecidas por capacidad"
-              >
-                <table className="w-full text-left text-sm">
-                  <caption className="sr-only">Cantidades ofrecidas</caption>
-                  <thead className="sticky top-0 bg-white">
-                    <tr>
-                      <th className="py-3">Capacidad</th>
-                      <th className="px-3 py-3 text-right">Cantidad</th>
-                      <th className="py-3">Unidad</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reporte.cantidades_ofrecidas.map((c) => (
-                      <tr
-                        key={`${c.capacidad}-${c.unidad}`}
-                        className="border-t border-slate-100"
-                      >
-                        <td className="py-3 pr-2">{c.capacidad}</td>
-                        <td className="px-3 py-3 text-right tabular-nums">
-                          {Number(c.cantidad).toLocaleString("es-AR", {
-                            maximumFractionDigits: 3,
-                          })}
-                        </td>
-                        <td className="py-3">{c.unidad}</td>
+              <ListadoLocal items={reporte.cantidades_ofrecidas} etiqueta="Cantidades ofrecidas por capacidad" className="mt-3">
+                {(visibles) => (
+                  <table className="w-full text-left text-sm">
+                    <caption className="sr-only">Cantidades ofrecidas</caption>
+                    <thead className="sticky top-0 bg-white">
+                      <tr>
+                        <th className="py-3">Capacidad</th>
+                        <th className="px-3 py-3 text-right">Cantidad</th>
+                        <th className="py-3">Unidad</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {visibles.map((c) => (
+                        <tr
+                          key={`${c.capacidad}-${c.unidad}`}
+                          className="border-t border-slate-100"
+                        >
+                          <td className="py-3 pr-2">{c.capacidad}</td>
+                          <td className="px-3 py-3 text-right tabular-nums">
+                            {Number(c.cantidad).toLocaleString("es-AR", {
+                              maximumFractionDigits: 3,
+                            })}
+                          </td>
+                          <td className="py-3">{c.unidad}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </ListadoLocal>
             )}
           </article>
         </>
@@ -372,10 +375,12 @@ export function DashboardAuditor(): ReactElement {
             </p>
             <button
               type="button"
-              className={`${estiloBoton} mt-3`}
+              className="action-button action-icon mt-3"
               onClick={() => void tiempos.refetch()}
+              title="Reintentar tiempos"
             >
-              Reintentar tiempos
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Reintentar tiempos</span>
             </button>
           </div>
         )}
@@ -418,41 +423,43 @@ export function DashboardAuditor(): ReactElement {
                     valor: e.promedio_segundos / 3600,
                   }))}
                 />
-                <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-4">
-                  <table className="w-full text-left text-sm">
-                    <caption className="mb-3 text-left font-bold text-slate-900">
-                      Promedios y muestras de Bonita
-                    </caption>
-                    <thead className="sticky top-0 bg-white">
-                      <tr>
-                        <th className="py-2">Tarea</th>
-                        <th className="px-3 py-2">Versión</th>
-                        <th className="px-3 py-2 text-right">
-                          Promedio (horas)
-                        </th>
-                        <th className="py-2 text-right">Muestras</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historial.etapas.map((e) => (
-                        <tr
-                          key={`${e.etapa}-${e.version_proceso}`}
-                          className="border-t border-slate-100"
-                        >
-                          <td className="py-3">{e.etapa}</td>
-                          <td className="px-3 py-3">{e.version_proceso}</td>
-                          <td className="px-3 py-3 text-right">
-                            {(e.promedio_segundos / 3600).toLocaleString(
-                              "es-AR",
-                              { maximumFractionDigits: 3 },
-                            )}
-                          </td>
-                          <td className="py-3 text-right">{e.muestras}</td>
+                <ListadoLocal items={historial.etapas} etiqueta="Promedios y muestras de Bonita" className="mt-3">
+                  {(visibles) => (
+                    <table className="w-full text-left text-sm">
+                      <caption className="mb-3 text-left font-bold text-slate-900">
+                        Promedios y muestras de Bonita
+                      </caption>
+                      <thead className="sticky top-0 bg-white">
+                        <tr>
+                          <th className="py-2">Tarea</th>
+                          <th className="px-3 py-2">Versión</th>
+                          <th className="px-3 py-2 text-right">
+                            Promedio (horas)
+                          </th>
+                          <th className="py-2 text-right">Muestras</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {visibles.map((e) => (
+                          <tr
+                            key={`${e.etapa}-${e.version_proceso}`}
+                            className="border-t border-slate-100"
+                          >
+                            <td className="py-3">{e.etapa}</td>
+                            <td className="px-3 py-3">{e.version_proceso}</td>
+                            <td className="px-3 py-3 text-right">
+                              {(e.promedio_segundos / 3600).toLocaleString(
+                                "es-AR",
+                                { maximumFractionDigits: 3 },
+                              )}
+                            </td>
+                            <td className="py-3 text-right">{e.muestras}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </ListadoLocal>
               </>
             )}
           </>

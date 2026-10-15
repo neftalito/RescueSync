@@ -1,6 +1,7 @@
 import { type ReactElement } from "react";
 import { Link } from "react-router";
 
+import { ActionIcon } from "../components/ActionIcon";
 import { BandejaEmergencias } from "../components/BandejaEmergencias";
 
 interface MisEmergenciasPageProps {
@@ -28,15 +29,17 @@ export function MisEmergenciasPage({
           >
             <Link
               to="/emergencias/nueva"
-              className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800"
+              className="action-button action-primary"
             >
               Registrar emergencia
             </Link>
             <Link
               to="/"
-              className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              className="action-button action-icon"
+              title="Volver al inicio"
             >
-              Volver al inicio
+              <ActionIcon name="home" />
+              <span className="sr-only">Volver al inicio</span>
             </Link>
           </nav>
         </div>

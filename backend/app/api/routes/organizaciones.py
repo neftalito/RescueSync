@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import ClienteNacionalDep, UsuarioAdministrador, validar_csrf
+from app.api.paginacion import PaginacionDep
 from app.db.models import Organizacion, TipoOrganizacion
 from app.db.session import get_db
 from app.integrations.nacional.cliente import ErrorNacional
@@ -38,10 +39,11 @@ router = APIRouter()
     ),
 )
 def obtener_organizaciones(
+    paginacion: PaginacionDep,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
 ) -> list[Organizacion]:
-    return listar_organizaciones(session)
+    return listar_organizaciones(session, paginacion)
 
 
 @router.post(
