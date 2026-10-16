@@ -98,8 +98,16 @@ persistencia del buzón no depende de ese bus.
    La carga predeterminada incluye 5.000 emergencias y evita duplicados al repetirla.
    Reconstruir primero la imagen de desarrollo para instalar Faker.
 
-   Para probar inventario, ejecutar también el seed de RescueSyncAPI. Ambos seeds
-   dejan preparadas las cuentas técnicas y sus accesos: entrar con `ong123` permite
+   Elegir demo o masivo para cada demostración y usar la misma modalidad en ambos
+   proyectos. El masivo funciona sin ejecutar el demo previamente. Ambos reutilizan
+   el administrador inicial (`admin@rescuesync.org` / `administrador123` por defecto,
+   configurable con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`). El catálogo nacional
+   usa `admin.nacional.demo@rescuesync.org` / `admin-nacional-demo123` en cualquiera
+   de las dos modalidades; conservar esos valores de `.env.example`.
+
+   Para probar inventario demo, ejecutar también `app.scripts.seed` de RescueSyncAPI.
+   Los seeds demo de los dos proyectos dejan preparadas las cuentas técnicas y
+   sus accesos: entrar con `ong123` permite
    abrir Mis recursos sin importaciones manuales. El recorrido y la configuración
    están en [Inventario nacional](docs/inventario-nacional.md).
    Configurar una sola vez el [alta y acceso nacional automático](docs/acceso-nacional-automatico.md).

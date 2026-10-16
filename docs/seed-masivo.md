@@ -5,6 +5,12 @@ con [Faker](https://faker.readthedocs.io/) (`es_AR`), cantidades enteras y fecha
 UTC distribuidas en los últimos seis meses. Faker es una dependencia de desarrollo;
 reconstruir la imagen después de incorporar estos cambios.
 
+Para cada demostración, elegir **demo** (`app.scripts.seed`) para un escenario
+pequeño o **masivo** (`app.scripts.seed_masivo`) para alta carga, y usar la misma
+modalidad en RescueSyncAPI. Cada modalidad se puede cargar por sí sola sobre una
+base preparada para ese escenario; el masivo no necesita ejecutar antes el demo.
+Ambas modalidades usan el mismo administrador inicial.
+
 Desde la raíz de RescueSync, con PostgreSQL levantado, migraciones al día y
 `NACIONAL_ENCRYPTION_KEY` configurada en `.env` como indica el inicio rápido:
 
@@ -24,7 +30,7 @@ Los valores predeterminados producen:
 | Entidad                                           |           Cantidad |
 | ------------------------------------------------- | -----------------: |
 | Municipios / centros / ONGs                       |   100 / 10 / 1.000 |
-| Usuarios, incluidos un administrador y un auditor |              1.112 |
+| Usuarios (administrador inicial y auditor incluidos) |             1.112 |
 | Emergencias                                       |              5.000 |
 | Lotes                                             |              9.000 |
 | Convocatorias abiertas / cerradas                 |      1.000 / 1.000 |
@@ -92,11 +98,17 @@ las ventanas de las convocatorias, se conservan al repetir el comando.
 
 ## Usuarios para explorar
 
-Con el seed predeterminado, las cuentas locales usan `CargaMasiva2026!`:
+El administrador es el mismo del seed demo y del arranque normal:
+`admin@rescuesync.org` / `administrador123` por defecto. Se obtiene mediante el
+bootstrap y respeta `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`. Debe cambiar la
+contraseña temporal en el primer ingreso. Si ya existe un administrador activo,
+se conserva su cuenta y su contraseña; repetir o cambiar `--seed` no crea otro
+administrador ni restablece credenciales.
+
+Las demás cuentas locales del seed predeterminado usan `CargaMasiva2026!`:
 
 | Rol           | Correo                                          |
 | ------------- | ----------------------------------------------- |
-| Administrador | `masivo-2026-admin@example.test`                |
 | Auditor       | `masivo-2026-auditor@example.test`              |
 | Municipio     | `masivo-2026-municipio-1@example.test`          |
 | Coordinador   | `masivo-2026-centro_coordinador-1@example.test` |
@@ -106,6 +118,23 @@ El último número identifica la organización, desde 1. Son credenciales públi
 de fixtures de desarrollo; sus hashes Argon2 se calculan una vez por carga para
 evitar miles de operaciones costosas. Para concentrar más filas en las vistas
 de un municipio, centro u ONG, disminuir su cantidad al crear un seed nuevo.
+
+## Acceso al catálogo nacional
+
+El seed nacional masivo crea el mismo administrador nacional que el demo. En
+`RescueSync/.env`, mantener las credenciales de desarrollo de `.env.example`:
+
+```dotenv
+NACIONAL_CATALOGO_LOGIN=admin.nacional.demo@rescuesync.org
+NACIONAL_CATALOGO_PASSWORD=admin-nacional-demo123
+```
+
+Estas credenciales son independientes de la sesión del administrador local y no
+dependen de `--seed`. Con sólo el masivo nacional cargado ya se puede consultar y
+crear capacidades desde RescueSync. Si se modificaron estas variables para usar
+el administrador de una versión anterior del masivo, volver a los valores de
+arriba y aplicar el entorno con
+`docker compose up -d --no-deps --force-recreate backend`.
 
 La carga es aditiva y no incluye borrado. Para descartar datos masivos sin perder
 otros datos, usar una base o volumen dedicado antes de ejecutar el comando.

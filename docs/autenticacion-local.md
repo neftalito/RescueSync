@@ -50,6 +50,10 @@ En producción deben sobreescribirse antes del primer arranque y comunicarse por
 un canal seguro. El backend rechaza el arranque productivo si conserva la
 contraseña pública de desarrollo. Ninguna contraseña se imprime en los logs.
 
+Tanto el seed demo como el masivo utilizan este mismo bootstrap. Elegir uno para
+cada demostración no cambia el administrador ni exige crear una cuenta de
+administración adicional. En ambos casos se respeta la contraseña vigente.
+
 ## Datos de desarrollo
 
 Para crear un escenario completo:

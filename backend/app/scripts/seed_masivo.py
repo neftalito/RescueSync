@@ -45,6 +45,11 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.services.acceso_nacional import cifrador
+from app.services.admin_lock import bloquear_gestion_administradores
+from app.services.bootstrap import (
+    AdminInicialEnConflictoError,
+    asegurar_admin_inicial,
+)
 
 # Credenciales exclusivamente sintéticas, compartidas con el seed nacional.
 PASSWORD_PRUEBA = "CargaMasiva2026!"
@@ -386,9 +391,10 @@ def seed_mass_data(
     progreso: Callable[[str], None] | None = None,
 ) -> ResultadoSeed:
     """Agrega escenarios faltantes; el llamador confirma o revierte toda la carga."""
-    if get_settings().app_env.casefold() not in {"development", "test"}:
+    settings = get_settings()
+    if settings.app_env.casefold() not in {"development", "test"}:
         raise ValueError("El seed masivo sólo está disponible en desarrollo y pruebas.")
-    if get_settings().nacional_encryption_key is None:
+    if settings.nacional_encryption_key is None:
         raise ValueError("Configurá NACIONAL_ENCRYPTION_KEY antes de ejecutar el seed.")
     # La zona no es UNIQUE: serializar este dataset evita duplicados concurrentes.
     session.execute(select(func.pg_advisory_xact_lock(73842, config.seed)))
@@ -401,6 +407,16 @@ def seed_mass_data(
         )
     )
     resultado = ResultadoSeed()
+    # Contar bajo el mismo lock que usa el bootstrap mantiene el resumen exacto
+    # aunque otro proceso esté preparando el administrador inicial.
+    bloquear_gestion_administradores(session)
+    admin_previo = session.scalar(
+        select(Usuario.id)
+        .where(Usuario.rol == RolUsuario.ADMINISTRADOR, Usuario.activo.is_(True))
+        .limit(1)
+    )
+    asegurar_admin_inicial(session, settings)
+    resultado.usuarios += admin_previo is None
     password_hash = generar_password_hash(PASSWORD_PRUEBA)
     municipios = _identidades(
         session,
@@ -429,18 +445,14 @@ def seed_mass_data(
         password_hash,
         resultado,
     )
-    for nombre, rol in (
-        ("admin", RolUsuario.ADMINISTRADOR),
-        ("auditor", RolUsuario.AUDITOR_DIRECTIVO),
-    ):
-        _, creado = _usuario(
-            session,
-            f"masivo-{config.seed}-{nombre}@example.test",
-            rol,
-            None,
-            password_hash,
-        )
-        resultado.usuarios += creado
+    _, creado = _usuario(
+        session,
+        f"masivo-{config.seed}-auditor@example.test",
+        RolUsuario.AUDITOR_DIRECTIVO,
+        None,
+        password_hash,
+    )
+    resultado.usuarios += creado
     session.flush()
     if progreso:
         progreso("Identidades preparadas; cargando emergencias y sus relaciones...")
@@ -528,7 +540,7 @@ def main(argv: list[str] | None = None) -> int:
         inicio = perf_counter()
         with SessionLocal.begin() as session:
             resultado = seed_mass_data(session, config, progreso=print)
-    except ValueError as error:
+    except (ValueError, AdminInicialEnConflictoError) as error:
         print(str(error), file=sys.stderr)
         return 1
     except SQLAlchemyError:

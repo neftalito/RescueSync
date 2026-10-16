@@ -7,7 +7,7 @@ from uuid import NAMESPACE_URL, uuid5
 import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -23,6 +23,7 @@ from app.db.models import (
     OfertaItemAporte,
     OfertaVersion,
     Organizacion,
+    RolUsuario,
     Usuario,
 )
 from app.scripts.seed_masivo import ConfiguracionSeed, main, seed_mass_data
@@ -232,3 +233,82 @@ def test_simulacion_no_necesita_base_de_datos(
 ) -> None:
     assert main(["--dry-run", "--emergencias", "10000"]) == 0
     assert "10000" in capsys.readouterr().out
+
+
+def test_masivo_solo_crea_el_administrador_default_del_demo(
+    db_session: Session,
+) -> None:
+    db_session.execute(delete(Usuario).where(Usuario.rol == RolUsuario.ADMINISTRADOR))
+    seed_mass_data(db_session, CONFIG)
+    settings = get_settings()
+    admin = autenticar_usuario(
+        db_session,
+        str(settings.admin_email),
+        settings.admin_initial_password.get_secret_value(),
+    )
+    assert admin is not None and admin.rol == RolUsuario.ADMINISTRADOR
+    assert admin.requiere_cambio_password
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(Usuario)
+            .where(Usuario.rol == RolUsuario.ADMINISTRADOR)
+        )
+        == 1
+    )
+    assert (
+        db_session.scalar(
+            select(Usuario.id).where(
+                Usuario.email == f"masivo-{CONFIG.seed}-admin@example.test"
+            )
+        )
+        is None
+    )
+
+
+def test_masivo_respeta_configuracion_del_administrador_inicial(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_session.execute(delete(Usuario).where(Usuario.rol == RolUsuario.ADMINISTRADOR))
+    monkeypatch.setattr(get_settings(), "admin_email", "admin-carga@rescuesync.org")
+    monkeypatch.setattr(
+        get_settings(), "admin_initial_password", SecretStr("Clave-configurada-2026")
+    )
+    seed_mass_data(db_session, CONFIG)
+    assert (
+        autenticar_usuario(
+            db_session, "admin-carga@rescuesync.org", "Clave-configurada-2026"
+        )
+        is not None
+    )
+
+
+def test_repetir_o_cambiar_seed_conserva_password_del_admin(
+    db_session: Session,
+) -> None:
+    db_session.execute(delete(Usuario).where(Usuario.rol == RolUsuario.ADMINISTRADOR))
+    seed_mass_data(db_session, CONFIG)
+    admin = db_session.scalar(
+        select(Usuario).where(Usuario.rol == RolUsuario.ADMINISTRADOR)
+    )
+    assert admin is not None
+    admin.password_hash = generar_password_hash("Clave-rotada-2026")
+    admin.requiere_cambio_password = False
+    admin.version_sesion += 1
+    original = (admin.id, admin.password_hash, admin.version_sesion)
+    db_session.flush()
+
+    seed_mass_data(db_session, CONFIG)
+    seed_mass_data(db_session, replace(CONFIG, seed=CONFIG.seed + 1))
+
+    assert (admin.id, admin.password_hash, admin.version_sesion) == original
+    assert not admin.requiere_cambio_password
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(Usuario)
+            .where(Usuario.rol == RolUsuario.ADMINISTRADOR)
+        )
+        == 1
+    )

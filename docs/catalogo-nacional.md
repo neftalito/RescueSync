@@ -18,6 +18,20 @@ servidor existentes `NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`.
 nacional sea `ADMIN_NACIONAL`. Ser administrador local no cambia el rol nacional
 de esa cuenta. No se envían contraseñas ni JWT nacionales al navegador.
 
+Para las demostraciones, elegir el seed normal o el masivo en ambos proyectos.
+Los dos seeds nacionales preparan el mismo administrador, por lo que las
+credenciales del backend local no cambian al elegir una modalidad:
+
+```dotenv
+NACIONAL_CATALOGO_LOGIN=admin.nacional.demo@rescuesync.org
+NACIONAL_CATALOGO_PASSWORD=admin-nacional-demo123
+```
+
+El seed masivo nacional permite consultar y crear capacidades sin ejecutar antes
+el demo. Las contraseñas cambiadas se conservan y deben coincidir con la
+configuración del backend. Tras editar `.env`, aplicar las variables con
+`docker compose up -d --no-deps --force-recreate backend`.
+
 Aplicar las migraciones de RescueSyncAPI antes de utilizar la pantalla nueva:
 
 ```bash
