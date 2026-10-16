@@ -40,7 +40,10 @@ fuente de verdad.
 
 ## Bonita BPM
 
-- [Proceso BPM vigente](./bonita/proceso-bpm.md): alcance de la versión 1.2,
+- [API y frontend T36/T37](./bonita/contratos-t36-t37.md): once rutas técnicas,
+  comandos, recuperación, migración y cambios pendientes de Studio.
+
+- [Proceso BPM vigente](./bonita/proceso-bpm.md): artefacto 1.4 conservado,
   contrato inicial y recorrido implementado.
 - [Cliente HTTPX reutilizable](./bonita/cliente-httpx.md): inyección, ciclo de
   vida, operaciones, errores y pruebas con RESPX.
@@ -71,7 +74,7 @@ fuente de verdad.
 - [`Trabajo integrador 2026.pdf`](<./Trabajo integrador 2026.pdf>).
 - [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>).
 - [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>).
-- [`RescueSync-1.2.bar`](./RescueSync-1.2.bar), único artefacto BPM desplegable
-  versionado. El proyecto fuente `.bos` no forma parte del repositorio.
+- [`RescueSync-1.4.bar`](./RescueSync-1.4.bar), único artefacto BPM desplegable
+  versionado. Fuente original: [`rescuesync_20261015_2114.bos`](./rescuesync_20261015_2114.bos).
 
 - [Acceso nacional automático por ONG](./acceso-nacional-automatico.md): cuentas técnicas, secretos, renovación y migración.

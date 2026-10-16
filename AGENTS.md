@@ -4,8 +4,10 @@
 
 Estas reglas se aplican a todo el repositorio. Antes de implementar una historia,
 consultar `docs/Trabajo integrador 2026.pdf`, `docs/Grooming Etapa 2.pdf` y el
-artefacto versionado `docs/RescueSync-1.2.bar` cuando la tarea involucre el
-proceso BPM. El proyecto fuente `.bos` no está disponible en el repositorio.
+artefacto versionado `docs/RescueSync-1.4.bar` cuando la tarea involucre el
+proceso BPM. El fuente original se conserva en `docs/rescuesync_20261015_2114.bos`;
+los contratos nuevos de T36/T37 requieren un export posterior desde Studio,
+según `docs/bonita/contratos-t36-t37.md`.
 
 La prioridad actual es la Entrega 2: alta de emergencias, creación y publicación
 de lotes, ofertas básicas de ONGs, autenticación/RBAC local e integración inicial
@@ -26,6 +28,8 @@ que sean necesarios para mantener un contrato claro.
 - Usar el formato `<tipo>/<descripcion>` o `<tipo>/<ticket>-<descripcion>`, con
   uno de estos tipos: `feat`, `feature`, `fix`, `hotfix`, `refactor`, `test`, `docs`,
   `ci`, `chore` o `release`.
+- Se admiten identificadores de grooming en mayúsculas como `feat/T36-T37`
+  cuando el usuario solicita agrupar esas tareas.
 - La descripción usa minúsculas ASCII, números y guiones medios; no usa espacios,
   guiones bajos, acentos, barras adicionales ni guiones al principio o al final.
   Ejemplos: `feature/rs-123-alta-emergencia`, `fix/cantidad-oferta` y

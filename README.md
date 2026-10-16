@@ -159,7 +159,7 @@ otro proveedor SMTP.
 
 ## Cliente reutilizable de Bonita
 
-[`docs/RescueSync-1.2.bar`](docs/RescueSync-1.2.bar) es la fuente de verdad del
+[`docs/RescueSync-1.4.bar`](docs/RescueSync-1.4.bar) es la fuente de verdad del
 proceso desplegable. FastAPI crea un único `ClienteBonita` durante el `lifespan`,
 comparte su pool HTTPX y lo cierra al apagar la aplicación.
 
@@ -255,3 +255,12 @@ se implementa en una rama propia y se integra mediante pull request con el check
 Las convenciones completas de ramas, arquitectura, estilo, seguridad y
 definición de terminado están en [`AGENTS.md`](AGENTS.md), que es la fuente de
 verdad para contribuir.
+
+### Evaluación, adjudicación y cierre (T36/T37)
+
+La API local y la pantalla de evaluación/ejecución implementan perfiles, cobertura
+compatible, selección municipal, finalización de cada ONG y cierre coordinador.
+Aplicar la migración `20261016_0015`. El BAR 1.4 y su BOS se conservan sin cambios;
+el recorrido BPM completo requiere la adaptación posterior en Studio. Ver
+[contratos T36/T37](docs/bonita/contratos-t36-t37.md), incluyendo parámetros,
+permisos, reintentos, pruebas y comprobación del Runtime.

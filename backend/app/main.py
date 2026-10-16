@@ -14,6 +14,7 @@ from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.integrations.email.cliente import ClienteSMTP, ConfiguracionSMTP
 from app.integrations.nacional.cliente import ClienteNacional
 from app.services.bootstrap import asegurar_admin_inicial
+from app.services.evaluaciones import IntegracionLocalError
 from app.services.monitor_bonita import monitorizar_bonita
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -116,3 +117,10 @@ def root() -> dict[str, str]:
         "docs": "/docs",
         "health": f"{settings.api_v1_prefix}/health",
     }
+
+
+@app.exception_handler(IntegracionLocalError)
+async def responder_error_integracion(
+    _request: Request, error: IntegracionLocalError
+) -> JSONResponse:
+    return JSONResponse(status_code=error.status, content={"detail": str(error)})

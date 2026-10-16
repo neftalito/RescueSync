@@ -8,7 +8,7 @@
 
 > **Estado actual (17/09/2026).** Este documento conserva el diagnóstico hecho
 > sobre el `.bos` original, que ya se eliminó por estar desactualizado. La
-> referencia vigente es [`docs/RescueSync-1.2.bar`](../RescueSync-1.2.bar). Esa versión incorpora el
+> referencia vigente es [`docs/RescueSync-1.4.bar`](../RescueSync-1.4.bar). Esa versión incorpora el
 > contrato validado (incluida la gravedad `CRITICA`), las variables, el índice
 > `idEmergencia`, los actores funcionales, las compuertas evaluadas por script,
 > el timer por fecha y los conectores autenticados hacia FastAPI. Se verificó
@@ -29,7 +29,7 @@ El análisis se basa en:
 
 - [`Trabajo integrador 2026.pdf`](<../Trabajo integrador 2026.pdf>).
 - [`Grooming Etapa 2.pdf`](<../Grooming Etapa 2.pdf>).
-- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.2.bar`](../RescueSync-1.2.bar).
+- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.4.bar`](../RescueSync-1.4.bar).
 - [`Descripción textual del flujo BPM.pdf`](<../Descripción textual del flujo BPM.pdf>), como descripción complementaria del modelo existente.
 
 La prioridad inmediata es la Entrega 2: registrar una emergencia en la base

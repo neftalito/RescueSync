@@ -298,8 +298,12 @@ def test_bonita_parcial_conserva_muestras_validas(
         emergencia.bonita_process_version = "1.2"
     escenario.flush()
 
+    consultas = 0
+
     def historial(_self: ClienteBonita, case_id: int) -> list[TransicionTareaArchivada]:
-        if case_id == 901:
+        nonlocal consultas
+        consultas += 1
+        if consultas == 2:
             raise BonitaNoDisponibleError("Sin conexión")
         return [
             TransicionTareaArchivada(

@@ -13,7 +13,7 @@ FastAPI y el inicializador alcanzan al Runtime en
 
 ## Artefacto y versión
 
-[`docs/RescueSync-1.2.bar`](../RescueSync-1.2.bar) es el único artefacto BPM
+[`docs/RescueSync-1.4.bar`](../RescueSync-1.4.bar) es el único artefacto BPM
 versionado. `BONITA_PROCESS_NAME` y `BONITA_PROCESS_VERSION` determinan la
 definición compatible.
 

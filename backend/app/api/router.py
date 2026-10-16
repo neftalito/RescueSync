@@ -5,6 +5,7 @@ from app.api.routes import (
     bonita,
     catalogo,
     convocatorias,
+    ejecucion,
     emergencias,
     health,
     inventario,
@@ -69,4 +70,11 @@ api_router.include_router(
     notificaciones.router,
     prefix="/notificaciones",
     tags=["notificaciones"],
+)
+
+api_router.include_router(
+    ejecucion.tecnico, prefix="/emergencias", tags=["integración nacional Bonita"]
+)
+api_router.include_router(
+    ejecucion.router, prefix="/emergencias", tags=["ejecución de emergencias"]
 )

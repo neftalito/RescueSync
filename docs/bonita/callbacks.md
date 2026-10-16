@@ -9,8 +9,9 @@ frontend no consume estas rutas.
 | `Cerrar convocatoria local` | `POST /api/v1/emergencias/{id}/cerrar-convocatoria` | Pasa la convocatoria a `CERRADA`, la emergencia a `EN_EVALUACION` y publica las novedades. |
 | `Solicitar ofertas consolidadas` | `GET /api/v1/emergencias/{id}/ofertas-consolidadas` | Devuelve el indicador `lotesCubiertos`. |
 
-`POST /api/v1/emergencias/{id}/resolver` pertenece al cierre del proyecto de la
-Entrega 3 y todavía no está implementado.
+`POST /api/v1/emergencias/{id}/resolver` y las otras diez rutas de T36/T37 ya
+están implementadas. Ver [contratos y precondiciones T36/T37](./contratos-t36-t37.md).
+El BAR 1.4 conservado requiere adaptación en Studio antes de usar esos contratos.
 
 ## Autenticación
 

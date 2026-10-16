@@ -200,6 +200,15 @@ def test_metadata_registra_todo_el_esquema() -> None:
         "oferta_participante",
         "notificacion",
         "hecho_monitoreo",
+        "comando_bonita",
+        "operacion_nacional_sync",
+        "evaluacion_local",
+        "adjudicacion_local",
+        "decision_evaluacion",
+        "participacion_adjudicada",
+        "solicitud_cierre",
+        "compromiso_nacional_local",
+        "finalizacion_ong",
     }
 
 

@@ -44,6 +44,7 @@ function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
             </li>
           ))}
         </ul>
+        {oferta.estado === "ADJUDICADA" && <Link to={`/emergencias/${oferta.emergencia_id}/ejecucion`} className="action-button">Seguimiento y finalización</Link>}
         {oferta.editable && (
           <Link
             to={`/ofertas/${oferta.id}/editar`}

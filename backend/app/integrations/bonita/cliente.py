@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from collections.abc import Sequence
@@ -10,7 +11,14 @@ from types import TracebackType
 from typing import Self
 
 import httpx
-from pydantic import BaseModel, Field, SecretStr, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    Field,
+    JsonValue,
+    SecretStr,
+    TypeAdapter,
+    ValidationError,
+)
 
 from app.core.config import Settings
 from app.integrations.bonita.contratos import (
@@ -381,7 +389,12 @@ class ClienteBonita:
             )
         return transiciones
 
-    def ejecutar_tarea(self, tarea_id: int, usuario_actor: str) -> None:
+    def ejecutar_tarea(
+        self,
+        tarea_id: int,
+        usuario_actor: str,
+        contrato: dict[str, JsonValue] | None = None,
+    ) -> None:
         """Asigna una tarea a un miembro de su actor y la completa sin entradas.
 
         Bonita solo ejecuta tareas asignadas a un candidato del actor; la cuenta
@@ -398,9 +411,84 @@ class ClienteBonita:
         self._enviar(
             "POST",
             f"/API/bpm/userTask/{tarea_id}/execution",
-            json={},
+            json={} if contrato is None else contrato,
             estados_esperados=(httpx.codes.NO_CONTENT,),
             resultado_puede_ser_ambiguo=True,
+        )
+
+    def tarea_exacta(self, tarea_id: int, case_id: int, nombre: str) -> TareaHumana:
+        """Revalida la actividad persistida antes de asignarla o ejecutarla."""
+        respuesta = self._enviar(
+            "GET", f"/API/bpm/humanTask/{tarea_id}", estados_esperados=(httpx.codes.OK,)
+        )
+        tarea = _validar_objeto(respuesta, TareaHumana, "tarea")
+        if (
+            tarea.id != tarea_id
+            or tarea.case_id != case_id
+            or tarea.name != nombre
+            or tarea.state != "ready"
+        ):
+            raise BonitaRespuestaInvalidaError(
+                "La actividad no corresponde a la intención pendiente."
+            )
+        return tarea
+
+    def tareas_para_comando(self, case_id: int, nombre: str) -> list[TareaHumana]:
+        """Lista candidatas sin elegir arbitrariamente una instancia paralela."""
+        respuesta = self._enviar(
+            "GET",
+            "/API/bpm/humanTask",
+            params=[
+                ("p", 0),
+                ("c", 1000),
+                ("f", f"caseId={case_id}"),
+                ("f", f"name={nombre}"),
+                ("f", "state=ready"),
+            ],
+            estados_esperados=(httpx.codes.OK,),
+        )
+        tareas = _validar_lista(respuesta, TareaHumana, "tareas")
+        if len(tareas) >= 1000 or any(
+            t.case_id != case_id or t.name != nombre or t.state != "ready"
+            for t in tareas
+        ):
+            raise BonitaRespuestaInvalidaError(
+                "La lista de actividades no corresponde al comando."
+            )
+        return tareas
+
+    def variable_correlacion(
+        self,
+        case_id: int,
+        tarea_id: int,
+        participante: bool,
+        operacion: bool = False,
+    ) -> str:
+        """Consulta un escalar definido en Studio, nunca un Map Java serializado."""
+        if operacion:
+            ruta = f"/API/bpm/activityVariable/{tarea_id}/operacionIdEsperada"
+        elif participante:
+            ruta = f"/API/bpm/activityVariable/{tarea_id}/participacionIdEsperada"
+        else:
+            ruta = f"/API/bpm/caseVariable/{case_id}/intentoConvocatoria"
+        respuesta = self._enviar("GET", ruta, estados_esperados=(httpx.codes.OK,))
+        try:
+            contenido = respuesta.json()
+        except json.JSONDecodeError as error:
+            raise BonitaRespuestaInvalidaError(
+                "La correlación de la actividad no es JSON válido."
+            ) from error
+        if not isinstance(contenido, dict) or not isinstance(
+            contenido.get("value"), (str, int)
+        ):
+            raise BonitaRespuestaInvalidaError("Falta la correlación de la actividad.")
+        return str(contenido["value"])
+
+    def actividad_completada(self, tarea_id: int, case_id: int) -> bool:
+        """Reconcilia por ID fuente y caso; otra instancia completada no sirve."""
+        return any(
+            t.source_object_id == tarea_id and t.state == "completed"
+            for t in self.obtener_historial_tareas(case_id)
         )
 
     def _obtener_usuario(self, nombre_usuario: str) -> UsuarioBonita:
@@ -427,7 +515,7 @@ class ClienteBonita:
         ruta: str,
         *,
         params: Parametros | None = None,
-        json: dict[str, str | int] | None = None,
+        json: dict[str, JsonValue] | None = None,
         estados_esperados: tuple[int, ...],
         resultado_puede_ser_ambiguo: bool = False,
     ) -> httpx.Response:
@@ -492,7 +580,7 @@ class ClienteBonita:
         metodo: str,
         ruta: str,
         params: Parametros | None,
-        json: dict[str, str | int] | None,
+        json: dict[str, JsonValue] | None,
         token: str,
         resultado_puede_ser_ambiguo: bool,
     ) -> httpx.Response:
