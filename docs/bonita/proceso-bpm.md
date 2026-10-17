@@ -4,11 +4,10 @@ La fuente de verdad desplegable es [`RescueSync-1.4.bar`](../RescueSync-1.4.bar)
 construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente original se conserva como
 [`rescuesync_20261015_2114.bos`](../rescuesync_20261015_2114.bos).
 
-El BAR 1.4 se preserva sin cambios. La API y el frontend nuevos de T36/T37 están
-preparados, pero sus contratos requieren un nuevo export desde Studio para
-ejecutar el recorrido completo. Ver [contratos T36/T37](./contratos-t36-t37.md).
-El recorrido inferior describe la integración inicial; la presencia de conectores
-nacionales en 1.4 no acredita su ejecución ni corrige los hallazgos de la revisión.
+El BAR 1.4 fue reexportado desde Studio con el tramo nacional adaptado a los
+contratos T36/T37 y verificado de punta a punta contra el Runtime y la API
+nacional. Ver [proceso 1.4 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
+El recorrido inferior describe la integración inicial de la Entrega 2.
 
 Esta versión cubre la integración inicial de la Entrega 2: alta y correlación de
 la emergencia, espera de publicación de lotes, ventana de ofertas administrada
@@ -72,8 +71,8 @@ llamar al mismo endpoint reintenta solo ese paso: no crea una convocatoria
 nueva mientras la anterior siga `ABIERTA`, y antes de reejecutar la tarea
 vuelve a preguntarle a Bonita si sigue lista.
 
-El BAR 1.4 incorpora el tramo nacional. Sus contratos y recuperaciones deben
-alinearse con la API local antes de considerar completadas T36/T37.
+El BAR 1.4 incorpora el tramo nacional adaptado (camino feliz, sin tareas de
+incidentes); ver [proceso 1.4 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
 
 ## Cambiar la versión
 

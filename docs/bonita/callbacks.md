@@ -11,7 +11,7 @@ frontend no consume estas rutas.
 
 `POST /api/v1/emergencias/{id}/resolver` y las otras diez rutas de T36/T37 ya
 están implementadas. Ver [contratos y precondiciones T36/T37](./contratos-t36-t37.md).
-El BAR 1.4 conservado requiere adaptación en Studio antes de usar esos contratos.
+El BAR 1.4 adaptado ya invoca esos contratos en el camino feliz.
 
 ## Autenticación
 

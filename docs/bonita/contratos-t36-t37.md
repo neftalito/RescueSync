@@ -10,14 +10,17 @@ planes eran propuestas. No se modificó el proceso ni se exportó un BAR nuevo.
 
 ## Artefactos y alcance verificado
 
-Se conserva **sin cambiar sus bytes** `docs/RescueSync-1.4.bar` y el fuente
-`docs/rescuesync_20261015_2114.bos` entregados localmente. El BAR 1.2 se retira del
-directorio de instalación para que el instalador encuentre un único archivo.
+`docs/RescueSync-1.4.bar` fue **reexportado desde Studio** con el proceso adaptado
+a estos contratos (ver [proceso 1.4 adaptado](#proceso-14-adaptado-mínimo-entregable)).
+Conserva el nombre y la versión `RescueSync 1.4`, por lo que no cambian
+`BONITA_PROCESS_VERSION` ni el deploy. El `.bos` versionado es el fuente
+**anterior** a la adaptación. El BAR 1.2 se retira del directorio de instalación
+para que el instalador encuentre un único archivo.
 
 | Artefacto | SHA-256 |
 | --- | --- |
-| BAR 1.4 | `be3fa6a369d93d97a6d9c5743437fca34a1f222abef0e12033cea7bed3561009` |
-| BOS original | `4bac9a49651f67f0d9dbf3a76cc367f0819969ecacdb0775582399c5453c17de` |
+| BAR 1.4 adaptado | `17c40ad951efe942cd8837023746d9a67b771254697e10d7088c2f62f95884d9` |
+| BOS original (previo a la adaptación) | `4bac9a49651f67f0d9dbf3a76cc367f0819969ecacdb0775582399c5453c17de` |
 
 La API expone las once rutas técnicas y los comandos/pantallas de aplicación.
 Bonita sigue siendo quien consulta ofertas, autentica nacionalmente y realiza
@@ -27,8 +30,47 @@ nacionales. La API nacional existente no requiere cambios.
 La comprobación de lectura del Runtime local del 16/10/2026 encontró conexión y
 autenticación correctas, con `RescueSync 1.2` habilitado/resuelto. No encontró
 una definición 1.4. No se instalaron procesos, modificaron casos ni migraron los
-datos habituales como parte de esa comprobación. Las pruebas HTTP usan RESPX;
-**la E2E del proceso adaptado sigue pendiente de Studio/T35**.
+datos habituales como parte de esa comprobación. Las pruebas HTTP usan RESPX.
+
+## Proceso 1.4 adaptado (mínimo entregable)
+
+El 17/10/2026 se adaptó el diagrama en Studio y se verificó una E2E manual contra
+el Runtime 10.4 y la API nacional local, ambos con Docker. El recorrido fue:
+
+1. Alta de la emergencia y publicación de un lote PARAMEDICOS.
+2. Oferta de una ONG habilitada.
+3. Timer de 2 minutos.
+4. Cierre, consolidado, `solicitudes-validacion`, validación nacional y perfiles (`vigente` y cubiertos).
+5. Selección municipal.
+6. Compromiso nacional y consulta de cada compromiso (bucle).
+7. Confirmación y notificación.
+8. Finalización de la ONG, liberación nacional y confirmación local.
+9. Solicitud de cierre, cierre nacional y `/resolver`.
+
+Resultado: emergencia `RESUELTA`, proyecto nacional `TERMINADO`, compromiso
+`LIBERADO` y caso Bonita *completed* sin nodos fallidos.
+
+Cambios del diagrama respecto del 1.4 original:
+
+- Contratos con UUID en TEXT, según `contratos.py`; se agregan `operacionCompromisoId` y `participacionId`.
+- `Validar Oferta` prepara la evaluación (`solicitudes-validacion`) antes de la validación nacional. `Guardar perfiles` envía la preparación completa y habilita la selección solo si `vigente` y `lotesCompatiblesCubiertos`.
+- Nueva tarea `Consultar compromisos nacionales` (bucle estándar sobre `compromisoIds`) para enviar los detalles en `compromisos/confirmacion`.
+- `Marcar como finalizada la tarea` es multi-instancia paralela sobre `participacionesIds`, con el iterador `participacionIdEsperada`. Libera la operación preparada por `GET /finalizaciones/{id}/liberaciones`.
+- `Cerrar proyecto nacional` usa `GET /solicitudes-cierre/{id}` (clave, request y `operacionCierreId`).
+- Todos los conectores hacia FastAPI envían las cabeceras de contexto de Bonita. Los scripts declaran `idEmergencia` como variable, no como índice de búsqueda. Las variables locales son persistentes, no transitorias.
+
+Fuera del MVP: no se modelan tareas `Atender incidente de …` ni reintentos BPM.
+Si un conector falla, la tarea queda *failed* (visible en el monitor) y la
+recuperación por `/operaciones-nacionales/{id}/recuperacion` no encuentra
+actividad. La liberación procesa `operaciones[0]`, ya que la API nacional crea un
+compromiso por ONG y adjudicación. `tests/e2e/test_bonita_runtime.py` todavía
+espera el camino 1.2 (`lotesCubiertos` → selección).
+
+Para probarlo localmente:
+- La cuenta `INTEGRACION` nacional se configura en `BONITA_NATIONAL_API_LOGIN`/`PASSWORD`.
+- `NACIONAL_SISTEMA_ORIGEN` debe ser igual al sistema de esa cuenta.
+- `BONITA_OFFER_WINDOW_MS=120000` acorta la ventana de ofertas.
+- Las emergencias locales no deben reutilizar un `idEmergencia` que ya tenga proyecto nacional con otro caso.
 
 ## Contratos técnicos
 

@@ -260,7 +260,7 @@ verdad para contribuir.
 
 La API local y la pantalla de evaluación/ejecución implementan perfiles, cobertura
 compatible, selección municipal, finalización de cada ONG y cierre coordinador.
-Aplicar la migración `20261016_0015`. El BAR 1.4 y su BOS se conservan sin cambios;
-el recorrido BPM completo requiere la adaptación posterior en Studio. Ver
+Aplicar la migración `20261016_0015`. El BAR 1.4 fue adaptado en Studio y recorre
+el camino feliz completo (sin tareas de incidentes). Ver
 [contratos T36/T37](docs/bonita/contratos-t36-t37.md), incluyendo parámetros,
 permisos, reintentos, pruebas y comprobación del Runtime.
