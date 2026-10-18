@@ -13,14 +13,22 @@ planes eran propuestas. No se modificó el proceso ni se exportó un BAR nuevo.
 `docs/RescueSync-1.4.bar` fue **reexportado desde Studio** con el proceso adaptado
 a estos contratos (ver [proceso 1.4 adaptado](#proceso-14-adaptado-mínimo-entregable)).
 Conserva el nombre y la versión `RescueSync 1.4`, por lo que no cambian
-`BONITA_PROCESS_VERSION` ni el deploy. El `.bos` versionado es el fuente
-**anterior** a la adaptación. El BAR 1.2 se retira del directorio de instalación
-para que el instalador encuentre un único archivo.
+`BONITA_PROCESS_VERSION` ni el deploy. `docs/rescuesync_v1.4.bos` es el fuente de
+Studio del mismo proceso y reemplaza al export anterior a la adaptación. El BAR 1.2
+se retira del directorio de instalación para que el instalador encuentre un único
+archivo.
 
 | Artefacto | SHA-256 |
 | --- | --- |
-| BAR 1.4 adaptado | `17c40ad951efe942cd8837023746d9a67b771254697e10d7088c2f62f95884d9` |
-| BOS original (previo a la adaptación) | `4bac9a49651f67f0d9dbf3a76cc367f0819969ecacdb0775582399c5453c17de` |
+| BAR 1.4 adaptado | `9078ba330ea46aa2885f152940333ae799a9636c4bab66c58b8bb2a1e79612d0` |
+| BOS 1.4 adaptado | `d38fe30d64bc38d07d27f63007a89e2b05fba2f65ed14cada39ea61d7736a5b3` |
+
+El BAR no contiene credenciales: `nationalApiUser`, `nationalApiPassword` y
+`callbackToken` llevan el marcador `configurar-en-deploy`. `bonita-deploy` los
+reemplaza al instalar con `BONITA_NATIONAL_API_LOGIN`,
+`BONITA_NATIONAL_API_PASSWORD` y `BONITA_CALLBACK_TOKEN`. Los conectores de login
+y los que transportan ofertas o compromisos no imprimen cuerpos
+(`max_body_content_printed=0`), y ninguno imprime cabeceras sensibles.
 
 La API expone las once rutas técnicas y los comandos/pantallas de aplicación.
 Bonita sigue siendo quien consulta ofertas, autentica nacionalmente y realiza
@@ -65,6 +73,20 @@ recuperación por `/operaciones-nacionales/{id}/recuperacion` no encuentra
 actividad. La liberación procesa `operaciones[0]`, ya que la API nacional crea un
 compromiso por ONG y adjudicación. `tests/e2e/test_bonita_runtime.py` todavía
 espera el camino 1.2 (`lotesCubiertos` → selección).
+
+Mejoras evaluadas y diferidas (no las exige el enunciado ni bloquean la entrega):
+
+- Validar en Bonita el snapshot y el cierre antes de la validación nacional: hoy
+  lo hace el backend, que rechaza con 4xx y deja la tarea *failed*.
+- Acotar reintentos de publicación y correlacionarlos por actividad.
+- Reautenticar ante un 401 en vez de iniciar sesión en cada tarea.
+- Consultar `/decisiones-evaluacion/{id}` antes de reabrir: hoy la ronda preparada
+  se alinea por número (`intentoConvocatoria + 1`).
+- Tareas `Atender incidente de compromiso|liberación|cierre`, callback
+  `/operaciones-nacionales/{id}/resultado` y la recuperación de confirmaciones
+  locales con respuesta perdida.
+- E2E de fallos: timeout posterior al commit, reinicio durante la recuperación,
+  dos ONGs con liberación independiente y doble finalización.
 
 Para probarlo localmente (variables `.env`, arranque de ambos repositorios y
 casos), seguir la [prueba local paso a paso](./prueba-local-integracion-nacional.md).

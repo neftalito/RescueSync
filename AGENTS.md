@@ -5,9 +5,9 @@
 Estas reglas se aplican a todo el repositorio. Antes de implementar una historia,
 consultar `docs/Trabajo integrador 2026.pdf`, `docs/Grooming Etapa 2.pdf` y el
 artefacto versionado `docs/RescueSync-1.4.bar` cuando la tarea involucre el
-proceso BPM. El fuente original se conserva en `docs/rescuesync_20261015_2114.bos`;
-los contratos nuevos de T36/T37 requieren un export posterior desde Studio,
-según `docs/bonita/contratos-t36-t37.md`.
+proceso BPM. Su fuente editable de Studio es `docs/rescuesync_v1.4.bos`; ambos
+corresponden al proceso adaptado a los contratos T36/T37 descritos en
+`docs/bonita/contratos-t36-t37.md`.
 
 La prioridad actual es la Entrega 2: alta de emergencias, creación y publicación
 de lotes, ofertas básicas de ONGs, autenticación/RBAC local e integración inicial

@@ -77,6 +77,6 @@ fuente de verdad.
 - [`Grooming Etapa 2.pdf`](<./Grooming Etapa 2.pdf>).
 - [`Descripción textual del flujo BPM.pdf`](<./Descripción textual del flujo BPM.pdf>).
 - [`RescueSync-1.4.bar`](./RescueSync-1.4.bar), único artefacto BPM desplegable
-  versionado. Fuente original: [`rescuesync_20261015_2114.bos`](./rescuesync_20261015_2114.bos).
+  versionado. Fuente de Studio: [`rescuesync_v1.4.bos`](./rescuesync_v1.4.bos).
 
 - [Acceso nacional automático por ONG](./acceso-nacional-automatico.md): cuentas técnicas, secretos, renovación y migración.

@@ -1,8 +1,8 @@
 # Proceso BPM vigente
 
 La fuente de verdad desplegable es [`RescueSync-1.4.bar`](../RescueSync-1.4.bar),
-construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente original se conserva como
-[`rescuesync_20261015_2114.bos`](../rescuesync_20261015_2114.bos).
+construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente de Studio
+del mismo proceso es [`rescuesync_v1.4.bos`](../rescuesync_v1.4.bos).
 
 El BAR 1.4 fue reexportado desde Studio con el tramo nacional adaptado a los
 contratos T36/T37 y verificado de punta a punta contra el Runtime y la API
