@@ -66,11 +66,8 @@ actividad. La liberación procesa `operaciones[0]`, ya que la API nacional crea 
 compromiso por ONG y adjudicación. `tests/e2e/test_bonita_runtime.py` todavía
 espera el camino 1.2 (`lotesCubiertos` → selección).
 
-Para probarlo localmente:
-- La cuenta `INTEGRACION` nacional se configura en `BONITA_NATIONAL_API_LOGIN`/`PASSWORD`.
-- `NACIONAL_SISTEMA_ORIGEN` debe ser igual al sistema de esa cuenta.
-- `BONITA_OFFER_WINDOW_MS=120000` acorta la ventana de ofertas.
-- Las emergencias locales no deben reutilizar un `idEmergencia` que ya tenga proyecto nacional con otro caso.
+Para probarlo localmente (variables `.env`, arranque de ambos repositorios y
+casos), seguir la [prueba local paso a paso](./prueba-local-integracion-nacional.md).
 
 ## Contratos técnicos
 

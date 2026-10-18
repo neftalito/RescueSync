@@ -53,6 +53,8 @@ fuente de verdad.
   autenticación, correlación e idempotencia.
 - [Pruebas E2E con el Runtime](./bonita/pruebas-e2e.md): verificación manual y
   entorno aislado con una ventana breve.
+- [Prueba local paso a paso con la API nacional](./bonita/prueba-local-integracion-nacional.md):
+  variables `.env`, arranque de ambos repositorios y casos A–F del proceso completo.
 - [Diagnóstico histórico del modelado](./bonita/diagnostico-modelado-historico.md):
   análisis del antiguo proyecto `.bos` y decisiones que llevaron al `.bar`
   vigente. No es una guía operativa actual.
