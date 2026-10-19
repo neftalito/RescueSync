@@ -1,7 +1,7 @@
 """Contratos tipados entre FastAPI y el proceso RescueSync desplegado en Bonita.
 
 Los nombres de entradas, actores, tareas y parámetros reflejan el artefacto
-`docs/RescueSync-1.4.bar`. Un cambio en el proceso obliga a publicar un `.bar`
+`docs/RescueSync-1.5.bar`. Un cambio en el proceso obliga a publicar un `.bar`
 con otra versión y actualizar, en el mismo cambio, este módulo, sus pruebas
 RESPX y la prueba E2E contra el Runtime.
 """
@@ -62,7 +62,7 @@ class ContratoInicioProceso(_ModeloBonita):
 
 
 class ContratoDecision(_ModeloBonita):
-    """Entradas acordadas para el próximo export de Studio, posterior a 1.4."""
+    """Entradas acordadas para el próximo export de Studio, posterior a 1.5."""
 
     accion_seleccionada: Literal["REABRIR", "REFORMULAR", "CONTINUAR_PARCIAL"] = Field(
         alias="accionSeleccionada"

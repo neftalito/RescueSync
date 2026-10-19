@@ -10,18 +10,18 @@ planes eran propuestas. No se modificó el proceso ni se exportó un BAR nuevo.
 
 ## Artefactos y alcance verificado
 
-`docs/RescueSync-1.4.bar` fue **reexportado desde Studio** con el proceso adaptado
-a estos contratos (ver [proceso 1.4 adaptado](#proceso-14-adaptado-mínimo-entregable)).
-Conserva el nombre y la versión `RescueSync 1.4`, por lo que no cambian
-`BONITA_PROCESS_VERSION` ni el deploy. `docs/rescuesync_v1.4.bos` es el fuente de
+`docs/RescueSync-1.5.bar` fue **reexportado desde Studio** con el proceso adaptado
+a estos contratos (ver [proceso 1.5 adaptado](#proceso-14-adaptado-mínimo-entregable)).
+Conserva el nombre y la versión `RescueSync 1.5`, por lo que no cambian
+`BONITA_PROCESS_VERSION` ni el deploy. `docs/rescuesync_v1.5.bos` es el fuente de
 Studio del mismo proceso y reemplaza al export anterior a la adaptación. El BAR 1.2
 se retira del directorio de instalación para que el instalador encuentre un único
 archivo.
 
-| Artefacto | SHA-256 |
-| --- | --- |
-| BAR 1.4 adaptado | `9078ba330ea46aa2885f152940333ae799a9636c4bab66c58b8bb2a1e79612d0` |
-| BOS 1.4 adaptado | `d38fe30d64bc38d07d27f63007a89e2b05fba2f65ed14cada39ea61d7736a5b3` |
+| Artefacto        | SHA-256                                                            |
+| ---------------- | ------------------------------------------------------------------ |
+| BAR 1.5 adaptado | `9078ba330ea46aa2885f152940333ae799a9636c4bab66c58b8bb2a1e79612d0` |
+| BOS 1.5 adaptado | `d38fe30d64bc38d07d27f63007a89e2b05fba2f65ed14cada39ea61d7736a5b3` |
 
 El BAR no contiene credenciales: `nationalApiUser`, `nationalApiPassword` y
 `callbackToken` llevan el marcador `configurar-en-deploy`. `bonita-deploy` los
@@ -37,10 +37,10 @@ nacionales. La API nacional existente no requiere cambios.
 
 La comprobación de lectura del Runtime local del 16/10/2026 encontró conexión y
 autenticación correctas, con `RescueSync 1.2` habilitado/resuelto. No encontró
-una definición 1.4. No se instalaron procesos, modificaron casos ni migraron los
+una definición 1.5. No se instalaron procesos, modificaron casos ni migraron los
 datos habituales como parte de esa comprobación. Las pruebas HTTP usan RESPX.
 
-## Proceso 1.4 adaptado (mínimo entregable)
+## Proceso 1.5 adaptado (mínimo entregable)
 
 El 17/10/2026 se adaptó el diagrama en Studio y se verificó una E2E manual contra
 el Runtime 10.4 y la API nacional local, ambos con Docker. El recorrido fue:
@@ -56,9 +56,9 @@ el Runtime 10.4 y la API nacional local, ambos con Docker. El recorrido fue:
 9. Solicitud de cierre, cierre nacional y `/resolver`.
 
 Resultado: emergencia `RESUELTA`, proyecto nacional `TERMINADO`, compromiso
-`LIBERADO` y caso Bonita *completed* sin nodos fallidos.
+`LIBERADO` y caso Bonita _completed_ sin nodos fallidos.
 
-Cambios del diagrama respecto del 1.4 original:
+Cambios del diagrama respecto del 1.5 original:
 
 - Contratos con UUID en TEXT, según `contratos.py`; se agregan `operacionCompromisoId` y `participacionId`.
 - `Validar Oferta` prepara la evaluación (`solicitudes-validacion`) antes de la validación nacional. `Guardar perfiles` envía la preparación completa y habilita la selección solo si `vigente` y `lotesCompatiblesCubiertos`.
@@ -68,7 +68,7 @@ Cambios del diagrama respecto del 1.4 original:
 - Todos los conectores hacia FastAPI envían las cabeceras de contexto de Bonita. Los scripts declaran `idEmergencia` como variable, no como índice de búsqueda. Las variables locales son persistentes, no transitorias.
 
 Fuera del MVP: no se modelan tareas `Atender incidente de …` ni reintentos BPM.
-Si un conector falla, la tarea queda *failed* (visible en el monitor) y la
+Si un conector falla, la tarea queda _failed_ (visible en el monitor) y la
 recuperación por `/operaciones-nacionales/{id}/recuperacion` no encuentra
 actividad. La liberación procesa `operaciones[0]`, ya que la API nacional crea un
 compromiso por ONG y adjudicación. `tests/e2e/test_bonita_runtime.py` todavía
@@ -77,7 +77,7 @@ espera el camino 1.2 (`lotesCubiertos` → selección).
 Mejoras evaluadas y diferidas (no las exige el enunciado ni bloquean la entrega):
 
 - Validar en Bonita el snapshot y el cierre antes de la validación nacional: hoy
-  lo hace el backend, que rechaza con 4xx y deja la tarea *failed*.
+  lo hace el backend, que rechaza con 4xx y deja la tarea _failed_.
 - Acotar reintentos de publicación y correlacionarlos por actividad.
 - Reautenticar ante un 401 en vez de iniciar sesión en cada tarea.
 - Consultar `/decisiones-evaluacion/{id}` antes de reabrir: hoy la ronda preparada
@@ -101,19 +101,19 @@ Los GET técnicos y las consultas de usuario responden `Cache-Control: no-store`
 OpenAPI en `/docs` describe todos los campos y valida formatos, fechas con zona,
 UUIDs y cantidades exactas de hasta tres decimales.
 
-| Método y sufijo | Contrato y garantía |
-| --- | --- |
-| POST `/solicitudes-validacion` | `validacionId`, `convocatoriaId`, `intentoConvocatoria`. Devuelve `revision` y `huellaSnapshot`. Sólo la última ronda cerrada en evaluación; replay recupera la misma revisión. |
-| POST `/perfiles-validacion` | Preparación anterior completa más `validacion`, respuesta íntegra T31. Devuelve `evaluadoEn`, **`vigente`**, `lotesCompatiblesCubiertos` y `cobertura`. |
-| GET `/decisiones-evaluacion/{decisionId}` | Devuelve acción, motivo, evaluación/revisión/caso/ronda y, para REABRIR, `convocatoriaPreparada`. |
-| GET `/adjudicaciones/{adjudicacionId}?version=1` | Devuelve `operacionCompromisoId`, `idempotencyKey`, `huellaRequest` y `compromiso`, cuerpo canónico de T32. |
-| POST `/compromisos/confirmacion` | `adjudicacionId`, `adjudicacionVersion`, `operacionCompromisoId`, `huellaRequest`, `confirmacion` T32 y `compromisos`: lista de **respuestas completas** de GET nacional `/compromisos/{id}`. |
-| POST `/notificar-adjudicacion` | `adjudicacionId`, `adjudicacionVersion`. Sólo entrega eventos que ya quedaron persistidos al confirmar. |
-| POST `/operaciones-nacionales/{operacionId}/resultado` | `tipo`, `estadoIntegracion`, `httpStatus`, `codigoError`, `idempotencyKey` y `etapa` opcional. Sólo códigos seguros, sin cuerpos de error ni tokens. |
-| GET `/finalizaciones/{finalizacionId}/liberaciones` | Devuelve `participacionId` y el conjunto completo de `operaciones`, cada una con `operacionId`, `compromisoId`, `idempotencyKey`, `request`. |
-| POST `/compromisos/{compromisoId}/liberacion-confirmada` | `finalizacionId`, `participacionId`, `operacionId` local y `confirmacion` nacional completa. Sólo libera esa participante después de confirmar todos sus compromisos. |
-| GET `/solicitudes-cierre/{solicitudId}` | Devuelve proyecto, caso, `operacionCierreId`, clave, request y los **booleanos** `liberacionesConfirmadas`/`operacionesInciertas`. |
-| POST `/resolver` | `idEmergencia`, `estado: RESUELTA`, `proyectoNacionalId`, `solicitudCierreId`, `operacionCierreId`, `cierre` nacional completo. Conserva la primera fecha en replays. |
+| Método y sufijo                                          | Contrato y garantía                                                                                                                                                                           |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST `/solicitudes-validacion`                           | `validacionId`, `convocatoriaId`, `intentoConvocatoria`. Devuelve `revision` y `huellaSnapshot`. Sólo la última ronda cerrada en evaluación; replay recupera la misma revisión.               |
+| POST `/perfiles-validacion`                              | Preparación anterior completa más `validacion`, respuesta íntegra T31. Devuelve `evaluadoEn`, **`vigente`**, `lotesCompatiblesCubiertos` y `cobertura`.                                       |
+| GET `/decisiones-evaluacion/{decisionId}`                | Devuelve acción, motivo, evaluación/revisión/caso/ronda y, para REABRIR, `convocatoriaPreparada`.                                                                                             |
+| GET `/adjudicaciones/{adjudicacionId}?version=1`         | Devuelve `operacionCompromisoId`, `idempotencyKey`, `huellaRequest` y `compromiso`, cuerpo canónico de T32.                                                                                   |
+| POST `/compromisos/confirmacion`                         | `adjudicacionId`, `adjudicacionVersion`, `operacionCompromisoId`, `huellaRequest`, `confirmacion` T32 y `compromisos`: lista de **respuestas completas** de GET nacional `/compromisos/{id}`. |
+| POST `/notificar-adjudicacion`                           | `adjudicacionId`, `adjudicacionVersion`. Sólo entrega eventos que ya quedaron persistidos al confirmar.                                                                                       |
+| POST `/operaciones-nacionales/{operacionId}/resultado`   | `tipo`, `estadoIntegracion`, `httpStatus`, `codigoError`, `idempotencyKey` y `etapa` opcional. Sólo códigos seguros, sin cuerpos de error ni tokens.                                          |
+| GET `/finalizaciones/{finalizacionId}/liberaciones`      | Devuelve `participacionId` y el conjunto completo de `operaciones`, cada una con `operacionId`, `compromisoId`, `idempotencyKey`, `request`.                                                  |
+| POST `/compromisos/{compromisoId}/liberacion-confirmada` | `finalizacionId`, `participacionId`, `operacionId` local y `confirmacion` nacional completa. Sólo libera esa participante después de confirmar todos sus compromisos.                         |
+| GET `/solicitudes-cierre/{solicitudId}`                  | Devuelve proyecto, caso, `operacionCierreId`, clave, request y los **booleanos** `liberacionesConfirmadas`/`operacionesInciertas`.                                                            |
+| POST `/resolver`                                         | `idEmergencia`, `estado: RESUELTA`, `proyectoNacionalId`, `solicitudCierreId`, `operacionCierreId`, `cierre` nacional completo. Conserva la primera fecha en replays.                         |
 
 `operacionId` de las confirmaciones nacionales pertenece a la API nacional:
 **no tiene por qué coincidir** con `operacionCompromisoId`, `operacionCierreId`
@@ -166,16 +166,16 @@ en borrador. Ambas conservan la historia; el timer sigue a cargo de Bonita.
 Las escrituras exigen sesión vigente, rol, organización activa y `X-CSRF-Token`.
 El administrador no obtiene permisos de negocio por ser administrador.
 
-| Ruta bajo la emergencia | Permiso y efecto |
-| --- | --- |
-| GET `/ofertas-validadas` | Municipio propietario o coordinador asignado; sólo el coordinador recibe diagnósticos no habilitados. |
-| POST `/decision-evaluacion` | Coordinador: `decisionId`, `validacionId`, `revision`, `convocatoriaId`, `accion`, `motivo`. |
-| POST `/adjudicaciones` | Municipio: `adjudicacionId`, `validacionId`, `revision`, `aportes: [{aporteId, cantidad}]`. UUID y contenido se conservan en un reintento. |
-| GET `/adjudicaciones` | Seguimiento municipal/coordinador; ONG sólo ve sus participaciones confirmadas. |
-| POST `/participaciones/{id}/finalizacion` | Representante de esa ONG; cuerpo vacío, devuelve la primera finalización. La líder de un consorcio no finaliza a otras miembros. |
-| POST `/solicitudes-cierre` | Coordinador; cuerpo vacío. Exige todas las liberaciones confirmadas. |
-| GET `/comandos-bonita` | Estado de despachos; ONG sólo consulta intenciones propias. |
-| POST `/comandos-bonita/{id}/reintentar` | Reconciliar el despacho original con los permisos del rol que lo creó. |
+| Ruta bajo la emergencia                          | Permiso y efecto                                                                                                                               |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET `/ofertas-validadas`                         | Municipio propietario o coordinador asignado; sólo el coordinador recibe diagnósticos no habilitados.                                          |
+| POST `/decision-evaluacion`                      | Coordinador: `decisionId`, `validacionId`, `revision`, `convocatoriaId`, `accion`, `motivo`.                                                   |
+| POST `/adjudicaciones`                           | Municipio: `adjudicacionId`, `validacionId`, `revision`, `aportes: [{aporteId, cantidad}]`. UUID y contenido se conservan en un reintento.     |
+| GET `/adjudicaciones`                            | Seguimiento municipal/coordinador; ONG sólo ve sus participaciones confirmadas.                                                                |
+| POST `/participaciones/{id}/finalizacion`        | Representante de esa ONG; cuerpo vacío, devuelve la primera finalización. La líder de un consorcio no finaliza a otras miembros.               |
+| POST `/solicitudes-cierre`                       | Coordinador; cuerpo vacío. Exige todas las liberaciones confirmadas.                                                                           |
+| GET `/comandos-bonita`                           | Estado de despachos; ONG sólo consulta intenciones propias.                                                                                    |
+| POST `/comandos-bonita/{id}/reintentar`          | Reconciliar el despacho original con los permisos del rol que lo creó.                                                                         |
 | POST `/operaciones-nacionales/{id}/recuperacion` | Coordinador: `recuperacionId`, `accion` = REINTENTAR_MISMA_OPERACION o VOLVER_A_SELECCION. Esta última exige rechazo definitivo de compromiso. |
 
 La pantalla `/emergencias/{id}/ejecucion` se abre desde las bandejas municipales
@@ -234,8 +234,8 @@ HTTP 409 sin incertidumbre previa permite revisar la selección con otra identid
    cuando falta una liberación o callback. Mantener el resultado nacional para
    recuperar sólo el callback después de un reinicio.
 9. La tarea inicial `Generar lotes de necesidades` conserva contrato vacío en
-   1.4. Si el nuevo export agrega ronda/número como propone el plan, adaptar
-   `publicacion_bonita.py` en ese mismo cambio. Los casos 1.2/1.4 no adquieren los
+   1.5. Si el nuevo export agrega ronda/número como propone el plan, adaptar
+   `publicacion_bonita.py` en ese mismo cambio. Los casos 1.2/1.5 no adquieren los
    contratos nuevos al instalar otra versión.
 
 Los endpoints de actividad/contrato están documentados por el proveedor:
@@ -244,7 +244,7 @@ y [contratos y contexto](https://documentation.bonitasoft.com/bonita/2024.3/data
 
 ## Configuración, migración y pruebas
 
-`BONITA_PROCESS_VERSION` apunta por defecto al artefacto conservado 1.4. El deploy
+`BONITA_PROCESS_VERSION` apunta por defecto al artefacto conservado 1.5. El deploy
 inyecta sus nueve parámetros, incluidos `nationalApiUser`, `nationalApiPassword`
 y `maxReintentosIntegracion`. Completar en el entorno
 `BONITA_NATIONAL_API_LOGIN`/`BONITA_NATIONAL_API_PASSWORD` con la cuenta técnica de

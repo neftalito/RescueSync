@@ -8,7 +8,7 @@
 
 > **Estado actual (17/09/2026).** Este documento conserva el diagnóstico hecho
 > sobre el `.bos` original, que ya se eliminó por estar desactualizado. La
-> referencia vigente es [`docs/RescueSync-1.4.bar`](../RescueSync-1.4.bar). Esa versión incorpora el
+> referencia vigente es [`docs/RescueSync-1.5.bar`](../RescueSync-1.5.bar). Esa versión incorpora el
 > contrato validado (incluida la gravedad `CRITICA`), las variables, el índice
 > `idEmergencia`, los actores funcionales, las compuertas evaluadas por script,
 > el timer por fecha y los conectores autenticados hacia FastAPI. Se verificó
@@ -29,7 +29,7 @@ El análisis se basa en:
 
 - [`Trabajo integrador 2026.pdf`](<../Trabajo integrador 2026.pdf>).
 - [`Grooming Etapa 2.pdf`](<../Grooming Etapa 2.pdf>).
-- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.4.bar`](../RescueSync-1.4.bar).
+- `rescuesync.bos` original, hoy reemplazado por [`RescueSync-1.5.bar`](../RescueSync-1.5.bar).
 - [`Descripción textual del flujo BPM.pdf`](<../Descripción textual del flujo BPM.pdf>), como descripción complementaria del modelo existente.
 
 La prioridad inmediata es la Entrega 2: registrar una emergencia en la base
@@ -56,18 +56,18 @@ El modelo contiene:
 
 Sin embargo, se encontraron las siguientes brechas:
 
-| Elemento | Estado actual | Consecuencia |
-|---|---|---|
-| Contrato de inicio | Vacío | FastAPI no tiene un contrato definido para iniciar el proceso. |
-| Variables de proceso | No existen | Bonita no conserva `idEmergencia`, `gravedad` ni `zona`. |
-| Contratos de tareas | Vacíos | Las decisiones humanas no pueden enviar datos al proceso. |
-| Compuertas | Condiciones vacías | Las rutas alternativas no pueden decidirse con datos reales. |
-| Tareas de servicio | Sin conectores | No realizan llamadas a FastAPI ni al Sistema Nacional. |
-| Timer de ofertas | Configurado, pero sin salida propia | Su vencimiento no conduce automáticamente a la consolidación. |
-| Actores | Solo `Employee actor` y grupo `/acme` | Las tareas no representan los roles reales del proyecto. |
-| Formularios Bonita | Referencias vacías | No hay interfaz Bonita para ejecutar tareas, aunque React será la interfaz principal. |
-| Índices de búsqueda | Vacíos | No existe correlación por `idEmergencia`. |
-| Configuración por ambiente | Vacía | No hay URL, timeout ni mapeos específicos para Qualification o Production. |
+| Elemento                   | Estado actual                         | Consecuencia                                                                          |
+| -------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------- |
+| Contrato de inicio         | Vacío                                 | FastAPI no tiene un contrato definido para iniciar el proceso.                        |
+| Variables de proceso       | No existen                            | Bonita no conserva `idEmergencia`, `gravedad` ni `zona`.                              |
+| Contratos de tareas        | Vacíos                                | Las decisiones humanas no pueden enviar datos al proceso.                             |
+| Compuertas                 | Condiciones vacías                    | Las rutas alternativas no pueden decidirse con datos reales.                          |
+| Tareas de servicio         | Sin conectores                        | No realizan llamadas a FastAPI ni al Sistema Nacional.                                |
+| Timer de ofertas           | Configurado, pero sin salida propia   | Su vencimiento no conduce automáticamente a la consolidación.                         |
+| Actores                    | Solo `Employee actor` y grupo `/acme` | Las tareas no representan los roles reales del proyecto.                              |
+| Formularios Bonita         | Referencias vacías                    | No hay interfaz Bonita para ejecutar tareas, aunque React será la interfaz principal. |
+| Índices de búsqueda        | Vacíos                                | No existe correlación por `idEmergencia`.                                             |
+| Configuración por ambiente | Vacía                                 | No hay URL, timeout ni mapeos específicos para Qualification o Production.            |
 
 También existen dos problemas de diseño:
 
@@ -152,13 +152,13 @@ Execution → Contract → Inputs
 
 Agregar:
 
-| Entrada | Tipo Bonita | Obligatoria | Etapa |
-|---|---|---:|---|
-| `idEmergencia` | `LONG` o `TEXT` | Sí | Entrega 2 |
-| `gravedad` | `TEXT` | Sí | Entrega 2 |
-| `zona` | `TEXT` | Sí | Entrega 2 |
-| `descripcion` | `TEXT` | Recomendado | Entrega 2 |
-| `municipioId` | `LONG` o `TEXT` | Recomendado | Entrega 2 |
+| Entrada        | Tipo Bonita     | Obligatoria | Etapa     |
+| -------------- | --------------- | ----------: | --------- |
+| `idEmergencia` | `LONG` o `TEXT` |          Sí | Entrega 2 |
+| `gravedad`     | `TEXT`          |          Sí | Entrega 2 |
+| `zona`         | `TEXT`          |          Sí | Entrega 2 |
+| `descripcion`  | `TEXT`          | Recomendado | Entrega 2 |
+| `municipioId`  | `LONG` o `TEXT` | Recomendado | Entrega 2 |
 
 El tipo de cada identificador debe coincidir con PostgreSQL. Si la clave local
 es `bigint`, se debe usar `LONG`; si es UUID, se debe usar `TEXT`.
@@ -199,13 +199,13 @@ el resto de la instancia.
 
 Agregar también las variables de control del flujo:
 
-| Variable | Tipo | Uso |
-|---|---|---|
-| `lotesCubiertos` | Boolean | Resultado del cálculo de cobertura. |
-| `accionCoordinador` | Text | `REABRIR`, `REFORMULAR` o `CONTINUAR_PARCIAL`. |
-| `ejecucionTerminada` | Boolean | Decide el cierre de la ejecución. |
-| `fechaCierreOfertas` | Date | Momento en que debe cerrar la convocatoria. |
-| `intentoConvocatoria` | Integer | Trazabilidad de reaperturas. |
+| Variable              | Tipo    | Uso                                            |
+| --------------------- | ------- | ---------------------------------------------- |
+| `lotesCubiertos`      | Boolean | Resultado del cálculo de cobertura.            |
+| `accionCoordinador`   | Text    | `REABRIR`, `REFORMULAR` o `CONTINUAR_PARCIAL`. |
+| `ejecucionTerminada`  | Boolean | Decide el cierre de la ejecución.              |
+| `fechaCierreOfertas`  | Date    | Momento en que debe cerrar la convocatoria.    |
+| `intentoConvocatoria` | Integer | Trazabilidad de reaperturas.                   |
 
 Variables previstas para etapas posteriores:
 
@@ -386,15 +386,15 @@ aplicación sin agregar una tarea BPM durante la Entrega 2.
 Las tareas de servicio actuales no tienen implementación. Se deben configurar
 de acuerdo con esta secuencia:
 
-| Actividad | Destino | Etapa |
-|---|---|---|
-| Solicitar ofertas consolidadas | FastAPI local | Integración posterior al inicio básico |
-| Notificar apertura/adjudicación | Backend o servicio local | Posterior |
-| Validar ofertas | Sistema Nacional con JWT | Entrega 3 |
-| Comprometer o bloquear recursos | Sistema Nacional | Entrega 3 |
-| Informar finalización | Sistema Nacional | Entrega 3 |
-| Liberar recursos | Sistema Nacional | Entrega 3 |
-| Marcar emergencia resuelta | FastAPI local | Cierre del flujo |
+| Actividad                       | Destino                  | Etapa                                  |
+| ------------------------------- | ------------------------ | -------------------------------------- |
+| Solicitar ofertas consolidadas  | FastAPI local            | Integración posterior al inicio básico |
+| Notificar apertura/adjudicación | Backend o servicio local | Posterior                              |
+| Validar ofertas                 | Sistema Nacional con JWT | Entrega 3                              |
+| Comprometer o bloquear recursos | Sistema Nacional         | Entrega 3                              |
+| Informar finalización           | Sistema Nacional         | Entrega 3                              |
+| Liberar recursos                | Sistema Nacional         | Entrega 3                              |
+| Marcar emergencia resuelta      | FastAPI local            | Cierre del flujo                       |
 
 Cada conector debe tener:
 

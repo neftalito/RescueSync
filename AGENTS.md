@@ -4,8 +4,8 @@
 
 Estas reglas se aplican a todo el repositorio. Antes de implementar una historia,
 consultar `docs/Trabajo integrador 2026.pdf`, `docs/Grooming Etapa 2.pdf` y el
-artefacto versionado `docs/RescueSync-1.4.bar` cuando la tarea involucre el
-proceso BPM. Su fuente editable de Studio es `docs/rescuesync_v1.4.bos`; ambos
+artefacto versionado `docs/RescueSyncv1.5.bar` cuando la tarea involucre el
+proceso BPM. Su fuente editable de Studio es `docs/rescuesyncv1.5.bos`; ambos
 corresponden al proceso adaptado a los contratos T36/T37 descritos en
 `docs/bonita/contratos-t36-t37.md`.
 

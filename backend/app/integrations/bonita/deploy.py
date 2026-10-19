@@ -123,7 +123,7 @@ class Config:
                         ),
                     ),
                 )
-                if os.getenv("BONITA_PROCESS_VERSION") in {"1.4", "1.5"}
+                if os.getenv("BONITA_PROCESS_VERSION") in {"1.5"}
                 else ()
             ),
             bar_path=Path(_required_environment("BONITA_BAR_PATH")),

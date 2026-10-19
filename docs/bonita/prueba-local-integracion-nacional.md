@@ -1,20 +1,21 @@
 # Prueba local paso a paso: RescueSync + Bonita + API nacional
 
 Esta guía levanta en local, con Docker, los dos repositorios:
+
 - `RescueSync`: frontend, backend, PostgreSQL y Bonita 10.4.
 - `RescueSyncAPI`: Sistema Nacional y su PostgreSQL.
 
-Después recorre manualmente el proceso BPM `RescueSync 1.4` adaptado, desde la
+Después recorre manualmente el proceso BPM `RescueSync 1.5` adaptado, desde la
 alerta hasta la emergencia `RESUELTA`. El detalle del proceso está en
-[proceso 1.4 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
+[proceso 1.5 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
 
-| Servicio | URL local |
-| --- | --- |
-| Frontend RescueSync | <http://localhost:5173> |
-| Backend RescueSync (Swagger) | <http://localhost:8000/docs> |
+| Servicio                              | URL local                      |
+| ------------------------------------- | ------------------------------ |
+| Frontend RescueSync                   | <http://localhost:5173>        |
+| Backend RescueSync (Swagger)          | <http://localhost:8000/docs>   |
 | Bonita Portal (`install` / `install`) | <http://localhost:8080/bonita> |
-| API nacional (Swagger) | <http://localhost:8001/docs> |
-| Mailpit (correos de notificación) | <http://localhost:8025> |
+| API nacional (Swagger)                | <http://localhost:8001/docs>   |
+| Mailpit (correos de notificación)     | <http://localhost:8025>        |
 
 La guía arranca desde cero. Así ningún `idEmergencia` local coincide con un
 proyecto nacional de pruebas anteriores (ver
@@ -56,10 +57,10 @@ proyecto nacional de pruebas anteriores (ver
 
 ### Datos demo relevantes del seed nacional
 
-| ONG | Estado | Habilitada para | Recursos |
-| --- | --- | --- | --- |
-| Ayuda Sin Fronteras (`ong@rescuesync.org`) | HABILITADA | **Personal paramédico** hasta ALTA; **Ambulancias** hasta MEDIA | Personal paramédico: 12 personas; Agua potable: 5000 litros |
-| Red Médica Solidaria (`redmedica@rescuesync.org`) | PENDIENTE | nada | Personal paramédico; Ambulancias |
+| ONG                                               | Estado     | Habilitada para                                                 | Recursos                                                    |
+| ------------------------------------------------- | ---------- | --------------------------------------------------------------- | ----------------------------------------------------------- |
+| Ayuda Sin Fronteras (`ong@rescuesync.org`)        | HABILITADA | **Personal paramédico** hasta ALTA; **Ambulancias** hasta MEDIA | Personal paramédico: 12 personas; Agua potable: 5000 litros |
+| Red Médica Solidaria (`redmedica@rescuesync.org`) | PENDIENTE  | nada                                                            | Personal paramédico; Ambulancias                            |
 
 El seed incluye a propósito acreditaciones **vencidas, revocadas y futuras** para
 mostrar la validación por niveles. La de **Agua potable** de Ayuda Sin Fronteras
@@ -90,7 +91,7 @@ NACIONAL_APROVISIONAMIENTO_LOGIN=integracion-rescuesync
 NACIONAL_APROVISIONAMIENTO_PASSWORD=<contraseña del paso 1.5>
 
 # Bonita: proceso, credencial nacional y ventana corta para probar
-BONITA_PROCESS_VERSION=1.4
+BONITA_PROCESS_VERSION=1.5
 BONITA_NATIONAL_API_BASE_URL=http://host.docker.internal:8001
 BONITA_NATIONAL_API_LOGIN=integracion-rescuesync
 BONITA_NATIONAL_API_PASSWORD=<contraseña del paso 1.5>
@@ -99,6 +100,7 @@ BONITA_OFFER_WINDOW_MS=120000
 ```
 
 Notas sobre estas variables:
+
 - `BONITA_NATIONAL_API_BASE_URL` va **sin** `/api/v1`; `NACIONAL_BASE_URL`, **con** `/api/v1`.
 - `BONITA_CALLBACK_TOKEN` puede quedar con el valor de desarrollo, que tiene 32 caracteres o más.
 - Si `BONITA_NATIONAL_API_LOGIN` o `BONITA_NATIONAL_API_PASSWORD` quedan vacías, `bonita-deploy` falla y Bonita no instala el proceso.
@@ -127,7 +129,7 @@ Notas sobre estas variables:
 ### 2.3 Comprobaciones
 
 - `curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/api/v1/health/bonita` devuelve `200`.
-- En Bonita Portal → Administración → Procesos aparece **RescueSync 1.4** *Enabled / Resolved*.
+- En Bonita Portal → Administración → Procesos aparece **RescueSync 1.5** _Enabled / Resolved_.
 - El contrato del BAR versionado devuelve `2 passed`:
   ```bash
   docker compose run --rm -v "$PWD/docs:/docs:ro" backend pytest -q tests/integrations/bonita/test_bar_versionado.py
@@ -137,15 +139,16 @@ Notas sobre estas variables:
 
 Usuarios del seed local (contraseña = nombre del usuario + `123`):
 
-| Rol | Usuario | Contraseña |
-| --- | --- | --- |
-| Operador municipal | `municipio@rescuesync.org` | `municipio123` |
+| Rol                | Usuario                      | Contraseña       |
+| ------------------ | ---------------------------- | ---------------- |
+| Operador municipal | `municipio@rescuesync.org`   | `municipio123`   |
 | Centro coordinador | `coordinador@rescuesync.org` | `coordinador123` |
-| ONG habilitada | `ong@rescuesync.org` | `ong123` |
-| ONG pendiente | `redmedica@rescuesync.org` | `redmedica123` |
-| Auditor | `auditor@rescuesync.org` | `auditor123` |
+| ONG habilitada     | `ong@rescuesync.org`         | `ong123`         |
+| ONG pendiente      | `redmedica@rescuesync.org`   | `redmedica123`   |
+| Auditor            | `auditor@rescuesync.org`     | `auditor123`     |
 
 Dónde observar cada paso:
+
 - **Bonita Portal** → Administración → Casos → caso de la emergencia (índice `idEmergencia`): tareas, estado y variables.
 - **Swagger nacional**:
   - `GET /api/v1/compromisos/{id}`: estado del compromiso.
@@ -158,15 +161,15 @@ Dónde observar cada paso:
 
 ### Caso A — Camino feliz completo
 
-| # | Quién | Acción | Resultado esperado |
-| --- | --- | --- | --- |
-| 1 | Municipio | *Nueva emergencia*, gravedad **MEDIA** | Emergencia REGISTRADA. En Bonita, un caso nuevo con `Generar lotes de necesidades` lista. |
-| 2 | Coordinador | Lotes de la emergencia: **Personal paramédico**, 2 `personas`, riesgo **MEDIA** → **Publicar** | Convocatoria abierta. Bonita completa `Generar lotes` y queda en el timer `EsperarOfertas`. |
-| 3 | ONG (`ong@`) | *Convocatorias* → nueva oferta: 2 personas sobre el lote, eligiendo su recurso **Personal paramédico** | Oferta presentada. |
-| 4 | — | Esperar unos 2 minutos | Bonita cierra la convocatoria, consolida, prepara la evaluación, valida con la API nacional y guarda los perfiles. En Bonita queda lista `Seleccionar ofertas validadas`. |
-| 5 | Municipio | *Ejecución* de la emergencia → seleccionar el aporte (2) → **Adjudicar** | Adjudicación **CONFIRMADA** y compromiso nacional **ACTIVO** (disponibilidad −2). La ONG recibe la notificación y queda lista `Marcar como finalizada la tarea`. |
-| 6 | ONG | *Ejecución* (o la notificación) → **Finalizar** su participación | Participación **LIBERADA** y compromiso nacional **LIBERADO**; la disponibilidad se restituye. |
-| 7 | Coordinador | *Ejecución* → **Solicitar cierre** | Emergencia **RESUELTA**, proyecto nacional **TERMINADO** y caso Bonita archivado *completed*, sin tareas fallidas. |
+| #   | Quién        | Acción                                                                                                 | Resultado esperado                                                                                                                                                        |
+| --- | ------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Municipio    | _Nueva emergencia_, gravedad **MEDIA**                                                                 | Emergencia REGISTRADA. En Bonita, un caso nuevo con `Generar lotes de necesidades` lista.                                                                                 |
+| 2   | Coordinador  | Lotes de la emergencia: **Personal paramédico**, 2 `personas`, riesgo **MEDIA** → **Publicar**         | Convocatoria abierta. Bonita completa `Generar lotes` y queda en el timer `EsperarOfertas`.                                                                               |
+| 3   | ONG (`ong@`) | _Convocatorias_ → nueva oferta: 2 personas sobre el lote, eligiendo su recurso **Personal paramédico** | Oferta presentada.                                                                                                                                                        |
+| 4   | —            | Esperar unos 2 minutos                                                                                 | Bonita cierra la convocatoria, consolida, prepara la evaluación, valida con la API nacional y guarda los perfiles. En Bonita queda lista `Seleccionar ofertas validadas`. |
+| 5   | Municipio    | _Ejecución_ de la emergencia → seleccionar el aporte (2) → **Adjudicar**                               | Adjudicación **CONFIRMADA** y compromiso nacional **ACTIVO** (disponibilidad −2). La ONG recibe la notificación y queda lista `Marcar como finalizada la tarea`.          |
+| 6   | ONG          | _Ejecución_ (o la notificación) → **Finalizar** su participación                                       | Participación **LIBERADA** y compromiso nacional **LIBERADO**; la disponibilidad se restituye.                                                                            |
+| 7   | Coordinador  | _Ejecución_ → **Solicitar cierre**                                                                     | Emergencia **RESUELTA**, proyecto nacional **TERMINADO** y caso Bonita archivado _completed_, sin tareas fallidas.                                                        |
 
 ### Caso B — Cobertura parcial → CONTINUAR_PARCIAL
 
@@ -198,13 +201,14 @@ Dónde observar cada paso:
 
 Elegir una de las variantes y publicar el lote:
 
-| Variante | Lote | Oferta | Motivos esperados |
-| --- | --- | --- | --- |
-| E1 | Personal paramédico | `redmedica@` (ONG PENDIENTE) | `ONG_NO_HABILITADA` |
-| E2 | **Agua potable** (litros) | `ong@` con su recurso de agua | "No hay acreditación vigente" y "La acreditación no inició" (`ACREDITACION_FUTURA`) |
+| Variante | Lote                      | Oferta                        | Motivos esperados                                                                   |
+| -------- | ------------------------- | ----------------------------- | ----------------------------------------------------------------------------------- |
+| E1       | Personal paramédico       | `redmedica@` (ONG PENDIENTE)  | `ONG_NO_HABILITADA`                                                                 |
+| E2       | **Agua potable** (litros) | `ong@` con su recurso de agua | "No hay acreditación vigente" y "La acreditación no inició" (`ACREDITACION_FUTURA`) |
 
 Resultado esperado en las dos:
-- El coordinador ve en *Ejecución* el diagnóstico `SIN_HABILITACION` con sus motivos.
+
+- El coordinador ve en _Ejecución_ el diagnóstico `SIN_HABILITACION` con sus motivos.
 - El lote queda sin cubrir → `Evalua situacion`.
 - Se puede continuar con REABRIR o REFORMULAR, como en los casos C y D.
 
@@ -215,18 +219,18 @@ Resultado esperado en las dos:
 
 ## Problemas frecuentes
 
-| Síntoma | Causa / solución |
-| --- | --- |
-| `bonita-deploy`: "Se esperaba exactamente un archivo .bar" | Hay más de un `.bar` en `docs/`. |
-| `bonita-deploy`: "El BAR … contiene RescueSync:1.4, pero el backend espera …" | `BONITA_PROCESS_VERSION` debe ser `1.4`. |
-| `bonita-deploy` falla por variable requerida | Faltan `BONITA_NATIONAL_API_LOGIN` o `BONITA_NATIONAL_API_PASSWORD`. |
-| Tarea *failed* en `Validar Oferta` o `Registrar compromiso nacional`, con 401 en los logs de Bonita | La contraseña del `.env` no coincide con la del bootstrap nacional. |
-| 403/404 "sistema de origen" o "La ronda no conserva el sistema de origen nacional" | `NACIONAL_SISTEMA_ORIGEN` vacío o distinto del `--sistema-origen`. Recrear la emergencia después de corregirlo. |
-| Tarea *failed* en `Registrar compromiso nacional` con 409 | Ese `idEmergencia` ya tiene un proyecto nacional de otro caso (pruebas previas sin reiniciar la base nacional). Reiniciar ambos entornos (pasos 1 y 2). |
-| La oferta queda `SIN_HABILITACION` aunque la ONG sea HABILITADA | La capacidad del lote no está acreditada o vigente para esa ONG (ver datos demo). Usar Personal paramédico. |
-| La emergencia no tiene caso Bonita | Se creó antes de que terminara el deploy. Usar el botón *Vincular con Bonita* de la bandeja de emergencias. |
-| Se reemplazó el `.bar` y Bonita sigue con el anterior | La definición ya tenía casos. Ejecutar `docker compose down -v` y volver a levantar. |
-| Ver qué conector falló | `docker logs rescuesync-bonita-1 --since 10m 2>&1 \| grep -E 'WARN\|ERROR'` |
+| Síntoma                                                                                             | Causa / solución                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bonita-deploy`: "Se esperaba exactamente un archivo .bar"                                          | Hay más de un `.bar` en `docs/`.                                                                                                                        |
+| `bonita-deploy`: "El BAR … contiene RescueSync:1.5, pero el backend espera …"                       | `BONITA_PROCESS_VERSION` debe ser `1.5`.                                                                                                                |
+| `bonita-deploy` falla por variable requerida                                                        | Faltan `BONITA_NATIONAL_API_LOGIN` o `BONITA_NATIONAL_API_PASSWORD`.                                                                                    |
+| Tarea _failed_ en `Validar Oferta` o `Registrar compromiso nacional`, con 401 en los logs de Bonita | La contraseña del `.env` no coincide con la del bootstrap nacional.                                                                                     |
+| 403/404 "sistema de origen" o "La ronda no conserva el sistema de origen nacional"                  | `NACIONAL_SISTEMA_ORIGEN` vacío o distinto del `--sistema-origen`. Recrear la emergencia después de corregirlo.                                         |
+| Tarea _failed_ en `Registrar compromiso nacional` con 409                                           | Ese `idEmergencia` ya tiene un proyecto nacional de otro caso (pruebas previas sin reiniciar la base nacional). Reiniciar ambos entornos (pasos 1 y 2). |
+| La oferta queda `SIN_HABILITACION` aunque la ONG sea HABILITADA                                     | La capacidad del lote no está acreditada o vigente para esa ONG (ver datos demo). Usar Personal paramédico.                                             |
+| La emergencia no tiene caso Bonita                                                                  | Se creó antes de que terminara el deploy. Usar el botón _Vincular con Bonita_ de la bandeja de emergencias.                                             |
+| Se reemplazó el `.bar` y Bonita sigue con el anterior                                               | La definición ya tenía casos. Ejecutar `docker compose down -v` y volver a levantar.                                                                    |
+| Ver qué conector falló                                                                              | `docker logs rescuesync-bonita-1 --since 10m 2>&1 \| grep -E 'WARN\|ERROR'`                                                                             |
 
 ## Repetir la prueba
 

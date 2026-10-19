@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     bonita_username: str = "install"
     bonita_password: SecretStr = SecretStr("install")
     bonita_process_name: str = "RescueSync"
-    bonita_process_version: str = "1.4"
+    bonita_process_version: str = "1.5"
     bonita_timezone: str = "UTC"
     bonita_monitor_enabled: bool = True
     bonita_monitor_interval_seconds: float = Field(default=30, ge=5, le=3600)

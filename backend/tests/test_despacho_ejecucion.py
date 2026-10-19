@@ -32,7 +32,7 @@ def test_timeout_ejecucion_reconcilia_id_exacto_sin_repetir_post(
         usuario="install",
         password=SecretStr("secreto-prueba"),
         nombre_proceso="RescueSync",
-        version_proceso="1.4",
+        version_proceso="1.5",
         timeout_conexion_segundos=1,
         timeout_lectura_segundos=1,
     )
@@ -116,7 +116,7 @@ def test_una_tarea_de_otra_ronda_no_se_ejecuta(
         usuario="install",
         password=SecretStr("prueba"),
         nombre_proceso="RescueSync",
-        version_proceso="1.4",
+        version_proceso="1.5",
         timeout_conexion_segundos=1,
         timeout_lectura_segundos=1,
     )

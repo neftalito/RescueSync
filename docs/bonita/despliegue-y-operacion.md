@@ -13,7 +13,7 @@ FastAPI y el inicializador alcanzan al Runtime en
 
 ## Artefacto y versión
 
-[`docs/RescueSync-1.4.bar`](../RescueSync-1.4.bar) es el único artefacto BPM
+[`docs/RescueSync-1.5.bar`](../RescueSync-1.5.bar) es el único artefacto BPM
 versionado. `BONITA_PROCESS_NAME` y `BONITA_PROCESS_VERSION` determinan la
 definición compatible.
 
@@ -30,27 +30,27 @@ genera una aleatoria y no se registra.
 
 Durante la instalación inyecta estos parámetros:
 
-| Parámetro de Bonita | Variable de entorno | Uso |
-| --- | --- | --- |
-| `backendBaseUrl` | `BONITA_BACKEND_BASE_URL` | URL de FastAPI para callbacks. |
-| `callbackToken` | `BONITA_CALLBACK_TOKEN` | Token `Bearer` de callbacks. |
-| `ventanaOfertasMs` | `BONITA_OFFER_WINDOW_MS` | Duración de la ventana de ofertas. |
-| `connectTimeoutMs` | `BONITA_CONNECT_TIMEOUT_MS` | Timeout de conexión de los conectores. |
-| `readTimeoutMs` | `BONITA_READ_TIMEOUT_MS` | Timeout de lectura de los conectores. |
-| `nationalApiBaseUrl` | `BONITA_NATIONAL_API_BASE_URL` | Reservado para la Entrega 3. |
+| Parámetro de Bonita  | Variable de entorno            | Uso                                    |
+| -------------------- | ------------------------------ | -------------------------------------- |
+| `backendBaseUrl`     | `BONITA_BACKEND_BASE_URL`      | URL de FastAPI para callbacks.         |
+| `callbackToken`      | `BONITA_CALLBACK_TOKEN`        | Token `Bearer` de callbacks.           |
+| `ventanaOfertasMs`   | `BONITA_OFFER_WINDOW_MS`       | Duración de la ventana de ofertas.     |
+| `connectTimeoutMs`   | `BONITA_CONNECT_TIMEOUT_MS`    | Timeout de conexión de los conectores. |
+| `readTimeoutMs`      | `BONITA_READ_TIMEOUT_MS`       | Timeout de lectura de los conectores.  |
+| `nationalApiBaseUrl` | `BONITA_NATIONAL_API_BASE_URL` | Reservado para la Entrega 3.           |
 
 ## Idempotencia y diferencias de configuración
 
 Bonita Community no permite modificar los parámetros de una definición ya
 instalada. El inicializador actúa así:
 
-| Situación | Comportamiento |
-| --- | --- |
-| Proceso instalado con los mismos valores | No realiza cambios. |
-| Otro valor para un parámetro no secreto | Advierte el nombre y continúa. |
-| Otro `callbackToken` | Termina con error sin mostrar el secreto. |
-| Definición sin resolver y sin casos | La elimina y reinstala. |
-| Definición con casos | Nunca la elimina ni reemplaza. |
+| Situación                                | Comportamiento                            |
+| ---------------------------------------- | ----------------------------------------- |
+| Proceso instalado con los mismos valores | No realiza cambios.                       |
+| Otro valor para un parámetro no secreto  | Advierte el nombre y continúa.            |
+| Otro `callbackToken`                     | Termina con error sin mostrar el secreto. |
+| Definición sin resolver y sin casos      | La elimina y reinstala.                   |
+| Definición con casos                     | Nunca la elimina ni reemplaza.            |
 
 El contenedor `bonita-deploy` termina con `Exited (0)` cuando la instalación fue
 correcta. Ese estado es esperado. Compose espera primero el health de FastAPI

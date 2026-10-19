@@ -29,7 +29,7 @@ def config(monkeypatch: pytest.MonkeyPatch) -> Config:
         "BONITA_NATIONAL_API_PASSWORD": "secreto-solo-pruebas",
         "BONITA_CALLBACK_TOKEN": "t" * 40,
         "BONITA_PROCESS_NAME": "RescueSync",
-        "BONITA_PROCESS_VERSION": "1.4",
+        "BONITA_PROCESS_VERSION": "1.5",
     }.items():
         monkeypatch.setenv(nombre, valor)
     return Config.from_environment()

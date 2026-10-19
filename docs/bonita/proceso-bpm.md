@@ -1,12 +1,12 @@
 # Proceso BPM vigente
 
-La fuente de verdad desplegable es [`RescueSync-1.4.bar`](../RescueSync-1.4.bar),
+La fuente de verdad desplegable es [`RescueSync-1.5.bar`](../RescueSync-1.5.bar),
 construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente de Studio
-del mismo proceso es [`rescuesync_v1.4.bos`](../rescuesync_v1.4.bos).
+del mismo proceso es [`rescuesync_v1.5.bos`](../rescuesync_v1.5.bos).
 
-El BAR 1.4 fue reexportado desde Studio con el tramo nacional adaptado a los
+El BAR 1.5 fue reexportado desde Studio con el tramo nacional adaptado a los
 contratos T36/T37 y verificado de punta a punta contra el Runtime y la API
-nacional. Ver [proceso 1.4 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
+nacional. Ver [proceso 1.5 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
 El recorrido inferior describe la integración inicial de la Entrega 2.
 
 Esta versión cubre la integración inicial de la Entrega 2: alta y correlación de
@@ -27,13 +27,13 @@ pertenece a la Entrega 3.
 
 ## Contrato de inicio 1.2
 
-| Entrada | Tipo Bonita | Validación principal |
-| --- | --- | --- |
-| `idEmergencia` | `LONG` | Entero positivo. |
-| `gravedad` | `TEXT` | `BAJA`, `MEDIA`, `ALTA` o `CRITICA`. |
-| `zona` | `TEXT` | No vacía, máximo 255 caracteres. |
-| `descripcion` | `TEXT` | No vacía. |
-| `municipioId` | `LONG` | Entero positivo. |
+| Entrada        | Tipo Bonita | Validación principal                 |
+| -------------- | ----------- | ------------------------------------ |
+| `idEmergencia` | `LONG`      | Entero positivo.                     |
+| `gravedad`     | `TEXT`      | `BAJA`, `MEDIA`, `ALTA` o `CRITICA`. |
+| `zona`         | `TEXT`      | No vacía, máximo 255 caracteres.     |
+| `descripcion`  | `TEXT`      | No vacía.                            |
+| `municipioId`  | `LONG`      | Entero positivo.                     |
 
 Bonita guarda cada entrada en una variable persistente del mismo nombre. El
 índice de búsqueda 1 usa la etiqueta `idEmergencia` y permite reconciliar una
@@ -71,8 +71,8 @@ llamar al mismo endpoint reintenta solo ese paso: no crea una convocatoria
 nueva mientras la anterior siga `ABIERTA`, y antes de reejecutar la tarea
 vuelve a preguntarle a Bonita si sigue lista.
 
-El BAR 1.4 incorpora el tramo nacional adaptado (camino feliz, sin tareas de
-incidentes); ver [proceso 1.4 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
+El BAR 1.5 incorpora el tramo nacional adaptado (camino feliz, sin tareas de
+incidentes); ver [proceso 1.5 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
 
 ## Cambiar la versión
 

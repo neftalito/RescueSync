@@ -7,12 +7,12 @@ integración inicial con Bonita.
 
 ## Arquitectura
 
-| Componente | Tecnología y responsabilidad |
-| --- | --- |
-| Frontend | React, TypeScript estricto, Vite y Tailwind CSS. Consume solamente FastAPI. |
-| Backend | FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Autentica, autoriza, adapta Bonita y entrega novedades por WebSocket. |
-| Base local | PostgreSQL 16. Persiste emergencias, lotes, convocatorias, ofertas y notificaciones. |
-| BPM | Bonita Runtime 10.4. Administra el recorrido y los temporizadores. |
+| Componente | Tecnología y responsabilidad                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| Frontend   | React, TypeScript estricto, Vite y Tailwind CSS. Consume solamente FastAPI.                                          |
+| Backend    | FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Autentica, autoriza, adapta Bonita y entrega novedades por WebSocket. |
+| Base local | PostgreSQL 16. Persiste emergencias, lotes, convocatorias, ofertas y notificaciones.                                 |
+| BPM        | Bonita Runtime 10.4. Administra el recorrido y los temporizadores.                                                   |
 
 El frontend nunca llama directamente a Bonita ni a PostgreSQL. FastAPI concentra
 las sesiones locales, RBAC, CSRF, persistencia y traducción de contratos externos.
@@ -114,7 +114,6 @@ persistencia del buzón no depende de ese bus.
    Las nuevas ONG generan su identificador y cuenta técnica al crearlas; el correo de contacto es opcional.
 
 4. Abrir los servicios:
-
    - Frontend: <http://localhost:5173>
    - API: <http://localhost:8000>
    - Swagger UI: <http://localhost:8000/docs>
@@ -159,7 +158,7 @@ otro proveedor SMTP.
 
 ## Cliente reutilizable de Bonita
 
-[`docs/RescueSync-1.4.bar`](docs/RescueSync-1.4.bar) es la fuente de verdad del
+[`docs/RescueSync-1.5.bar`](docs/RescueSync-1.5.bar) es la fuente de verdad del
 proceso desplegable. FastAPI crea un único `ClienteBonita` durante el `lifespan`,
 comparte su pool HTTPX y lo cierra al apagar la aplicación.
 
@@ -260,7 +259,7 @@ verdad para contribuir.
 
 La API local y la pantalla de evaluación/ejecución implementan perfiles, cobertura
 compatible, selección municipal, finalización de cada ONG y cierre coordinador.
-Aplicar la migración `20261016_0015`. El BAR 1.4 fue adaptado en Studio y recorre
+Aplicar la migración `20261016_0015`. El BAR 1.5 fue adaptado en Studio y recorre
 el camino feliz completo (sin tareas de incidentes). Ver
 [contratos T36/T37](docs/bonita/contratos-t36-t37.md), incluyendo parámetros,
 permisos, reintentos, pruebas y comprobación del Runtime.
