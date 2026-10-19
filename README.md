@@ -156,6 +156,33 @@ entregarlo a Internet; puede inspeccionarse en <http://localhost:8025>. Las
 variables `SMTP_*` permiten apuntar el mismo cliente a un sandbox de Mailtrap u
 otro proveedor SMTP.
 
+## Integración con la API nacional de Render
+
+Cuando RescueSyncAPI se ejecuta en Render con
+`INTEGRACION_AUTO_BOOTSTRAP=true`, la cuenta nacional INTEGRACION se crea
+automáticamente en el arranque de esa API. Para conectar el stack local,
+configurar en el `.env` de RescueSync:
+
+```dotenv
+NACIONAL_BASE_URL=https://tu-servicio.onrender.com/api/v1
+BONITA_NATIONAL_API_BASE_URL=https://tu-servicio.onrender.com
+NACIONAL_SISTEMA_ORIGEN=rescuesync-local
+NACIONAL_INTEGRACION_PASSWORD=<mismo-secreto-configurado-en-Render>
+```
+
+Por defecto, Compose utiliza el login `integracion-rescuesync` en Bonita y
+para el aprovisionamiento nacional del backend. La contraseña compartida se
+obtiene de `NACIONAL_INTEGRACION_PASSWORD`, salvo que se especifiquen los
+valores independientes antiguos `BONITA_NATIONAL_API_PASSWORD` y
+`NACIONAL_APROVISIONAMIENTO_PASSWORD`. **No dejar esos valores antiguos en
+`.env` si se pretende usar el secreto compartido.** Los secretos nunca deben
+versionarse. `BONITA_NATIONAL_API_BASE_URL` va sin `/api/v1`.
+
+Antes de desplegar, comprobar `docker compose config` evitando publicar el
+resultado, porque contiene secretos. Una vez iniciada la API nacional y
+aprovisionada la cuenta, ejecutar `docker compose up -d --build` en RescueSync.
+La API nacional debe tener las migraciones aplicadas antes de su arranque.
+
 ## Cliente reutilizable de Bonita
 
 [`docs/RescueSync-1.5.bar`](docs/RescueSync-1.5.bar) es la fuente de verdad del
