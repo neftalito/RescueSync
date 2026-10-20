@@ -2,8 +2,16 @@
 
 Un usuario local `ADMINISTRADOR` dispone de **Gestionar capacidades** en el
 dashboard y de la pantalla `/catalogo-nacional`. Permite consultar capacidades
-activas y crear una capacidad nueva con código, nombre, tipo de recurso, unidad
+activas y crear una capacidad nueva con nombre, tipo de recurso, unidad
 predefinida y admisión de fracciones. No ofrece altas, edición ni bajas de unidades.
+
+El código se genera automáticamente a partir del nombre: mayúsculas, sin tildes,
+espacios consecutivos reemplazados por un guion (`Atención médica` →
+`ATENCION-MEDICA`). Se muestra como solo lectura y se actualiza al editar el
+nombre. Si el código ya está en el catálogo, el alta queda deshabilitada y se
+explica que hay que cambiar el nombre. También se espera la consulta del catálogo
+antes de habilitar el alta; si falla, se puede reintentar con **Actualizar catálogo**.
+No se truncan códigos mayores de 80 caracteres: se pide abreviar el nombre.
 
 Las unidades se cargan mediante la migración nacional `20261014_0002`, también
 en producción. No dependen del seed demo. Cubren conteos, presentaciones de
@@ -64,8 +72,14 @@ descrito en [Certificaciones nacionales](../../RescueSyncAPI/docs/certificacione
 El POST utiliza el contrato nacional en camelCase: `codigo`, `nombre`, `tipo`,
 `unidad`, `admiteFracciones`. La unidad debe existir en la base nacional. Personal
 y vehículos siempre usan cantidades enteras. Un código repetido produce `409`;
-los errores conservan los datos del formulario. Tras crear se actualizan los
-catálogos administrativos, de coordinación y de inventario de ONG.
+la restricción única nacional incluye capacidades inactivas y protege también
+ante altas simultáneas. Los errores conservan los datos del formulario y un
+conflicto indica que se debe cambiar el nombre. Se admiten guiones y los guiones
+bajos de códigos existentes; no se modifican capacidades previas. Tras crear se
+actualizan los catálogos administrativos, de coordinación y de inventario de ONG.
+
+La API Nacional debe incluir la ampliación del contrato `CapacidadCreate` para
+aceptar guiones antes de usar este formulario con nombres de varias palabras.
 
 El cliente compartido no reintenta un POST. Ante un timeout, actualizar el
 catálogo y comprobar el código antes de repetir el alta.

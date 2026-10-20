@@ -17,8 +17,10 @@ import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
 import {
   capacidadCreateSchema,
+  generarCodigoCapacidad,
   tipoCapacidadLabels,
   type CapacidadCreate,
+  type CapacidadForm,
 } from "../schemas/catalogo";
 import { capacidadSchema } from "../schemas/inventario";
 
@@ -52,10 +54,9 @@ export function CatalogoNacionalPage({
     setValue,
     setError,
     formState: { errors },
-  } = useForm<CapacidadCreate>({
+  } = useForm<CapacidadForm, unknown, CapacidadCreate>({
     resolver: zodResolver(capacidadCreateSchema),
     defaultValues: {
-      codigo: "",
       nombre: "",
       tipo: "SUMINISTRO",
       unidad: "",
@@ -63,6 +64,11 @@ export function CatalogoNacionalPage({
     },
   });
   const tipo = useWatch({ control, name: "tipo" });
+  const nombre = useWatch({ control, name: "nombre" });
+  const codigo = generarCodigoCapacidad(nombre);
+  const codigoExistente =
+    catalogo.data?.some((capacidad) => capacidad.codigo === codigo) ?? false;
+  const catalogoVerificado = catalogo.isSuccess && !catalogo.isFetching;
   const requiereEnteros = tipo === "PERSONAL" || tipo === "VEHICULO";
   const mutation = useMutation({
     mutationFn: (datos: CapacidadCreate) =>
@@ -81,6 +87,7 @@ export function CatalogoNacionalPage({
   const unidadesDisponibles = unidades.isSuccess && unidades.data.length > 0;
 
   const submit = (datos: CapacidadCreate): void => {
+    if (!catalogoVerificado || codigoExistente) return;
     if (!unidades.data?.some((unidad) => unidad.codigo === datos.unidad)) {
       setError("unidad", {
         message: "Elegí una unidad del catálogo disponible.",
@@ -164,33 +171,6 @@ export function CatalogoNacionalPage({
               <legend className="sr-only">Datos de la nueva capacidad</legend>
               <div>
                 <label
-                  htmlFor="capacidad-codigo"
-                  className="block text-sm font-semibold text-slate-800"
-                >
-                  Código
-                </label>
-                <input
-                  id="capacidad-codigo"
-                  className="form-input mt-2"
-                  placeholder="ALIMENTOS"
-                  autoComplete="off"
-                  aria-invalid={!!errors.codigo}
-                  aria-describedby={
-                    errors.codigo ? "codigo-error" : "codigo-ayuda"
-                  }
-                  {...register("codigo")}
-                />
-                <p id="codigo-ayuda" className="mt-2 text-sm text-slate-500">
-                  Identificador único con letras, números y guion bajo.
-                </p>
-                {errors.codigo && (
-                  <p id="codigo-error" className="mt-2 text-sm text-red-700">
-                    {errors.codigo.message}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label
                   htmlFor="capacidad-nombre"
                   className="block text-sm font-semibold text-slate-800"
                 >
@@ -208,6 +188,36 @@ export function CatalogoNacionalPage({
                 {errors.nombre && (
                   <p id="nombre-error" className="mt-2 text-sm text-red-700">
                     {errors.nombre.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label
+                  htmlFor="capacidad-codigo"
+                  className="block text-sm font-semibold text-slate-800"
+                >
+                  Código
+                </label>
+                <input
+                  id="capacidad-codigo"
+                  className="form-input mt-2"
+                  placeholder="Se genera a partir del nombre"
+                  autoComplete="off"
+                  readOnly
+                  value={codigo}
+                  aria-invalid={codigoExistente}
+                  aria-describedby={
+                    codigoExistente ? "codigo-ayuda codigo-error" : "codigo-ayuda"
+                  }
+                />
+                <p id="codigo-ayuda" className="mt-2 text-sm text-slate-500">
+                  Se genera automáticamente en mayúsculas, sin tildes y con
+                  guiones en lugar de espacios.
+                </p>
+                {codigoExistente && (
+                  <p id="codigo-error" className="mt-2 text-sm text-red-700">
+                    Ya existe una capacidad con el código «{codigo}». Cambiá el
+                    nombre para generar otro código.
                   </p>
                 )}
               </div>
@@ -286,11 +296,19 @@ export function CatalogoNacionalPage({
               </div>
               <button
                 type="submit"
+                disabled={!catalogoVerificado || codigoExistente}
                 className="action-button action-primary sm:col-span-2"
               >
                 {mutation.isPending ? "Creando…" : "Crear capacidad"}
               </button>
             </fieldset>
+            {!catalogoVerificado && (
+              <p role="status" className="mt-3 text-sm text-slate-600">
+                {catalogo.isError
+                  ? "No pudimos verificar si el código ya existe. Usá Actualizar catálogo para reintentar."
+                  : "Verificando los códigos del catálogo…"}
+              </p>
+            )}
           </form>
           {mutation.isError && (
             <p
@@ -298,6 +316,9 @@ export function CatalogoNacionalPage({
               className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800"
             >
               {mensajeError(mutation.error)}
+              {mutation.error instanceof ApiError &&
+                mutation.error.status === 409 &&
+                " Cambiá el nombre para generar otro código."}
             </p>
           )}
           {mutation.isSuccess && (

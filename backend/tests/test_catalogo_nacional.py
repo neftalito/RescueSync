@@ -97,28 +97,32 @@ def remoto(mock: respx.MockRouter, rol: str = "ADMIN_NACIONAL") -> None:
     )
 
 
+@pytest.mark.parametrize("codigo", ["ALIMENTOS_SIN_GLUTEN", "ALIMENTOS-SIN-GLUTEN"])
 def test_admin_consulta_unidades_y_crea_sin_exponer_credenciales(
     catalogo_client: TestClient,
     usuarios: dict[RolUsuario, Usuario],
+    codigo: str,
 ) -> None:
+    datos = {**DATOS, "codigo": codigo}
+    capacidad = {**CAPACIDAD, "codigo": codigo}
     headers = autenticar(catalogo_client, usuarios[RolUsuario.ADMINISTRADOR])
     with respx.mock as mock:
         remoto(mock)
         mock.get(f"{NACIONAL}/unidades").respond(
             200, json=[{"codigo": "kg", "nombre": "Kilogramos"}]
         )
-        mock.get(f"{NACIONAL}/capacidades").respond(200, json=[CAPACIDAD])
-        alta = mock.post(f"{NACIONAL}/capacidades").respond(201, json=CAPACIDAD)
+        mock.get(f"{NACIONAL}/capacidades").respond(200, json=[capacidad])
+        alta = mock.post(f"{NACIONAL}/capacidades").respond(201, json=capacidad)
 
         unidades = catalogo_client.get(f"{URL}/unidades")
         listado = catalogo_client.get(f"{URL}/capacidades")
-        creada = catalogo_client.post(f"{URL}/capacidades", headers=headers, json=DATOS)
+        creada = catalogo_client.post(f"{URL}/capacidades", headers=headers, json=datos)
 
         assert unidades.status_code == listado.status_code == 200
-        assert creada.status_code == 201 and creada.json() == CAPACIDAD
+        assert creada.status_code == 201 and creada.json() == capacidad
         assert creada.headers["cache-control"] == "no-store"
         assert TOKEN not in creada.text and "password" not in creada.text
-        assert json.loads(alta.calls[0].request.content) == DATOS
+        assert json.loads(alta.calls[0].request.content) == datos
         assert alta.calls[0].request.headers["Authorization"] == f"Bearer {TOKEN}"
 
 

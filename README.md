@@ -45,6 +45,8 @@ guía de ofertas consolidadas enlazada arriba.
 El administrador dispone de **Gestionar capacidades** para ampliar el catálogo
 nacional usando unidades predefinidas, cargadas por migraciones en todos los
 entornos. Crear capacidades exige una cuenta nacional `ADMIN_NACIONAL`.
+El código se genera a partir del nombre en mayúsculas, sin tildes y con guiones
+en lugar de espacios; el formulario verifica los códigos existentes antes del alta.
 Ver [Administración del catálogo nacional](docs/catalogo-nacional.md).
 
 ## Actualizaciones y notificaciones en tiempo real
