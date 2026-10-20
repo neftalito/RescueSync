@@ -24,7 +24,9 @@ from app.core.security import verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
+from app.schemas.detalle_notificacion import DetalleNotificacionResponse
 from app.schemas.notificacion import NotificacionesLeidasResponse, NotificacionResponse
+from app.services import detalle_notificaciones
 from app.services import notificaciones as servicio
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -79,6 +81,33 @@ def listar_notificaciones(
         NotificacionResponse.model_validate(notificacion)
         for notificacion in servicio.listar_notificaciones(session, usuario, paginacion)
     ]
+
+
+@router.get(
+    "/{notificacion_id}/detalle",
+    response_model=DetalleNotificacionResponse,
+    responses={codigo: {"model": ErrorResponse} for codigo in (401, 403, 404)},
+    summary="Consultar el detalle del evento de una notificación propia",
+    description=(
+        "Abre la oferta recibida, la convocatoria exacta (incluso cerrada) "
+        "o el incidente de Bonita observado. Revalida rol y organización; "
+        "no marca el aviso como leído ni ejecuta tareas."
+    ),
+)
+def consultar_detalle_notificacion(
+    notificacion_id: NotificacionId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioConsultaNotificaciones,
+) -> DetalleNotificacionResponse:
+    """Resuelve exclusivamente avisos del destinatario autenticado."""
+    try:
+        return detalle_notificaciones.consultar_detalle(
+            session, usuario, notificacion_id
+        )
+    except detalle_notificaciones.DetalleNoDisponibleError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except detalle_notificaciones.DetalleNoAutorizadoError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 @router.patch(

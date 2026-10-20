@@ -68,7 +68,7 @@ def notificar_tarea_bonita_fallida(
     ).all()
     if not auditores:
         return []
-    return list(
+    notificaciones = list(
         session.scalars(
             insert(Notificacion)
             .values(
@@ -80,6 +80,8 @@ def notificar_tarea_bonita_fallida(
                         "titulo": "Tarea de Bonita con errores",
                         "mensaje": f"La tarea {nombre[:160] or 'sin nombre'} de la emergencia #{emergencia_id} está fallida y requiere revisión.",
                         "ruta": "/",
+                        "emergencia_id": emergencia_id,
+                        "tarea_bonita_nombre": nombre[:160] or "Sin nombre",
                     }
                     for usuario_id in auditores
                 ]
@@ -88,6 +90,9 @@ def notificar_tarea_bonita_fallida(
             .returning(Notificacion)
         ).all()
     )
+    for notificacion in notificaciones:
+        notificacion.ruta = f"/notificaciones/{notificacion.id}"
+    return notificaciones
 
 
 def notificar_convocatoria_publicada(
@@ -109,7 +114,7 @@ def notificar_convocatoria_publicada(
         tipo=TipoNotificacion.CONVOCATORIA_PUBLICADA,
         titulo="Nueva convocatoria abierta",
         mensaje=f"Se publicó una convocatoria para la emergencia de {zona}.",
-        ruta="/convocatorias",
+        ruta=None,
     )
     _crear_para_organizacion(
         session,
@@ -145,7 +150,7 @@ def notificar_convocatoria_cerrada(
         tipo=TipoNotificacion.CONVOCATORIA_CERRADA,
         titulo="Convocatoria cerrada",
         mensaje=f"Finalizó la recepción de ofertas para la emergencia de {zona}.",
-        ruta="/mis-ofertas",
+        ruta=None,
     )
     _crear_para_organizacion(
         session,
@@ -181,7 +186,7 @@ def notificar_oferta_recibida(
         tipo=TipoNotificacion.OFERTA_RECIBIDA,
         titulo="Nueva oferta recibida",
         mensaje=f"Una ONG presentó una oferta para la emergencia de {zona}.",
-        ruta="/",
+        ruta=None,
     )
 
 
@@ -341,7 +346,7 @@ def _crear_para_usuarios(
             )
         ).all()
     )
-    session.add_all(
+    nuevas = [
         Notificacion(
             usuario_id=usuario_id,
             clave_evento=clave_evento,
@@ -352,4 +357,13 @@ def _crear_para_usuarios(
         )
         for usuario_id in ids
         if usuario_id not in existentes
-    )
+    ]
+    session.add_all(nuevas)
+    if tipo in {
+        TipoNotificacion.OFERTA_RECIBIDA,
+        TipoNotificacion.CONVOCATORIA_PUBLICADA,
+        TipoNotificacion.CONVOCATORIA_CERRADA,
+    }:
+        session.flush()
+        for notificacion in nuevas:
+            notificacion.ruta = f"/notificaciones/{notificacion.id}"

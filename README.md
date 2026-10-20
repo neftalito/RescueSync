@@ -64,6 +64,12 @@ evaluación** identifican la zona y la descripción de la emergencia. Su botón
 La migración también actualiza estos avisos existentes, conservando sus fechas
 y su estado de lectura.
 
+El ojo de **Nueva oferta recibida** abre la oferta, sus ONGs y aportes; el de
+**Tarea de Bonita con errores** muestra el incidente observado y su emergencia
+en modo consulta. Para las ONGs, los avisos de apertura y cierre abren la
+convocatoria exacta, incluso si ya cerró o comenzó otra ronda. El detalle incluye
+su oferta, o indica que no participaron. Ver [Detalles de notificaciones](docs/notificaciones.md).
+
 El botón **Notificaciones** abre un panel adaptable a móviles y escritorio, con
 desplazamiento interno para listas largas. Se cierra al hacer clic o tocar fuera
 del panel, volver a pulsar el botón o presionar `Escape`.

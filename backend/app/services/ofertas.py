@@ -286,6 +286,8 @@ def listar_ofertas_propias(
     session: Session,
     usuario: Usuario,
     paginacion: Paginacion = SIN_PAGINACION,
+    *,
+    convocatoria_id: int | None = None,
 ) -> list[Oferta]:
     """Devuelve las ofertas de la ONG activa del usuario, sin importar quién las creó.
 
@@ -311,6 +313,7 @@ def listar_ofertas_propias(
                 ),
             )
             .where(
+                or_(convocatoria_id is None, Oferta.convocatoria_id == convocatoria_id),
                 or_(
                     Oferta.ong_creadora_id == ong.id,
                     select(OfertaVersionParticipante.oferta_version_id)
