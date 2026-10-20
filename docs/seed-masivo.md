@@ -122,7 +122,8 @@ de un municipio, centro u ONG, disminuir su cantidad al crear un seed nuevo.
 ## Acceso al catálogo nacional
 
 El seed nacional masivo crea el mismo administrador nacional que el demo. En
-`RescueSync/.env`, mantener las credenciales de desarrollo de `.env.example`:
+`RescueSync/.env`, configurar explícitamente las credenciales de desarrollo
+comentadas en `.env.example` para administrar el catálogo:
 
 ```dotenv
 NACIONAL_CATALOGO_LOGIN=admin.nacional.demo@rescuesync.org
