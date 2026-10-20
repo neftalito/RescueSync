@@ -58,6 +58,12 @@ después del commit se envía al usuario conectado. Si estuvo desconectado, pued
 recuperarla mediante `GET /api/v1/notificaciones` y marcarla como leída con
 `PATCH /api/v1/notificaciones/{id}/leida`.
 
+Las notificaciones municipales **Emergencia publicada** y **Emergencia en
+evaluación** identifican la zona y la descripción de la emergencia. Su botón
+**Ver detalle** abre directamente la evaluación y ejecución de esa emergencia.
+La migración también actualiza estos avisos existentes, conservando sus fechas
+y su estado de lectura.
+
 El botón **Notificaciones** abre un panel adaptable a móviles y escritorio, con
 desplazamiento interno para listas largas. Se cierra al hacer clic o tocar fuera
 del panel, volver a pulsar el botón o presionar `Escape`.

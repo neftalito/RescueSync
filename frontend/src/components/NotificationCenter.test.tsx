@@ -172,6 +172,9 @@ describe("NotificationCenter", () => {
 
     await user.click(screen.getByRole("link", { name: "Ver detalle" }));
     await waitFor(() => expect(csrf).toBe("csrf-firmado"));
+    expect(
+      screen.queryByRole("region", { name: "Notificaciones" }),
+    ).not.toBeInTheDocument();
     await waitFor(() =>
       expect(boton).toHaveAccessibleDescription(
         "No hay notificaciones sin leer",

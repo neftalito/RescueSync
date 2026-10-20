@@ -172,8 +172,10 @@ def publicar_convocatoria(
         notificar_convocatoria_publicada(
             session,
             convocatoria_id=convocatoria.id,
+            emergencia_id=emergencia.id,
             municipio_id=emergencia.municipio_id,
             zona=emergencia.zona,
+            descripcion=emergencia.descripcion,
         )
         session.commit()
     except IntegrityError as error:

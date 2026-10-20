@@ -392,6 +392,11 @@ def test_cierre_es_idempotente_y_bloquea_nuevas_notificaciones(
         )
     )
     assert aviso_municipal is not None
+    assert aviso_municipal.mensaje == (
+        "Cerró la convocatoria y las ofertas están siendo evaluadas. "
+        f"Emergencia en {escenario.emergencia.zona}: {escenario.emergencia.descripcion}"
+    )
+    assert aviso_municipal.ruta == (f"/emergencias/{escenario.emergencia.id}/ejecucion")
     reapertura = _notificar(
         client, escenario, cierre=datetime.now(UTC) + timedelta(hours=1)
     )

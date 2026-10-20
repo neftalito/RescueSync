@@ -287,7 +287,10 @@ export function NotificationCenter({
                       {notificacion.ruta ? (
                         <Link
                           to={notificacion.ruta}
-                          onClick={() => leer(notificacion)}
+                          onClick={() => {
+                            leer(notificacion);
+                            setAbierto(false);
+                          }}
                           className="action-button action-primary action-icon"
                           title="Ver detalle"
                         >
