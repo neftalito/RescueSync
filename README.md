@@ -71,6 +71,210 @@ persistencia del buzón no depende de ese bus.
 - Bonita Studio 2025.2 solamente si se dispone externamente del proyecto fuente
   y se necesita generar otra versión del `.bar`.
 
+## Archivos `.env` y valores de configuración
+
+Para ejecutar los dos proyectos con Docker Compose se configura un `.env` en
+la raíz de **cada repositorio**:
+
+| Archivo | Configura | Plantilla y valores |
+| --- | --- | --- |
+| `RescueSync/.env` | Frontend, backend local, PostgreSQL local, correo y Bonita | [`.env.example`](.env.example) y bloque completo de esta sección |
+| `RescueSyncAPI/.env` | API nacional, PostgreSQL nacional, JWT y cuenta de integración | [README nacional](https://github.com/neftalito/RescueSyncAPI/blob/develop/README.md#configuración) y [plantilla nacional](https://github.com/neftalito/RescueSyncAPI/blob/develop/.env.example) |
+
+Ejecutar `cp .env.example .env` desde cada raíz solamente si el archivo todavía
+no existe. Con Compose, los servicios de RescueSync reciben sus variables desde
+el `.env` de la raíz; no hace falta crear otros en `backend/` o `frontend/`.
+Los valores siguientes son de desarrollo. Las asignaciones vacías se explican
+debajo; las contraseñas reales se guardan en `.env` o en el proveedor del entorno.
+
+### `RescueSync/.env`: valores completos de desarrollo
+
+```dotenv
+# Puertos publicados en el host
+FRONTEND_PORT=5173
+BACKEND_PORT=8000
+POSTGRES_PORT=5432
+MAILPIT_UI_PORT=8025
+
+# Entorno, sesiones y navegador
+APP_ENV=development
+SESSION_SECRET=
+CORS_ORIGINS=["http://localhost:5173"]
+SESSION_COOKIE_SAMESITE=lax
+SESSION_COOKIE_SECURE=
+ADMIN_EMAIL=admin@rescuesync.org
+ADMIN_INITIAL_PASSWORD=administrador123
+
+# Correo local: Mailpit, sin autenticación ni STARTTLS
+SMTP_HOST=mailpit
+SMTP_PORT=1025
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_STARTTLS=false
+SMTP_SENDER_EMAIL=no-reply@rescuesync.org
+SMTP_TIMEOUT_SECONDS=10
+FRONTEND_PUBLIC_URL=http://localhost:5173
+
+# PostgreSQL de RescueSync
+POSTGRES_DB=rescuesync
+POSTGRES_USER=rescuesync
+POSTGRES_PASSWORD=rescuesync_dev
+
+# Bonita Runtime y administrador de plataforma
+BONITA_BASE_URL=http://bonita:8080/bonita
+BONITA_PORT=8080
+BONITA_USERNAME=install
+BONITA_PASSWORD=install
+BONITA_ACTOR_PASSWORD=
+BONITA_PLATFORM_USERNAME=platformAdmin
+BONITA_PLATFORM_PASSWORD=platform
+BONITA_MONITORING_USERNAME=monitoring
+BONITA_MONITORING_PASSWORD=monitoring_dev
+BONITA_PROCESS_NAME=RescueSync
+BONITA_PROCESS_VERSION=1.5
+BONITA_TIMEZONE=UTC
+BONITA_MONITOR_ENABLED=true
+BONITA_MONITOR_INTERVAL_SECONDS=30
+BONITA_CALLBACK_TOKEN=dev-only-rescuesync-bonita-callback-token
+BONITA_STARTUP_TIMEOUT_SECONDS=300
+BONITA_REQUEST_TIMEOUT_SECONDS=30
+
+# Parámetros inyectados al instalar el proceso
+BONITA_BACKEND_BASE_URL=http://backend:8000
+BONITA_NATIONAL_API_BASE_URL=http://host.docker.internal:8001
+BONITA_OFFER_WINDOW_MS=7200000
+BONITA_CONNECT_TIMEOUT_MS=5000
+BONITA_READ_TIMEOUT_MS=30000
+BONITA_CLIENT_CONNECT_TIMEOUT_SECONDS=3
+BONITA_CLIENT_READ_TIMEOUT_SECONDS=10
+
+# PostgreSQL interno de Bonita y base de datos de negocio
+BONITA_DB_NAME=bonita
+BONITA_DB_USER=bonita
+BONITA_DB_PASS=bpm
+BONITA_BIZ_DB_NAME=business_data
+BONITA_BIZ_DB_USER=business_data
+BONITA_BIZ_DB_PASS=bpm
+
+# URL de FastAPI accesible desde el navegador
+VITE_API_URL=http://localhost:8000/api/v1
+
+# Adaptador nacional del backend local
+NACIONAL_BASE_URL=http://host.docker.internal:8001/api/v1
+NACIONAL_TIMEOUT_SECONDS=10
+NACIONAL_SISTEMA_ORIGEN=rescuesync-local
+NACIONAL_CATALOGO_LOGIN=
+NACIONAL_CATALOGO_PASSWORD=
+NACIONAL_ENCRYPTION_KEY=
+NACIONAL_APROVISIONAMIENTO_LOGIN=integracion-rescuesync
+NACIONAL_APROVISIONAMIENTO_PASSWORD=
+
+# Cuenta nacional de Bonita y secreto compartido con el backend
+BONITA_NATIONAL_API_LOGIN=integracion-rescuesync
+BONITA_NATIONAL_API_PASSWORD=
+NACIONAL_INTEGRACION_PASSWORD=
+BONITA_MAX_REINTENTOS_INTEGRACION=3
+```
+
+### Valores que hay que completar antes de iniciar
+
+- `NACIONAL_INTEGRACION_PASSWORD`: contraseña de la cuenta `INTEGRACION` nacional,
+  de al menos 12 caracteres. **Es necesaria para instalar el proceso Bonita 1.5**.
+  En una instalación nacional local, crear primero la cuenta desde `RescueSyncAPI`:
+
+  ```bash
+  docker compose up -d --build
+  docker compose run --rm api python -m app.scripts.bootstrap_integracion --login integracion-rescuesync --sistema-origen rescuesync-local
+  ```
+
+  El comando solicita la contraseña; guardar ese mismo valor en
+  `NACIONAL_INTEGRACION_PASSWORD` de `RescueSync/.env`. En Render corresponde a
+  `INTEGRACION_PASSWORD`, como explica la sección de integración de este README.
+- `NACIONAL_ENCRYPTION_KEY`: clave Fernet estable, necesaria para acceso nacional
+  por ONG, altas automáticas y seeds demo/masivo. Para generarla, desde `RescueSync`:
+
+  ```bash
+  docker compose build backend
+  docker compose run --rm --no-deps backend python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  ```
+
+  Copiar la salida en esa variable y conservarla entre reinicios y workers.
+- `SESSION_SECRET`: vacío genera una clave efímera en desarrollo. Para conservar
+  sesiones entre reinicios, y obligatoriamente en producción, generar una clave
+  propia de al menos 32 caracteres con `openssl rand -hex 32`.
+
+Con Compose, `NACIONAL_APROVISIONAMIENTO_PASSWORD` y
+`BONITA_NATIONAL_API_PASSWORD` pueden quedar vacías: ambas toman
+`NACIONAL_INTEGRACION_PASSWORD`. El catálogo reutiliza las credenciales efectivas
+de aprovisionamiento cuando sus dos variables están vacías. Si se define un
+override, ese valor tiene prioridad y debe corresponder a la cuenta indicada.
+
+Para **crear capacidades** desde la administración, configurar una cuenta
+`ADMIN_NACIONAL` en las variables de catálogo. Después de cargar el seed demo o
+masivo nacional, los valores de desarrollo son:
+
+```dotenv
+NACIONAL_CATALOGO_LOGIN=admin.nacional.demo@rescuesync.org
+NACIONAL_CATALOGO_PASSWORD=admin-nacional-demo123
+```
+
+`BONITA_ACTOR_PASSWORD` vacía hace que el instalador genere una contraseña
+aleatoria para los actores del proceso. `SESSION_COOKIE_SECURE` vacía se resuelve
+por entorno: `false` en desarrollo/test y `true` en producción. Las credenciales
+SMTP quedan vacías con Mailpit; con otro proveedor completar juntas
+`SMTP_USERNAME` y `SMTP_PASSWORD`, además de host, puerto y STARTTLS.
+
+### URLs, puertos y ejecución fuera de Compose
+
+`VITE_API_URL` es la URL que abre el navegador; `NACIONAL_BASE_URL` y
+`BONITA_NATIONAL_API_BASE_URL` se usan desde los contenedores. La primera URL
+nacional incluye `/api/v1` y la de Bonita no lo incluye. Para apuntar a Render,
+cambiar ambas como indica la [integración nacional](#integración-con-la-api-nacional-de-render).
+
+Si se cambian los puertos publicados de frontend/backend, ajustar también
+`CORS_ORIGINS`, `FRONTEND_PUBLIC_URL` y `VITE_API_URL`. `POSTGRES_PORT` modifica
+el puerto del host; el backend de Compose sigue usando `db:5432`. El timer
+`BONITA_OFFER_WINDOW_MS=7200000` dura dos horas; para una prueba de dos minutos,
+usar `120000`.
+
+Para ejecutar herramientas y servicios directamente en el host:
+
+| Archivo o variable | Valor | Cuándo se configura |
+| --- | --- | --- |
+| `RescueSync/backend/.env` | Copiar las variables del backend del bloque anterior | Al ejecutar FastAPI o Alembic desde `backend/`; Pydantic busca `.env` en el directorio de ejecución |
+| `POSTGRES_HOST` | `localhost` | Backend en el host contra PostgreSQL de Compose; `POSTGRES_PORT=5432` o el puerto publicado elegido |
+| `DATABASE_URL` | `postgresql+psycopg://rescuesync:rescuesync_dev@localhost:5432/rescuesync` | Alternativa a `POSTGRES_*`, con prioridad; Compose local no propaga esta variable |
+| `BONITA_BASE_URL` | `http://localhost:8080/bonita` | Backend en el host contra Bonita de Compose |
+| `NACIONAL_BASE_URL` | `http://localhost:8001/api/v1` | Backend en el host contra API nacional local |
+| `SMTP_HOST` / `SMTP_PORT` | Host y puerto SMTP accesibles desde el backend | Mailpit de Compose publica solamente la interfaz web; para usar SMTP desde el host hay que publicar también su puerto SMTP o usar otro proveedor |
+| `SESSION_COOKIE_NAME` | `rescuesync_session` | Override opcional del backend; Compose no lo propaga |
+| `SESSION_MAX_AGE_SECONDS` | `28800` | Duración de la sesión, ocho horas; Compose no lo propaga |
+| `APP_NAME` / `API_V1_PREFIX` | `RescueSync API` / `/api/v1` | Overrides opcionales del backend; Compose no los propaga |
+| `BONITA_BAR_PATH` | Ruta al archivo `.bar` o al directorio que contiene un único `.bar` | Al ejecutar el instalador manualmente; Compose fija `/bonita-source` |
+| `RescueSync/frontend/.env` | `VITE_API_URL=http://localhost:8000/api/v1` | Al ejecutar Vite con npm desde `frontend/` |
+
+Las credenciales efectivas de aprovisionamiento, catálogo y Bonita deben estar
+definidas explícitamente al ejecutar fuera de Compose: los fallbacks de
+`NACIONAL_INTEGRACION_PASSWORD` los implementa Compose. El instalador manual
+usa variables exportadas al proceso. En el build Docker de producción del
+frontend, `VITE_API_URL` se pasa con `--build-arg VITE_API_URL=/api/v1` o la URL
+pública correspondiente; cambiarla exige reconstruir el frontend.
+
+### Valores para producción
+
+Configurar `APP_ENV=production`, un `SESSION_SECRET` estable y un
+`BONITA_CALLBACK_TOKEN` propio de al menos 32 caracteres, generados por separado.
+Definir `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD` propios antes del primer arranque,
+reemplazar las contraseñas de PostgreSQL y Bonita y configurar el SMTP real.
+Usar las URLs públicas HTTPS en `FRONTEND_PUBLIC_URL`, `VITE_API_URL` y
+`CORS_ORIGINS`. Si frontend y API están en sitios distintos, usar
+`SESSION_COOKIE_SAMESITE=none` y `SESSION_COOKIE_SECURE=true`.
+
+Los parámetros de Bonita se aplican al instalar el proceso: cambiar la URL,
+credenciales nacionales, token de callbacks o timer en `.env` no actualiza una
+definición ya instalada. Seguir la [guía de despliegue y operación](docs/bonita/despliegue-y-operacion.md)
+para una instalación existente.
+
 ## Inicio rápido
 
 1. Crear la configuración local y activar los hooks compartidos:
@@ -79,6 +283,9 @@ persistencia del buzón no depende de ese bus.
    cp .env.example .env
    git config core.hooksPath .githooks
    ```
+
+   Completar los [valores requeridos](#valores-que-hay-que-completar-antes-de-iniciar),
+   en particular la contraseña nacional antes de instalar Bonita.
 
 2. Construir y levantar el entorno:
 
