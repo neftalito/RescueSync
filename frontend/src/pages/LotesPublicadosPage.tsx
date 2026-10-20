@@ -1,10 +1,12 @@
-import { type ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 import { Link, useParams } from "react-router";
 
 import { ListadoRemoto } from "../components/ListadoProgresivo";
 import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import { useLotesPublicadosPaginados } from "../hooks/useLotes";
+import { useConvocatoriasAbiertas } from "../hooks/useConvocatoriasAbiertas";
+import { useMisOfertas } from "../hooks/useMisOfertas";
 import {
   estadoLoteLabels,
   type LotePublicadoPublico,
@@ -17,7 +19,11 @@ function parsearId(valor: string | undefined): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-function TarjetaLote({ lote }: { lote: LotePublicadoPublico; }): ReactElement {
+function TarjetaLote({ lote, motivoBloqueo }: {
+  lote: LotePublicadoPublico;
+  motivoBloqueo?: string;
+}): ReactElement {
+  const motivoId = useId();
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-4">
@@ -36,13 +42,26 @@ function TarjetaLote({ lote }: { lote: LotePublicadoPublico; }): ReactElement {
           {lote.descripcion}
         </p>
       )}
-      <Link
-        to={`/ofertas/nueva?loteId=${lote.id}`}
-        aria-label={`Crear oferta para ${lote.tipo_necesidad}`}
-        className="action-button action-primary mt-4"
-      >
-        Crear oferta
-      </Link>
+      {motivoBloqueo ? <>
+        <button
+          type="button"
+          disabled
+          aria-label={`Crear oferta para ${lote.tipo_necesidad}`}
+          aria-describedby={motivoId}
+          className="action-button action-primary mt-4"
+        >
+          Crear oferta
+        </button>
+        <p id={motivoId} className="mt-2 text-sm leading-6 text-slate-600">{motivoBloqueo}</p>
+      </> : (
+        <Link
+          to={`/ofertas/nueva?loteId=${lote.id}`}
+          aria-label={`Crear oferta para ${lote.tipo_necesidad}`}
+          className="action-button action-primary mt-4"
+        >
+          Crear oferta
+        </Link>
+      )}
     </article>
   );
 }
@@ -64,6 +83,30 @@ function Contenido({ emergenciaId }: { emergenciaId: number | null; }): ReactEle
 
 function ListadoLotes({ emergenciaId }: { emergenciaId: number; }): ReactElement {
   const query = useLotesPublicadosPaginados(emergenciaId);
+  const ofertasQuery = useMisOfertas();
+  const convocatoriasQuery = useConvocatoriasAbiertas();
+  const verificando = ofertasQuery.isPending || ofertasQuery.isFetching
+    || convocatoriasQuery.isPending || convocatoriasQuery.isFetching;
+  const errorVerificacion = ofertasQuery.isError || convocatoriasQuery.isError;
+
+  function motivoCreacionBloqueada(lote: LotePublicadoPublico): string | undefined {
+    if (verificando) return "Verificando las ofertas de tu ONG en esta convocatoria…";
+    if (errorVerificacion) return "No pudimos verificar si tu ONG ya tiene una oferta. Reintentá la verificación antes de crear otra.";
+
+    const convocatoria = convocatoriasQuery.data?.find((opcion) =>
+      opcion.emergencia_id === emergenciaId && opcion.lotes.some((item) => item.lote_id === lote.id),
+    );
+    if (!convocatoria) return "Este lote ya no está disponible en una convocatoria abierta.";
+
+    const ofertas = ofertasQuery.data?.filter((oferta) => oferta.convocatoria_id === convocatoria.id) ?? [];
+    if (ofertas.some((oferta) => oferta.items.some((item) => item.lote_id === lote.id))) {
+      return "Tu ONG ya creó una oferta para este lote en esta convocatoria. Podés consultarla en Mis ofertas.";
+    }
+    if (ofertas.length > 0) {
+      return "Tu ONG ya tiene una oferta en esta convocatoria. Para agregar este lote, modificá la oferta existente desde Mis ofertas.";
+    }
+    return undefined;
+  }
 
   if (query.isPending) {
     return (
@@ -111,15 +154,29 @@ function ListadoLotes({ emergenciaId }: { emergenciaId: number; }): ReactElement
     );
   }
 
-  return (
+  return <>
+    {errorVerificacion && !verificando && <section
+      role="alert"
+      className="mb-4 rounded-2xl border border-red-200 bg-white p-5 text-sm text-red-800"
+    >
+      <p>No pudimos verificar las ofertas de tu ONG en esta convocatoria.</p>
+      <button
+        type="button"
+        onClick={() => {
+          void ofertasQuery.refetch();
+          void convocatoriasQuery.refetch();
+        }}
+        className="action-button action-danger mt-3"
+      >Reintentar verificación</button>
+    </section>}
     <ListadoRemoto query={query} etiqueta="Lotes publicados">
       <div className="space-y-4">
         {query.data.map((lote) => (
-          <TarjetaLote key={lote.id} lote={lote} />
+          <TarjetaLote key={lote.id} lote={lote} motivoBloqueo={motivoCreacionBloqueada(lote)} />
         ))}
       </div>
     </ListadoRemoto>
-  );
+  </>;
 }
 
 export function LotesPublicadosPage(): ReactElement {

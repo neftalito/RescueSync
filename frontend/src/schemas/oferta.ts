@@ -104,6 +104,16 @@ export const ofertaFormSchema = z.object({
   items: z.array(ofertaItemFormSchema).min(1, "Agregá al menos un lote."),
 });
 
+export const maxInvitadasConsorcio = 10;
+
+export const invitacionConsorcioFormSchema = z.object({
+  ongIds: z.array(z.string().regex(/^[1-9]\d*$/))
+    .min(1, "Seleccioná al menos una ONG para invitar.")
+    .max(maxInvitadasConsorcio, `Podés invitar hasta ${maxInvitadasConsorcio} ONGs por propuesta.`),
+});
+
+export type InvitacionConsorcioForm = z.infer<typeof invitacionConsorcioFormSchema>;
+
 export const ofertaItemSchema = z.object({
   aportes: z.array(z.object({
     id: z.number().int(), ong_id: z.number().int(), recurso_nacional_id: z.string().uuid(),

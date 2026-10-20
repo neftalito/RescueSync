@@ -25,6 +25,15 @@ La API Nacional con JWT corresponde a la Entrega 3.
 La captura de referencias nacionales y el GET ampliado para Bonita se describen
 en [Ofertas consolidadas nacionales](./docs/ofertas-consolidadas-nacionales.md).
 
+En **Mis ofertas**, desplegar una oferta permite ver **Oferta conjunta** e invitar
+hasta diez ONGs a una misma propuesta mediante selección múltiple. Las acciones de
+edición y consorcio permanecen visibles y deshabilitadas cuando no se pueden usar,
+con una explicación de los recursos requeridos, el plazo o el estado de la oferta.
+En **Lotes publicados**, **Crear oferta** queda deshabilitado cuando la ONG ya
+ofertó ese lote en la convocatoria vigente. Para sumar otros lotes de esa misma
+convocatoria se debe editar la oferta existente desde **Mis ofertas**. Las ofertas
+de rondas anteriores no bloquean una convocatoria nueva.
+
 El formulario de lotes usa un selector de capacidades nacionales y determina
 automáticamente el nombre y la unidad de cada necesidad. El coordinador completa
 la cantidad y una descripción opcional. Para cargar el catálogo se requieren

@@ -1,4 +1,4 @@
-import { type ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 import { Link } from "react-router";
 
 import { ListadoRemoto } from "../components/ListadoProgresivo";
@@ -9,6 +9,7 @@ import { useMisOfertasPaginadas } from "../hooks/useMisOfertas";
 import { gravedadLabels } from "../schemas/emergencia";
 import { estadoOfertaLabels, tipoAporteLabels, type Oferta } from "../schemas/oferta";
 import { formatearCantidad } from "../utils/cantidades";
+import { motivoOfertaNoEditable } from "../utils/ofertas";
 
 function formatearFecha(iso: string): string {
   return new Date(iso).toLocaleString("es-AR", {
@@ -18,6 +19,8 @@ function formatearFecha(iso: string): string {
 }
 
 function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
+  const motivoEdicionId = useId();
+  const motivoEdicion = motivoOfertaNoEditable(oferta);
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
@@ -45,7 +48,7 @@ function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
           ))}
         </ul>
         {oferta.estado === "ADJUDICADA" && <Link to={`/emergencias/${oferta.emergencia_id}/ejecucion`} className="action-button">Seguimiento y finalización</Link>}
-        {oferta.editable && (
+        {oferta.editable ? (
           <Link
             to={`/ofertas/${oferta.id}/editar`}
             className="action-button action-primary action-icon mt-4"
@@ -54,8 +57,22 @@ function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
             <ActionIcon name="edit" />
             <span className="sr-only">Modificar oferta</span>
           </Link>
+        ) : (
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled
+              className="action-button action-primary action-icon"
+              title="Modificar oferta"
+              aria-describedby={motivoEdicionId}
+            >
+              <ActionIcon name="edit" />
+              <span className="sr-only">Modificar oferta</span>
+            </button>
+            <p id={motivoEdicionId} className="mt-2 text-sm">{motivoEdicion}</p>
+          </div>
         )}
-        {oferta.requiere_desglose_nacional && <ConsorcioOferta oferta={oferta} />}
+        <ConsorcioOferta oferta={oferta} />
       </div>
     </details>
   );

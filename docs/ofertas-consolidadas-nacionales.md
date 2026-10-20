@@ -94,8 +94,18 @@ Cualquier participante puede rechazar/desarmar durante la ventana; se restauran
 las ofertas individuales sin borrar la versión conjunta. Cancelar otra propuesta
 pendiente no deshace una fusión confirmada con un consorcio diferente. Para editar
 aportes de un consorcio presentado se desarma, se editan las ofertas individuales
-y se crea otra propuesta con nuevas confirmaciones. La API admite hasta diez
-invitadas; la pantalla permite elegir una por propuesta en este corte.
+y se crea otra propuesta con nuevas confirmaciones. La API y la pantalla admiten
+hasta diez invitadas, además de la ONG líder. El formulario permite seleccionar
+varias ONGs y muestra cuántas se eligieron; al alcanzar diez, se pueden desmarcar
+participantes para reemplazarlas antes de enviar la propuesta.
+
+En **Mis ofertas**, al desplegar una oferta, la sección **Oferta conjunta** está
+siempre visible. Si faltan recursos nacionales o la convocatoria ya no permite
+cambios, **Invitar ONGs** aparece deshabilitado con la explicación correspondiente.
+**Modificar oferta**, **Confirmar mis aportes al consorcio** y **Rechazar o desarmar
+consorcio** también permanecen visibles y deshabilitados cuando no se pueden usar,
+indicando el plazo requerido, el estado de la oferta, una confirmación ya registrada
+o la necesidad de desarmar el consorcio antes de editar los aportes individuales.
 
 ## Contratos locales de captura
 
