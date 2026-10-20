@@ -6,10 +6,6 @@ import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.schemas.catalogo import CapacidadCreate, UnidadResponse
-from app.schemas.certificaciones import (
-    CertificacionesOngResponse,
-    CertificacionResponse,
-)
 from app.schemas.inventario import (
     AprovisionamientoRequest,
     AprovisionamientoResponse,
@@ -21,6 +17,7 @@ from app.schemas.inventario import (
     RecursoUpdate,
     TokenNacional,
 )
+from app.schemas.perfiles import PerfilCompetencia
 
 
 class ErrorNacional(ValueError):
@@ -110,23 +107,12 @@ class ClienteNacional:
                 502, "El Sistema Nacional devolvió una respuesta inválida."
             ) from error
 
-    def certificaciones(self, token: str) -> list[CertificacionResponse]:
-        """Consulta el catálogo, que no acredita a la ONG consultante."""
-        return self._request(
-            "GET",
-            "certificaciones",
-            TypeAdapter(list[CertificacionResponse]),
-            token=token,
-        )
-
-    def certificaciones_ong(
-        self, token: str, ong_id: UUID
-    ) -> CertificacionesOngResponse:
-        """Obtiene historia y competencia efectiva desde su fuente nacional."""
+    def perfil_competencia(self, token: str, ong_id: UUID) -> PerfilCompetencia:
+        """Consulta recursos declarados sin atribuir habilitaciones a la ONG."""
         respuesta = self._request(
             "GET",
-            f"ongs/{ong_id}/certificaciones",
-            TypeAdapter(CertificacionesOngResponse),
+            f"ongs/{ong_id}/perfil-competencia",
+            TypeAdapter(PerfilCompetencia),
             token=token,
         )
         if respuesta.ong_id != ong_id:

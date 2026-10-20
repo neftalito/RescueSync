@@ -1,5 +1,10 @@
 # Flujo actual de RescueSync
 
+> Actualización 20/10/2026: [perfiles informativos](./perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
 Este documento describe el comportamiento implementado a la fecha, desde el
 alta de una emergencia hasta el último punto integrado entre React, FastAPI,
 PostgreSQL y Bonita. También separa las etapas que existen en el proceso BPM

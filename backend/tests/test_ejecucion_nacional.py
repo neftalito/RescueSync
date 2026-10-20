@@ -95,19 +95,7 @@ def preparar(
                         recurso_nacional_id=a.recurso_nacional_id,
                         cantidad_ofrecida=a.cantidad,
                         unidad=a.unidad,
-                        clasificacion=dto.Clasificacion.PRINCIPAL,
-                        capacidades_habilitadas=[
-                            {
-                                "capacidadId": str(cap),
-                                "codigo": "AGUA",
-                                "nombre": "Agua",
-                                "unidad": "litros",
-                                "riesgoMaximo": "ALTA",
-                                "nivelesRiesgoPermitidos": ["BAJA", "MEDIA", "ALTA"],
-                                "acreditacionIds": [],
-                            }
-                        ],
-                        niveles_riesgo_permitidos=["BAJA", "MEDIA", "ALTA"],
+                        perfil_competencia=None,
                         cantidad_disponible_consultada=Decimal(1000),
                         motivos=[],
                     )
@@ -123,7 +111,7 @@ def preparar(
                     )
                 )
     r = dto.ValidacionNacional(
-        contrato_version=2,
+        contrato_version=3,
         sistema_origen=s.sistema_origen,
         id_emergencia=s.id_emergencia,
         case_id=s.case_id,
@@ -532,7 +520,7 @@ def test_endpoints_callback_y_rbac_no_confian_en_caso_o_ids_del_cliente(
     assert client.get(f"{ruta}/ofertas-validadas").status_code == 403
     csrf = _autenticar_con_cookie(client, escenario.operador_municipal)
     response = client.get(f"{ruta}/ofertas-validadas")
-    assert response.status_code == 200 and response.json()["diagnosticos"] == []
+    assert response.status_code == 200 and response.json()["diagnosticos"]
     assert (
         client.post(
             f"{ruta}/adjudicaciones",
@@ -695,3 +683,39 @@ def test_recuperacion_no_vuelve_a_seleccion_ante_incertidumbre(
         ).id
         == comando.id
     )
+
+
+def test_evaluacion_historica_se_lee_pero_no_habilita_nueva_adjudicacion(
+    db_session: Session, escenario: Escenario, capacidad: UUID
+) -> None:
+    datos = preparar(db_session, escenario, capacidad)
+    resultado = objeto(datos.validacion)
+    resultado["contratoVersion"] = 2
+    for aporte in resultado["aportes"]:
+        aporte.pop("perfilCompetencia")
+        aporte.update(
+            {
+                "clasificacion": "PRINCIPAL",
+                "capacidadesHabilitadas": [],
+                "nivelesRiesgoPermitidos": [],
+            }
+        )
+    v = db_session.get(EvaluacionLocal, datos.validacion_id)
+    v.resultado, v.cobertura = resultado, {"lotes": []}
+    db_session.commit()
+    historico = evaluaciones.leer_resultado(v.resultado)
+    assert historico.contrato_version == 2
+    assert not evaluaciones.confirmacion(db_session, v).vigente
+    assert evaluaciones.elegibles(db_session, v, historico) == []
+    with pytest.raises(IntegracionLocalError, match="evaluación confirmada vigente"):
+        servicio.adjudicar(
+            db_session,
+            escenario.emergencia,
+            escenario.operador_municipal,
+            dto.AdjudicacionRequest(
+                adjudicacion_id=uuid4(),
+                validacion_id=v.id,
+                revision=v.revision,
+                aportes=[dto.Seleccion(aporte_id=1, cantidad=Decimal(1))],
+            ),
+        )

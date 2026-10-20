@@ -50,6 +50,7 @@ from app.services.evaluaciones import (
     confirmacion,
     elegibles,
     huella,
+    leer_resultado,
     objeto,
     ultima_evaluacion,
     ultima_ronda,
@@ -161,13 +162,11 @@ def ofertas_validadas(
         return dto.OfertasValidadasResponse(
             validacion=None, aportes=[], diagnosticos=[], permite_parcial=False
         )
-    resultado = dto.ValidacionNacional.model_validate(v.resultado)
+    resultado = leer_resultado(v.resultado)
     return dto.OfertasValidadasResponse(
         validacion=confirmacion(session, v),
         aportes=elegibles(session, v, resultado),
-        diagnosticos=resultado.aportes
-        if usuario.rol == RolUsuario.COORDINADOR_REGIONAL
-        else [],
+        diagnosticos=resultado.aportes,
         permite_parcial=_parcial(session, v),
     )
 
@@ -199,9 +198,7 @@ def decidir(
     c = ultima_ronda(session, e.id)
     preparada = None
     if datos.accion == dto.AccionEvaluacion.CONTINUAR_PARCIAL:
-        if not elegibles(
-            session, v, dto.ValidacionNacional.model_validate(v.resultado)
-        ):
+        if not elegibles(session, v, leer_resultado(v.resultado)):
             raise IntegracionLocalError("No hay aportes compatibles para continuar.")
     elif datos.accion == dto.AccionEvaluacion.REABRIR:
         ahora = datetime.now(UTC)
@@ -296,10 +293,7 @@ def adjudicar(
         return previa
     v = _evaluacion(session, e, datos.validacion_id, datos.revision)
     disponibles = {
-        a.aporte_id: a
-        for a in elegibles(
-            session, v, dto.ValidacionNacional.model_validate(v.resultado)
-        )
+        a.aporte_id: a for a in elegibles(session, v, leer_resultado(v.resultado))
     }
     if len({a.aporte_id for a in datos.aportes}) != len(datos.aportes):
         raise IntegracionLocalError("La selección repite aportes.", 422)
@@ -315,7 +309,7 @@ def adjudicar(
             or (not a.admite_fracciones and cantidad % 1)
         ):
             raise IntegracionLocalError(
-                "La selección contiene cantidades o aportes no habilitados.", 422
+                "La selección contiene cantidades o aportes incompatibles.", 422
             )
         por_recurso[a.recurso_nacional_id] = (
             por_recurso.get(a.recurso_nacional_id, Decimal(0)) + cantidad
@@ -538,11 +532,14 @@ def confirmar_compromisos(
             "Los compromisos no coinciden exactamente con la selección."
         )
     v = session.get(EvaluacionLocal, adj.evaluacion_id)
+    # La operación ya fue seleccionada y el resultado nacional coincide con su
+    # request inmutable. Usar el snapshot conserva callbacks pendientes legacy.
+    snapshot = OfertasConsolidadasResponse.model_validate(v.snapshot)
     aportes = {
         str(a.aporte_id): a
-        for a in elegibles(
-            session, v, dto.ValidacionNacional.model_validate(v.resultado)
-        )
+        for oferta in snapshot.ofertas
+        for item in oferta.items
+        for a in item.aportes
     }
     for ong_id, compromisos in por_ong.items():
         local_ids = {

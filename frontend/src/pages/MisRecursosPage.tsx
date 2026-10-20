@@ -36,16 +36,15 @@ export function MisRecursosPage({ session }: { session: Session }): ReactElement
         </div>
         <div className="grid gap-5 md:grid-cols-2">
           <article className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-semibold text-slate-950">Mis certificaciones</h2>
+            <h2 className="text-xl font-semibold text-slate-950">Perfil de competencia</h2>
             <p className="mt-3 flex-1 leading-7 text-slate-600">
-              Consultá tus acreditaciones, su vigencia y las capacidades
-              habilitadas de tu ONG.
+              Analizá las capacidades y cantidades declaradas por tu ONG.
             </p>
             <Link
-              to="/mis-recursos/certificaciones"
+              to="/mis-recursos/perfil-competencia"
               className="action-button action-primary mt-6 self-start"
             >
-              Ver mis certificaciones
+              Ver perfil de competencia
             </Link>
           </article>
           <article className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

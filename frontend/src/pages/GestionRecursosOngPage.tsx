@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { Link } from "react-router";
 import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
-import { CertificacionesOngPanel } from "../components/CertificacionesOng";
+import { PerfilCompetenciaPanel } from "../components/PerfilCompetencia";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
 import type { Session } from "../schemas/auth";
 import {
@@ -38,12 +38,12 @@ export function InventarioOngPage({ session }: { session: Session; }): ReactElem
   return <GestionRecursosOngPage session={session} vista="inventario" />;
 }
 
-export function CertificacionesOngPage({
+export function PerfilCompetenciaOngPage({
   session,
 }: {
   session: Session;
 }): ReactElement {
-  return <GestionRecursosOngPage session={session} vista="certificaciones" />;
+  return <GestionRecursosOngPage session={session} vista="perfil" />;
 }
 
 function GestionRecursosOngPage({
@@ -51,7 +51,7 @@ function GestionRecursosOngPage({
   vista,
 }: {
   session: Session;
-  vista: "inventario" | "certificaciones";
+  vista: "inventario" | "perfil";
 }): ReactElement {
   const inventario = useInventarioNacional(session, vista);
   const [feedback, setFeedback] = useState("");
@@ -66,8 +66,8 @@ function GestionRecursosOngPage({
               RescueSync
             </p>
             <h1 className="mt-1 text-xl font-bold text-slate-950">
-              {vista === "certificaciones"
-                ? "Certificaciones de mi ONG"
+              {vista === "perfil"
+                ? "Perfil de competencia de mi ONG"
                 : "Inventario de mi ONG"}
             </h1>
           </div>
@@ -98,8 +98,8 @@ function GestionRecursosOngPage({
             {session.usuario.organizacion?.nombre}
           </p>
           <p className="mt-2 max-w-3xl text-slate-600">
-            {vista === "certificaciones"
-              ? "Consultá tus acreditaciones y las capacidades habilitadas de tu ONG."
+            {vista === "perfil"
+              ? "Analizá las capacidades y cantidades declaradas por tu ONG."
               : "Registrá recursos y actualizá el inventario de tu ONG en el Sistema Nacional."}
           </p>
         </div>
@@ -148,8 +148,7 @@ function GestionRecursosOngPage({
                   {inventario.registrar.data.id}
                 </p>
                 <p className="mt-2">
-                  Ya podés gestionar tus recursos. Las certificaciones y la
-                  habilitación institucional se revisan por separado.
+                  Ya podés gestionar tus recursos y presentar ofertas.
                 </p>
               </div>
             ) : mostrarRegistro ? (
@@ -202,10 +201,9 @@ function GestionRecursosOngPage({
               <span className="sr-only">Volver a consultar acceso</span>
             </button>
           </section>
-        ) : vista === "certificaciones" ? (
-          <CertificacionesOngPanel
-            perfil={inventario.certificaciones}
-            catalogo={inventario.catalogoCertificaciones}
+        ) : vista === "perfil" ? (
+          <PerfilCompetenciaPanel
+            perfil={inventario.perfil}
           />
         ) : (
           <section aria-labelledby="inventario" className={panel}>

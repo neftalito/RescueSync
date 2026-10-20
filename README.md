@@ -1,5 +1,10 @@
 # RescueSync
 
+Las ONG operan sin certificaciones ni aprobación institucional previa. El
+[perfil de competencia](./docs/perfiles-competencia.md) describe sus recursos;
+la adjudicación controla compatibilidad y disponibilidad, sin límites por riesgo.
+
+
 RescueSync coordina la respuesta regional ante emergencias conectando municipios,
 centros coordinadores y ONGs. La prioridad actual es la Entrega 2: alta de
 emergencias, publicación de lotes, ofertas básicas, autenticación local e

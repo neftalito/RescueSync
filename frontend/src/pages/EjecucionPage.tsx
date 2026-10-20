@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type ReactElement } from "react";
 import { Link, useParams } from "react-router";
 import { consultarComandos, consultarEvaluacion, consultarSeguimiento, enviarComando } from "../api/ejecucion";
+import { ResumenCompetencia } from "../components/PerfilCompetencia";
 import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
 import { validarSeleccion } from "../schemas/ejecucion";
@@ -85,7 +86,7 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
         <h3 className="font-bold">Seleccionar aportes</h3>
         {!evaluacion.data?.aportes.length && <p>No hay aportes compatibles para seleccionar.</p>}
         {evaluacion.data?.aportes.map(a => <label key={a.aporteId} className="block rounded-xl border border-slate-200 p-3">
-          {a.descripcion || `Oferta ${a.ofertaId}`} · {a.nombreOng || `ONG ${a.ongId}`} · {a.tipoNecesidad || `Lote ${a.loteId}`} · {a.clasificacion === "PRINCIPAL" ? "Principal" : "Apoyo"} · ofrecido {a.cantidadOfrecida}, disponible {a.cantidadDisponible} {a.unidad}
+          {a.descripcion || `Oferta ${a.ofertaId}`} · {a.nombreOng || `ONG ${a.ongId}`} · {a.tipoNecesidad || `Lote ${a.loteId}`} · ofrecido {a.cantidadOfrecida}, disponible {a.cantidadDisponible} {a.unidad}
           <input aria-label={`Cantidad aporte ${a.aporteId}`} inputMode="decimal" className="ml-3 w-32 rounded border p-2" value={cantidades[a.aporteId] ?? ""} onChange={e => setCantidades({ ...cantidades, [a.aporteId]: e.target.value })} />
         </label>)}
         {!v.lotesCompatiblesCubiertos && !evaluacion.data?.permiteParcial && <p>El coordinador debe autorizar continuar con cobertura parcial.</p>}
@@ -95,7 +96,7 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
         <label className="block">Motivo de la decisión<textarea className="block w-full rounded border p-2" value={motivo} onChange={e => setMotivo(e.target.value)} maxLength={1000} /></label>
         {([["REABRIR", "Reabrir convocatoria"], ["REFORMULAR", "Reformular lotes"], ["CONTINUAR_PARCIAL", "Continuar con cobertura parcial"]] as const).map(([accion, texto]) => <button key={accion} className="action-button mr-2" disabled={mutation.isPending} onClick={() => decidir(accion)}>{texto}</button>)}
       </div>}
-      {rol === "COORDINADOR_REGIONAL" && evaluacion.data?.diagnosticos.map((d, i) => <p key={i}>Oferta {d.ofertaId} · ONG {d.ongId} · {d.clasificacion}: {d.motivos.map(m => m.mensaje).join("; ")}</p>)}
+      {evaluacion.data?.diagnosticos.map((d, i) => <article key={i} className="rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">Oferta {d.ofertaId} · ONG {d.ongId}</h3><ResumenCompetencia perfil={d.perfilCompetencia} /><p>{d.motivos.map(m => m.mensaje).join("; ")}</p></article>)}
     </section>}
     {seguimiento.data && <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="text-xl font-bold">Seguimiento · {seguimiento.data.estado.replaceAll("_", " ")}</h2>

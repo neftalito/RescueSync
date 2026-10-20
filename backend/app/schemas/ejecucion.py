@@ -15,6 +15,7 @@ from app.db.models.enums import (
 )
 from app.schemas.bonita import CantidadExacta
 from app.schemas.certificaciones import CapacidadHabilitadaResponse
+from app.schemas.perfiles import PerfilCompetencia
 
 type Cantidad = Annotated[
     CantidadExacta, Field(gt=0, max_digits=14, decimal_places=3, allow_inf_nan=False)
@@ -51,7 +52,7 @@ class MotivoValidacion(Contrato):
     mensaje: str = Field(max_length=1000)
 
 
-class AporteEvaluado(Contrato):
+class AporteEvaluadoLegacy(Contrato):
     oferta_id: IdLocal
     version: IdLocal
     item_id: IdLocal
@@ -69,6 +70,22 @@ class AporteEvaluado(Contrato):
     motivos: list[MotivoValidacion]
 
 
+class AporteEvaluado(Contrato):
+    oferta_id: IdLocal
+    version: IdLocal
+    item_id: IdLocal
+    lote_id: IdLocal
+    aporte_id: IdLocal | None
+    ong_id: IdLocal
+    ong_nacional_id: UUID | None
+    recurso_nacional_id: UUID | None
+    cantidad_ofrecida: Cantidad
+    unidad: str = Field(min_length=1, max_length=40)
+    perfil_competencia: PerfilCompetencia | None
+    cantidad_disponible_consultada: Disponible | None
+    motivos: list[MotivoValidacion]
+
+
 class RecursoConsultado(Contrato):
     recurso_nacional_id: UUID
     ong_nacional_id: UUID
@@ -78,8 +95,20 @@ class RecursoConsultado(Contrato):
     cantidad_solicitada_snapshot: Disponible
 
 
-class ValidacionNacional(Contrato):
+class ValidacionNacionalLegacy(Contrato):
     contrato_version: Literal[2]
+    sistema_origen: str
+    id_emergencia: IdLocal
+    case_id: str
+    convocatoria_id: IdLocal
+    numero: IdLocal
+    evaluado_en: AwareDatetime
+    aportes: list[AporteEvaluadoLegacy] = Field(max_length=5000)
+    recursos_consultados: list[RecursoConsultado] = Field(max_length=5000)
+
+
+class ValidacionNacional(Contrato):
+    contrato_version: Literal[3]
     sistema_origen: str
     id_emergencia: IdLocal
     case_id: str
@@ -143,13 +172,13 @@ class AporteElegible(Contrato):
     cantidad_disponible: Disponible
     unidad: str
     admite_fracciones: bool
-    clasificacion: Clasificacion
+    perfil_competencia: PerfilCompetencia | None
 
 
 class OfertasValidadasResponse(Contrato):
     validacion: PerfilesResponse | None
     aportes: list[AporteElegible]
-    diagnosticos: list[AporteEvaluado]
+    diagnosticos: list[AporteEvaluado | AporteEvaluadoLegacy]
     permite_parcial: bool
 
 

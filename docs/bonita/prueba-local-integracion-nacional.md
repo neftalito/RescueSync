@@ -1,5 +1,10 @@
 # Prueba local paso a paso: RescueSync + Bonita + API nacional
 
+> Actualización 20/10/2026: [perfiles informativos](../perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
 Esta guía levanta en local, con Docker, los dos repositorios:
 
 - `RescueSync`: frontend, backend, PostgreSQL y Bonita 10.4.

@@ -16,7 +16,7 @@ import {
 } from "vitest";
 import type { Session } from "../schemas/auth";
 import { MisRecursosPage } from "./MisRecursosPage";
-import { CertificacionesOngPage, InventarioOngPage } from "./GestionRecursosOngPage";
+import { PerfilCompetenciaOngPage, InventarioOngPage } from "./GestionRecursosOngPage";
 
 const base = "http://localhost:8000/api/v1/mi-ong";
 const ong = "00000000-0000-4000-8000-000000000001";
@@ -46,32 +46,14 @@ const session: Session = {
   },
   csrf_token: "csrf-demo",
 };
-const certificacion = {
-  id: "00000000-0000-4000-8000-000000000010",
-  codigo: "SANITARIA",
-  revision: 1,
-  nombre: "Respuesta sanitaria",
-  activa: true,
-  alcances: [
-    {
-      capacidadId,
-      codigo: "AMBULANCIAS",
-      nombre: "Ambulancias",
-      tipo: "VEHICULO",
-      unidad: "vehículos",
-      admiteFracciones: false,
-      activa: true,
-      riesgoMaximo: "MEDIA",
-    },
-  ],
-};
 const perfil = {
-  ongId: ong,
-  estadoOng: "HABILITADA",
+  ongId: ong, nombre: "ONG de prueba", estadoOng: "HABILITADA",
   evaluadoEn: "2026-10-14T12:00:00Z",
-  acreditaciones: [],
-  capacidadesHabilitadas: [],
-  motivosInstitucionales: [],
+  capacidadesDeclaradas: [{
+    capacidadId, codigo: "AMBULANCIAS", nombre: "Ambulancias", tipo: "VEHICULO",
+    unidad: "vehículos", admiteFracciones: false,
+    cantidadTotal: "10.000", cantidadComprometida: "4.000", cantidadDisponible: "6.000",
+  }],
 };
 const server = setupServer();
 let conectada = true;
@@ -91,10 +73,7 @@ beforeEach(() => {
   conectada = true;
   recursos = [recurso];
   server.use(
-    http.get(`${base}/certificaciones`, () => HttpResponse.json(perfil)),
-    http.get(`${base}/catalogo-certificaciones`, () =>
-      HttpResponse.json([certificacion]),
-    ),
+    http.get(`${base}/perfil-competencia`, () => HttpResponse.json(perfil)),
     http.get(`${base}/conexion`, () =>
       HttpResponse.json({
         vinculada: true,
@@ -124,7 +103,7 @@ afterEach(() => {
   server.resetHandlers();
 });
 afterAll(() => server.close());
-function renderPage(vista: "inicio" | "inventario" | "certificaciones" = "inventario"): void {
+function renderPage(vista: "inicio" | "inventario" | "perfil-competencia" = "inventario"): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -134,7 +113,7 @@ function renderPage(vista: "inicio" | "inventario" | "certificaciones" = "invent
         <Routes>
           <Route path="/mis-recursos" element={<MisRecursosPage session={session} />} />
           <Route path="/mis-recursos/inventario" element={<InventarioOngPage session={session} />} />
-          <Route path="/mis-recursos/certificaciones" element={<CertificacionesOngPage session={session} />} />
+          <Route path="/mis-recursos/perfil-competencia" element={<PerfilCompetenciaOngPage session={session} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -144,14 +123,14 @@ function renderPage(vista: "inicio" | "inventario" | "certificaciones" = "invent
 describe("Mis recursos nacionales", () => {
   it("ofrece dos tarjetas y navega a vistas independientes sin cargar datos ajenos", async () => {
     let consultasInventario = 0;
-    let consultasCertificaciones = 0;
+    let consultasPerfiles = 0;
     server.use(
       http.get(`${base}/recursos`, () => {
         consultasInventario++;
         return HttpResponse.json(recursos);
       }),
-      http.get(`${base}/certificaciones`, () => {
-        consultasCertificaciones++;
+      http.get(`${base}/perfil-competencia`, () => {
+        consultasPerfiles++;
         return HttpResponse.json(perfil);
       }),
     );
@@ -160,185 +139,77 @@ describe("Mis recursos nacionales", () => {
     const header = screen.getByRole("heading", { name: "Mis recursos", level: 1 }).closest("header");
     expect(within(header!).getByText("RescueSync")).toBeInTheDocument();
     expect(within(header!).getByRole("link", { name: "Volver al inicio" })).toHaveAttribute("href", "/");
-    expect(screen.getByRole("link", { name: "Ver mis certificaciones" })).toHaveAttribute("href", "/mis-recursos/certificaciones");
+    expect(screen.getByRole("link", { name: "Ver perfil de competencia" })).toHaveAttribute("href", "/mis-recursos/perfil-competencia");
     expect(screen.getByRole("link", { name: "Gestionar inventario" })).toHaveAttribute("href", "/mis-recursos/inventario");
     expect(consultasInventario).toBe(0);
-    expect(consultasCertificaciones).toBe(0);
-    await user.click(screen.getByRole("link", { name: "Ver mis certificaciones" }));
-    expect(await screen.findByText("Habilitada")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Certificaciones de mi ONG", level: 1 })).toBeInTheDocument();
+    expect(consultasPerfiles).toBe(0);
+    await user.click(screen.getByRole("link", { name: "Ver perfil de competencia" }));
+    expect(await screen.findByText("ONG de prueba · Activa")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Perfil de competencia de mi ONG", level: 1 })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Registrar recurso" })).not.toBeInTheDocument();
     expect(consultasInventario).toBe(0);
-    const consultasPerfil = consultasCertificaciones;
+    const consultasPerfil = consultasPerfiles;
     await user.click(screen.getByRole("link", { name: "Volver a Mis recursos" }));
     await user.click(screen.getByRole("link", { name: "Gestionar inventario" }));
     expect(await screen.findByRole("heading", { name: "Ambulancias de rescate" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Inventario de mi ONG", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Registrar recurso" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Mis certificaciones" })).not.toBeInTheDocument();
-    expect(consultasCertificaciones).toBe(consultasPerfil);
+    expect(screen.queryByRole("heading", { name: "Perfil de competencia" })).not.toBeInTheDocument();
+    expect(consultasPerfiles).toBe(consultasPerfil);
     expect(consultasInventario).toBe(1);
   });
 
-  it("separa estado, capacidades, historial y catálogo en secciones identificables", async () => {
-    renderPage("certificaciones");
-    const estado = await screen.findByRole("region", { name: "Estado institucional" });
-    expect(await within(estado).findByText("Habilitada")).toBeInTheDocument();
-    const capacidades = screen.getByRole("region", { name: "Capacidades habilitadas" });
-    expect(within(capacidades).getByText(/Tu ONG no tiene capacidades habilitadas/)).toBeInTheDocument();
-    const historial = screen.getByRole("region", { name: "Historial de acreditaciones" });
-    expect(within(historial).getByText("Tu ONG todavía no tiene acreditaciones registradas.")).toBeInTheDocument();
-    const catalogo = screen.getByRole("region", { name: "Catálogo nacional de certificaciones" });
-    expect(within(catalogo).getByText(/Estar en este catálogo no acredita a tu ONG/)).toBeInTheDocument();
-    const certificacionCatalogo = await within(catalogo).findByText("Respuesta sanitaria");
-    const detalle = certificacionCatalogo.closest("details");
-    expect(detalle).not.toHaveAttribute("open");
-    await userEvent.click(certificacionCatalogo);
-    expect(detalle).toHaveAttribute("open");
-    expect(within(catalogo).getByRole("region", {
-      name: "Desplazamiento de certificaciones nacionales",
-    })).toHaveAttribute("tabindex", "0");
-    expect(within(catalogo).getByText("Riesgo máximo: Medio")).toBeVisible();
-    expect(within(historial).queryByText("Respuesta sanitaria")).not.toBeInTheDocument();
+  it("describe recursos sin certificados ni permisos por riesgo", async () => {
+    renderPage("perfil-competencia");
+    expect(await screen.findByRole("heading", { name: "Ambulancias" })).toBeInTheDocument();
+    expect(screen.getByText("10.000 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("4.000 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("6.000 vehículos")).toBeInTheDocument();
+    expect(screen.queryByText(/riesgo permitido/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/acreditaciones/i)).not.toBeInTheDocument();
   });
 
-  it("conserva el estado institucional cuando falla únicamente el catálogo", async () => {
-    server.use(http.get(`${base}/catalogo-certificaciones`, () =>
-      HttpResponse.json({ detail: "No pudimos cargar el catálogo nacional." }, { status: 504 }),
-    ));
-    renderPage("certificaciones");
-    const catalogo = await screen.findByRole("region", { name: "Catálogo nacional de certificaciones" });
-    expect(await within(catalogo).findByRole("alert")).toHaveTextContent("No pudimos cargar el catálogo nacional.");
-    expect(await within(screen.getByRole("region", {
-      name: "Estado institucional",
-    })).findByText("Habilitada")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Capacidades habilitadas" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Historial de acreditaciones" })).toBeInTheDocument();
+  it("conserva capacidades cuando el stock está completamente comprometido", async () => {
+    server.use(http.get(`${base}/perfil-competencia`, () => HttpResponse.json({
+      ...perfil, capacidadesDeclaradas: [{ ...perfil.capacidadesDeclaradas[0], cantidadComprometida: "10.000", cantidadDisponible: "0.000" }],
+    })));
+    renderPage("perfil-competencia");
+    expect(await screen.findByRole("heading", { name: "Ambulancias" })).toBeInTheDocument();
+    expect(screen.getByText("0.000 vehículos")).toBeInTheDocument();
   });
 
-  it("muestra vigencia, vencimiento y niveles de competencia por capacidad", async () => {
-    const credencial = {
-      id: "00000000-0000-4000-8000-000000000011",
-      certificacion,
-      emisor: "Autoridad demo",
-      numeroCredencial: "DEMO-VIGENTE",
-      vigenteDesde: "2026-01-01T00:00:00Z",
-      vigenteHasta: "2027-01-01T00:00:00Z",
-      estado: "OTORGADA",
-      estadoVigencia: "VIGENTE",
-      revocadaEn: null,
-      motivoRevocacion: null,
-      motivos: [],
-    };
-    server.use(
-      http.get(`${base}/certificaciones`, () =>
-        HttpResponse.json({
-          ...perfil,
-          acreditaciones: [
-            credencial,
-            {
-              ...credencial,
-              id: "00000000-0000-4000-8000-000000000012",
-              numeroCredencial: "DEMO-VENCIDA",
-              estadoVigencia: "VENCIDA",
-              vigenteHasta: "2026-10-01T00:00:00Z",
-              motivos: [
-                {
-                  codigo: "ACREDITACION_VENCIDA",
-                  mensaje: "La acreditación venció.",
-                  capacidadId: null,
-                },
-              ],
-            },
-          ],
-          capacidadesHabilitadas: [
-            {
-              capacidadId,
-              codigo: "AMBULANCIAS",
-              nombre: "Ambulancias",
-              unidad: "vehículos",
-              riesgoMaximo: "MEDIA",
-              nivelesRiesgoPermitidos: ["BAJA", "MEDIA"],
-              acreditacionIds: [credencial.id],
-            },
-          ],
-        }),
-      ),
-    );
-    renderPage("certificaciones");
-    expect(
-      await screen.findByText("DEMO-VIGENTE"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("DEMO-VENCIDA")).toBeInTheDocument();
-    expect(screen.getByText("Vigente", { exact: true })).toBeInTheDocument();
-    expect(screen.getByText("Vencida", { exact: true })).toBeInTheDocument();
-    const acreditacionVencida = screen.getByText("DEMO-VENCIDA").closest("details");
-    expect(acreditacionVencida).not.toHaveAttribute("open");
-    await userEvent.click(screen.getByText("DEMO-VENCIDA"));
-    expect(acreditacionVencida).toHaveAttribute("open");
-    expect(screen.getByText("La acreditación venció.")).toBeVisible();
-    expect(screen.getByRole("region", { name: "Desplazamiento de acreditaciones" })).toHaveAttribute("tabindex", "0");
-    expect(screen.getByRole("region", { name: "Desplazamiento de capacidades habilitadas" })).toHaveAttribute("tabindex", "0");
-    const niveles = screen.getByRole("list", { name: "Niveles permitidos para Ambulancias" });
-    expect(within(niveles).getByText("Bajo")).toBeInTheDocument();
-    expect(within(niveles).getByText("Medio")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Otorgar|Renovar|Revocar/ }),
-    ).not.toBeInTheDocument();
+  it("muestra un perfil vacío sin exigir validación", async () => {
+    server.use(http.get(`${base}/perfil-competencia`, () => HttpResponse.json({ ...perfil, capacidadesDeclaradas: [] })));
+    renderPage("perfil-competencia");
+    expect(await screen.findByText("No hay recursos activos declarados.")).toBeInTheDocument();
   });
-  it("explica la ONG pendiente y el historial vacío sin otorgar competencia", async () => {
-    server.use(
-      http.get(`${base}/certificaciones`, () =>
-        HttpResponse.json({
-          ...perfil,
-          estadoOng: "PENDIENTE",
-          motivosInstitucionales: [
-            {
-              codigo: "ONG_PENDIENTE",
-              mensaje: "La ONG tiene pendiente su habilitación institucional.",
-              capacidadId: null,
-            },
-          ],
-        }),
-      ),
-    );
-    renderPage("certificaciones");
-    expect(
-      await screen.findByText("Pendiente de revisión"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Tu ONG todavía no tiene acreditaciones registradas."),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Tu ONG no tiene capacidades habilitadas/),
-    ).toBeInTheDocument();
-  });
+
   it("permite reintentar una consulta fallida sin conservar un perfil habilitado", async () => {
     server.use(
-      http.get(`${base}/certificaciones`, () =>
+      http.get(`${base}/perfil-competencia`, () =>
         HttpResponse.json(
           { detail: "El Sistema Nacional demoró en responder." },
           { status: 504 },
         ),
       ),
     );
-    renderPage("certificaciones");
+    renderPage("perfil-competencia");
     expect(
       await screen.findByText("El Sistema Nacional demoró en responder."),
     ).toBeInTheDocument();
     server.use(
-      http.get(`${base}/certificaciones`, () => HttpResponse.json(perfil)),
+      http.get(`${base}/perfil-competencia`, () => HttpResponse.json(perfil)),
     );
     await userEvent.click(
-      screen.getByRole("button", { name: "Actualizar certificaciones" }),
+      screen.getByRole("button", { name: "Actualizar perfil" }),
     );
     expect(
-      await screen.findByText("Habilitada"),
+      await screen.findByText("ONG de prueba · Activa"),
     ).toBeInTheDocument();
   });
   it("muestra revisión administrativa ante revocación del acceso", async () => {
     server.use(
-      http.get(`${base}/certificaciones`, () => {
+      http.get(`${base}/perfil-competencia`, () => {
         conectada = false;
         return HttpResponse.json(
           { detail: "La credencial nacional expiró." },
@@ -346,12 +217,12 @@ describe("Mis recursos nacionales", () => {
         );
       }),
     );
-    renderPage("certificaciones");
+    renderPage("perfil-competencia");
     expect(
       await screen.findByRole("heading", { name: "El acceso nacional requiere revisión" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: "Mis certificaciones" }),
+      screen.queryByRole("heading", { name: "Perfil de competencia" }),
     ).not.toBeInTheDocument();
   });
   it("presenta la vinculación pendiente sin pedir credenciales", async () => {

@@ -364,7 +364,7 @@ def _migrar_vinculo_demo_inexistente(
         )
     )
     try:
-        cliente.certificaciones_ong(token.access_token.get_secret_value(), anterior_id)
+        cliente.perfil_competencia(token.access_token.get_secret_value(), anterior_id)
         return
     except ErrorNacional as error:
         if error.status != 404:

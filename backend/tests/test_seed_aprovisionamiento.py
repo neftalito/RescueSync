@@ -197,15 +197,14 @@ def test_solo_migra_vinculo_demo_heredado_si_la_ong_nacional_no_existe(
                 "expires_in": 1800,
             },
         )
-        mock.get(f"{base}/ongs/{anterior_id}/certificaciones").respond(
+        mock.get(f"{base}/ongs/{anterior_id}/perfil-competencia").respond(
             200 if existe else 404,
             json={
                 "ongId": str(anterior_id),
-                "estadoOng": "PENDIENTE",
+                "estadoOng": "HABILITADA",
+                "nombre": "ONG de prueba",
                 "evaluadoEn": "2026-10-19T00:00:00Z",
-                "acreditaciones": [],
-                "capacidadesHabilitadas": [],
-                "motivosInstitucionales": [],
+                "capacidadesDeclaradas": [],
             }
             if existe
             else {"detail": "No existe"},
@@ -281,7 +280,7 @@ def test_un_fallo_al_comprobar_una_ong_demo_no_borra_su_acceso(
                 "expires_in": 1800,
             },
         )
-        mock.get(f"{base}/ongs/{acceso.ong_id}/certificaciones").respond(status)
+        mock.get(f"{base}/ongs/{acceso.ong_id}/perfil-competencia").respond(status)
         with pytest.raises(ErrorNacional):
             aprovisionar_ongs_demo(db_session, nacional)
         db_session.refresh(acceso)
