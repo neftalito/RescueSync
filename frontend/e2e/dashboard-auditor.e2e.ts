@@ -277,7 +277,10 @@ test("los iconos del header muestran novedades y resaltan hover y pulsación", a
       return valor;
     }, nombre);
   await expect(campana).toHaveAccessibleDescription("1 notificación sin leer");
-  expect(await campana.textContent()).toBe("");
+  const emblema = campana.getByText("1", { exact: true });
+  await expect(emblema).toBeVisible();
+  await expect(emblema).toHaveAttribute("aria-hidden", "true");
+  await expect(campana).toHaveAttribute("aria-expanded", "false");
   expect(await salir.textContent()).toBe("");
   expect(await opciones.textContent()).toBe("");
   const posicionSalida = await salir.boundingBox();
@@ -323,6 +326,7 @@ test("los iconos del header muestran novedades y resaltan hover y pulsación", a
     "No hay notificaciones sin leer",
   );
   await expect(campana.locator("svg")).toHaveAttribute("data-estado", "quieta");
+  await expect(emblema).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(campana).toBeFocused();
   await salir.hover();

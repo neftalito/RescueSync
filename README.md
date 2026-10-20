@@ -59,6 +59,9 @@ recuperarla mediante `GET /api/v1/notificaciones` y marcarla como leída con
 El botón **Notificaciones** abre un panel adaptable a móviles y escritorio, con
 desplazamiento interno para listas largas. Se cierra al hacer clic o tocar fuera
 del panel, volver a pulsar el botón o presionar `Escape`.
+La campana muestra un emblema con la cantidad de notificaciones sin leer, que se
+actualiza al recibir novedades y al marcarlas como vistas. El emblema desaparece
+cuando no quedan notificaciones pendientes.
 
 El engranaje del encabezado abre **Opciones** (`/opciones`), donde la sección
 **Cambiar contraseña** permite actualizar la clave de la cuenta. Las cuentas con
