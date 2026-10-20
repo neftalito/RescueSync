@@ -30,58 +30,60 @@ se muestran como datos calculados.
 
 ## Preparar y probar los datos de ejemplo
 
-Configurar una vez `NACIONAL_ENCRYPTION_KEY` en el `.env` de RescueSync y
-recrear el backend si ya estaba levantado con
+Configurar la cuenta `INTEGRACION` del emisor según
+[Alta y acceso nacional automático](./acceso-nacional-automatico.md), además de
+`NACIONAL_BASE_URL` y una `NACIONAL_ENCRYPTION_KEY` estable en el `.env` de RescueSync.
+La URL debe apuntar a la API donde se quieren crear las ONG, por ejemplo Render.
+Luego recrear el backend si ya estaba levantado con
 `docker compose up -d --force-recreate backend`. El seed y el backend deben usar
 la misma clave Fernet
 estable. Si falta, el seed local falla con un mensaje accionable antes de crear
 datos; no informa éxito con un acceso incompleto.
 
-Levantar ambos proyectos desde sus propias raíces. Primero, en RescueSyncAPI:
-
-```bash
-docker compose up --build -d
-docker compose run --rm api python -m app.scripts.seed
-```
-
-Luego, en RescueSync:
+Con la API nacional disponible y migrada, ejecutar desde RescueSync:
 
 ```bash
 docker compose up --build -d
 docker compose run --rm backend python -m app.scripts.seed
 ```
 
-La nueva migración local agrega `organizacion.ong_nacional_id` y
-`conexion_nacional`; el servicio `migrate` la aplica antes de arrancar el backend.
-Los seeds de ambos proyectos comparten dos UUID demo explícitos y pueden ejecutarse
-en cualquier orden. El seed local no escribe inventario nacional ni hace llamadas
-HTTP. El seed nacional carga los recursos faltantes y preserva sus cantidades si
-ya fueron editados. Una vinculación local demo distinta no se sobrescribe.
-El seed nacional crea las dos cuentas `TECNICA_ONG` y el local guarda sus
-credenciales cifradas en `acceso_nacional`. No hace falta importar credenciales ni
-configurar la cuenta de aprovisionamiento para el escenario demo. Después de
-correr ambos seeds, entrar con `ong@rescuesync.org` / `ong123` o
-`redmedica@rescuesync.org` / `redmedica123` permite abrir Mis recursos directamente.
-Repetir los seeds conserva los accesos importados, las contraseñas técnicas
-rotadas y las revocaciones. No restablece credenciales invalidadas adrede.
+El seed confirma primero los datos locales y las solicitudes de alta con secretos
+aleatorios cifrados. Después llama a `/integraciones/ongs/{referencia}` para crear
+cada ONG nacional en estado `PENDIENTE` y su cuenta `TECNICA_ONG`. Guarda los UUID y
+el login devueltos por esa API; no inventa vínculos nacionales. No es necesario
+ejecutar el seed nacional ni importar credenciales por consola.
 
-| ONG | Cuenta | Contraseña local | Contraseña nacional | Inventario inicial |
-| --- | --- | --- | --- | --- |
-| Ayuda Sin Fronteras | `ong@rescuesync.org` | `ong123` | `ong-nacional123` | Agua: 5000 litros; paramédicos: 12 personas |
-| Red Médica Solidaria | `redmedica@rescuesync.org` | `redmedica123` | `redmedica123` | Ambulancias: 4 vehículos; paramédicos: 20 personas |
+No carga recursos, certificaciones ni habilitaciones. El inventario de las ONG
+nuevas empieza vacío y se puede cargar manualmente en **Mis recursos**:
 
-Para altas de ONG fuera del escenario demo, configurar el emisor según
-[Alta y acceso nacional automático](./acceso-nacional-automatico.md). Las nuevas
-ONG creadas desde Administración de organizaciones se registran y vinculan con
+| ONG | Cuenta local | Contraseña local |
+| --- | --- | --- |
+| Ayuda Sin Fronteras | `ong@rescuesync.org` | `ong123` |
+| Red Médica Solidaria | `redmedica@rescuesync.org` | `redmedica123` |
+
+Ante un timeout o rechazo nacional, el comando termina con código 1 y conserva
+los datos locales. Corregir la causa y repetir el mismo comando reutiliza la
+referencia, el contenido y el secreto de cada solicitud, incluso si la API ya
+confirmó el alta antes del timeout. Las altas completadas no se duplican.
+
+Las nuevas ONG creadas desde Administración de organizaciones se registran y vinculan con
 su cuenta técnica automáticamente. El identificador es generado y el contacto es
 opcional. Mis recursos queda disponible al completar el alta.
 
 Si la API no responde, la tarjeta de la organización permite **Reintentar alta
 nacional**. Las ONG locales anteriores sin vínculo también pueden completar el
 registro desde Mis recursos, sin ingresar credenciales ni identificadores.
-Las ONG demo ya vinculadas reciben su acceso técnico faltante al volver a ejecutar
-los seeds actualizados. Para otras ONG nacionales anteriores ya vinculadas,
-conservar la importación de credenciales verificada; el seed no las modifica.
+Si una versión anterior del seed guardó UUID demo sin crear sus registros
+nacionales, volver a ejecutar el seed actualizado los recupera automáticamente:
+verifica con la cuenta de integración que la ONG anterior responde `404` en su
+perfil de certificaciones y sólo entonces reemplaza el vínculo y la credencial
+pública del fixture por un alta real. Un rechazo de autenticación, un timeout o
+una ONG existente no permiten reemplazar el vínculo. Los accesos importados,
+rotados o revocados de ONG existentes se conservan y requieren el procedimiento
+administrativo de recuperación cuando corresponda.
+
+`app.scripts.seed_masivo` conserva su carga sintética independiente; consultar su
+[modalidad e integración nacional](./seed-masivo.md).
 
 ## Configuración
 

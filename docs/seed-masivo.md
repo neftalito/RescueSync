@@ -5,11 +5,12 @@ con [Faker](https://faker.readthedocs.io/) (`es_AR`), cantidades enteras y fecha
 UTC distribuidas en los últimos seis meses. Faker es una dependencia de desarrollo;
 reconstruir la imagen después de incorporar estos cambios.
 
-Para cada demostración, elegir **demo** (`app.scripts.seed`) para un escenario
-pequeño o **masivo** (`app.scripts.seed_masivo`) para alta carga, y usar la misma
-modalidad en RescueSyncAPI. Cada modalidad se puede cargar por sí sola sobre una
-base preparada para ese escenario; el masivo no necesita ejecutar antes el demo.
-Ambas modalidades usan el mismo administrador inicial.
+Elegir **demo** (`app.scripts.seed`) para un escenario pequeño o **masivo**
+(`app.scripts.seed_masivo`) para alta carga. El demo aprovisiona sus ONG y cuentas
+técnicas mediante la API nacional sin cargar inventario. El masivo conserva UUID
+y recursos sintéticos coordinados: para consultar su inventario se necesita el
+masivo de RescueSyncAPI con el mismo `--seed`. El masivo no necesita ejecutar
+antes el demo. Ambas modalidades usan el mismo administrador inicial.
 
 Desde la raíz de RescueSync, con PostgreSQL levantado, migraciones al día y
 `NACIONAL_ENCRYPTION_KEY` configurada en `.env` como indica el inicio rápido:

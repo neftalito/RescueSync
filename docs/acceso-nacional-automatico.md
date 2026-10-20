@@ -65,8 +65,8 @@ se interpreta dentro del emisor autenticado.
 - La vinculación manual sigue disponible para registros nacionales anteriores.
   No se reclaman registros existentes por nombre ni se reemplazan sus cuentas.
   Una ONG anterior ya vinculada y sin acceso conserva el procedimiento de
-  importación descrito abajo. Las dos ONG demo reciben acceso técnico al volver
-  a ejecutar los seeds coordinados; no se modifican otras identidades anteriores.
+  importación descrito abajo. El seed demo usa el mismo aprovisionamiento para
+  crear las dos ONG y sus cuentas técnicas; no se modifican otras identidades anteriores.
 - Cambiar o eliminar un vínculo borra la solicitud y el acceso anteriores; una
   respuesta atrasada no puede restablecerlos. Guardar el mismo UUID los conserva.
 
@@ -106,8 +106,14 @@ un nuevo upgrade no puede reconstruir el secreto de una solicitud descartada.
 
 ## Seeds de desarrollo
 
-Los seeds coordinados crean las cuentas técnicas de las dos ONG demo y guardan
-sus accesos cifrados localmente. Basta configurar la clave Fernet estable y correr
-ambos seeds; no requieren aprovisionamiento ni importación por consola. No se
-reemplazan accesos importados ni se recuperan revocaciones. El recorrido está en
-[Inventario nacional](./inventario-nacional.md).
+`python -m app.scripts.seed` confirma los datos locales y aprovisiona las dos ONG
+demo y sus cuentas técnicas en la API de `NACIONAL_BASE_URL`. Requiere la clave
+Fernet estable y las credenciales de integración descritas arriba. No necesita
+ejecutar el seed de RescueSyncAPI ni carga inventario o certificaciones.
+
+Un fallo nacional conserva la solicitud cifrada para repetir el mismo comando.
+Los UUID sintéticos del seed anterior sólo se reemplazan si la API confirma que
+esa ONG no existe y la credencial local sigue siendo la pública del fixture.
+Los vínculos existentes, accesos importados y revocaciones se conservan. El
+recorrido está en [Inventario nacional](./inventario-nacional.md). El seed masivo
+mantiene su modalidad de carga sintética coordinada independiente.

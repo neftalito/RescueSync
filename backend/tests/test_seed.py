@@ -1,6 +1,7 @@
 import json
+import re
 from collections.abc import Iterator
-from uuid import NAMESPACE_URL, uuid5
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -21,9 +22,12 @@ from app.db.models import (
     Organizacion,
     Usuario,
 )
+from app.db.models.aprovisionamiento import AprovisionamientoNacional
 from app.db.session import get_db
+from app.integrations.nacional.cliente import ClienteNacional
 from app.main import app
-from app.scripts.seed import seed_development_data
+from app.scripts.seed import aprovisionar_ongs_demo, seed_development_data
+from app.services.acceso_nacional import cifrador
 from app.services.auth import autenticar_usuario
 
 
@@ -33,6 +37,14 @@ def cifrado_demo(monkeypatch: pytest.MonkeyPatch) -> None:
         get_settings(),
         "nacional_encryption_key",
         SecretStr(Fernet.generate_key().decode()),
+    )
+    monkeypatch.setattr(
+        get_settings(), "nacional_aprovisionamiento_login", "emisor-seed"
+    )
+    monkeypatch.setattr(
+        get_settings(),
+        "nacional_aprovisionamiento_password",
+        SecretStr("secreto-emisor"),
     )
 
 
@@ -186,21 +198,18 @@ def test_seed_deja_convocatoria_lotes_y_oferta_para_pruebas(
     )
 
 
-def test_seed_vincula_las_dos_ongs_a_sus_uuid_nacionales(db_session: Session) -> None:
-    from uuid import NAMESPACE_URL, uuid5
-
+def test_seed_prepara_altas_sin_fabricar_uuid_ni_accesos_nacionales(
+    db_session: Session,
+) -> None:
     seed_development_data(db_session)
-    for nombre, referencia in (
-        ("Ayuda Sin Fronteras", "ayuda-sin-fronteras"),
-        ("Red Médica Solidaria", "red-medica-solidaria"),
-    ):
+    for nombre in ("Ayuda Sin Fronteras", "Red Médica Solidaria"):
         ong = db_session.scalar(
             select(Organizacion).where(Organizacion.nombre == nombre)
         )
         assert ong is not None
-        assert ong.ong_nacional_id == uuid5(
-            NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}"
-        )
+        assert ong.ong_nacional_id is None
+        assert db_session.get(AccesoNacional, ong.id) is None
+        assert db_session.get(AprovisionamientoNacional, ong.id) is not None
 
 
 @pytest.mark.parametrize(
@@ -217,25 +226,28 @@ def test_login_seed_permite_ver_recursos_sin_importar_credenciales(
 ) -> None:
     seed_development_data(db_session)
     db_session.commit()
-    ong_id = uuid5(NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}")
-    cuenta_id = uuid5(NAMESPACE_URL, f"rescuesync-demo:cuenta-tecnica:{referencia}")
+    ong_id, cuenta_id = uuid4(), uuid4()
     ong = db_session.scalar(
-        select(Organizacion).where(Organizacion.ong_nacional_id == ong_id)
+        select(Organizacion)
+        .join(Usuario, Usuario.organizacion_id == Organizacion.id)
+        .where(Usuario.email == email)
     )
     assert ong is not None
-    acceso = db_session.get(AccesoNacional, ong.id)
-    assert acceso is not None and acceso.cuenta_id == cuenta_id
-    secreto = f"demo-only-rescuesync-tecnica:{referencia}:2026"
-    assert secreto not in acceso.secreto_cifrado
+    pendiente = db_session.get(AprovisionamientoNacional, ong.id)
+    assert pendiente is not None
+    secreto = cifrador().decrypt(pendiente.secreto_cifrado.encode()).decode()
+    nombre_ong = ong.nombre
 
     def database() -> Iterator[Session]:
         yield db_session
 
     def login_nacional(request: httpx.Request) -> httpx.Response:
-        assert json.loads(request.content) == {
-            "identificadorLogin": f"demo-tecnica-{referencia}",
-            "password": secreto,
-        }
+        datos = json.loads(request.content)
+        if datos["identificadorLogin"] != "emisor-seed":
+            assert datos == {
+                "identificadorLogin": f"tecnica-{referencia}",
+                "password": secreto,
+            }
         return httpx.Response(
             200,
             json={
@@ -245,11 +257,34 @@ def test_login_seed_permite_ver_recursos_sin_importar_credenciales(
             },
         )
 
+    def alta_nacional(request: httpx.Request) -> httpx.Response:
+        nombre = json.loads(request.content)["nombre"]
+        return httpx.Response(
+            200,
+            json={
+                "ong": {
+                    "id": str(ong_id if nombre == nombre_ong else uuid4()),
+                    "nombre": nombre,
+                    "estado": "PENDIENTE",
+                },
+                "cuentaId": str(cuenta_id if nombre == nombre_ong else uuid4()),
+                "identificadorLogin": f"tecnica-{referencia}",
+            },
+        )
+
     base = str(get_settings().nacional_base_url).rstrip("/")
     app.dependency_overrides[get_db] = database
     try:
         with respx.mock as mock, TestClient(app) as client:
             mock.post(f"{base}/login").mock(side_effect=login_nacional)
+            mock.put(re.compile(re.escape(base) + r"/integraciones/ongs/.*")).mock(
+                side_effect=alta_nacional
+            )
+            nacional = ClienteNacional(base, 1)
+            try:
+                aprovisionar_ongs_demo(db_session, nacional)
+            finally:
+                nacional.close()
             mock.get(f"{base}/me").respond(
                 200,
                 json={
@@ -276,10 +311,22 @@ def test_seed_conserva_acceso_importado_o_marcado_para_revision(
     db_session: Session,
 ) -> None:
     seed_development_data(db_session)
-    acceso = db_session.scalar(select(AccesoNacional))
-    assert acceso is not None
-    acceso.secreto_cifrado = "credencial-importada-conservada"
-    acceso.requiere_revision = True
+    ong = db_session.scalar(
+        select(Organizacion).where(Organizacion.nombre == "Ayuda Sin Fronteras")
+    )
+    assert ong is not None
+    ong.ong_nacional_id = uuid4()
+    acceso = AccesoNacional(
+        organizacion_id=ong.id,
+        ong_id=ong.ong_nacional_id,
+        cuenta_id=uuid4(),
+        configuracion_id=uuid4(),
+        identificador_login="tecnica-importada",
+        secreto_cifrado="credencial-importada-conservada",
+        requiere_revision=True,
+    )
+    db_session.add(acceso)
+    db_session.flush()
     original = (acceso.configuracion_id, acceso.cuenta_id, acceso.secreto_cifrado)
     seed_development_data(db_session)
     db_session.flush()
@@ -289,7 +336,7 @@ def test_seed_conserva_acceso_importado_o_marcado_para_revision(
         acceso.secreto_cifrado,
     ) == original
     assert acceso.requiere_revision is True
-    assert db_session.scalar(select(func.count()).select_from(AccesoNacional)) == 2
+    assert db_session.scalar(select(func.count()).select_from(AccesoNacional)) == 1
 
 
 def test_seed_sin_clave_no_confirma_un_acceso_incompleto(

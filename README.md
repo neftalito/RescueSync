@@ -293,13 +293,23 @@ para una instalación existente.
    docker compose up --build
    ```
 
-3. Opcionalmente, cargar un escenario completo de desarrollo. Configurar antes
-   `NACIONAL_ENCRYPTION_KEY` en `.env` y recrear el backend si ya estaba levantado;
-   el seed utiliza esa clave estable para cifrar los accesos nacionales demo:
+3. Opcionalmente, cargar el escenario demo de desarrollo. Configurar antes
+   `NACIONAL_ENCRYPTION_KEY` y la cuenta de integración del
+   [alta nacional automática](docs/acceso-nacional-automatico.md). La API indicada
+   por `NACIONAL_BASE_URL` debe estar disponible. Recrear el backend si cambió su
+   entorno:
 
    ```bash
    docker compose run --rm backend python -m app.scripts.seed
    ```
+
+   Este comando crea las dos ONG demo y sus cuentas técnicas mediante la API
+   nacional, guarda los UUID reales y cifra sus secretos. No requiere ejecutar
+   el seed de RescueSyncAPI y no carga inventario ni certificaciones. Entrar con
+   `ong@rescuesync.org` / `ong123` o `redmedica@rescuesync.org` / `redmedica123`
+   permite cargar los recursos manualmente en **Mis recursos**.
+   Si falla el alta nacional, los datos locales y las solicitudes quedan guardados;
+   corregir la causa y repetir el mismo comando no duplica las altas.
 
    Para medir el sistema con miles de registros, usar el
    [seed masivo configurable](docs/seed-masivo.md):
@@ -307,22 +317,15 @@ para una instalación existente.
    La carga predeterminada incluye 5.000 emergencias y evita duplicados al repetirla.
    Reconstruir primero la imagen de desarrollo para instalar Faker.
 
-   Elegir demo o masivo para cada demostración y usar la misma modalidad en ambos
-   proyectos. El masivo funciona sin ejecutar el demo previamente. Ambos reutilizan
+   El masivo funciona sin ejecutar el demo previamente y conserva su modalidad
+   de datos sintéticos coordinados con el masivo nacional. Ambos reutilizan
    el administrador inicial (`admin@rescuesync.org` / `administrador123` por defecto,
-   configurable con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`). El catálogo nacional
-   usa `admin.nacional.demo@rescuesync.org` / `admin-nacional-demo123` en cualquiera
-   de las dos modalidades para administrar capacidades; configurar esos valores
-   explícitamente en `NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`.
-   Si quedan vacíos, Compose usa la cuenta de integración para consultar.
-
-   Para probar inventario demo, ejecutar también `app.scripts.seed` de RescueSyncAPI.
-   Los seeds demo de los dos proyectos dejan preparadas las cuentas técnicas y
-   sus accesos: entrar con `ong123` permite
-   abrir Mis recursos sin importaciones manuales. El recorrido y la configuración
-   están en [Inventario nacional](docs/inventario-nacional.md).
-   Configurar una sola vez el [alta y acceso nacional automático](docs/acceso-nacional-automatico.md).
-   Las nuevas ONG generan su identificador y cuenta técnica al crearlas; el correo de contacto es opcional.
+   configurable con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`). El catálogo usa la
+   cuenta de integración para consultas cuando las variables propias quedan vacías.
+   Crear capacidades requiere una cuenta `ADMIN_NACIONAL` existente en esa API,
+   configurada en `NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`.
+   El recorrido y la recuperación de vínculos demo anteriores se describen en
+   [Inventario nacional](docs/inventario-nacional.md).
 
 4. Abrir los servicios:
    - Frontend: <http://localhost:5173>
