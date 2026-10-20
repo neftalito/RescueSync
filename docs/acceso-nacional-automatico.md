@@ -21,6 +21,8 @@ certificaciones ni habilitación para adjudicaciones.
    - `NACIONAL_BASE_URL`: URL de `/api/v1` nacional.
    - `NACIONAL_APROVISIONAMIENTO_LOGIN` y `NACIONAL_APROVISIONAMIENTO_PASSWORD`:
      credenciales de integración del emisor, conservadas únicamente en el servidor.
+     En Compose, el login predeterminado es `integracion-rescuesync` y la
+     contraseña toma `NACIONAL_INTEGRACION_PASSWORD` si no tiene un override propio.
    - `NACIONAL_ENCRYPTION_KEY`: clave Fernet propia, estable y compartida entre
      workers, independiente de `SESSION_SECRET`.
 
@@ -34,7 +36,10 @@ certificaciones ni habilitación para adjudicaciones.
    Compose ya propaga las dos variables de aprovisionamiento. No hay pasos
    administrativos adicionales por cada nueva ONG.
 
-La cuenta de integración y la de catálogo son configuraciones distintas. No usar
+La configuración de catálogo permite una cuenta independiente. En Compose,
+cuando `NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD` están vacías,
+reutiliza la cuenta de integración para consultar; crear capacidades sigue
+exigiendo un `ADMIN_NACIONAL` configurado explícitamente para catálogo. No usar
 una cuenta personal ONG ni un administrador nacional en las variables de alta.
 No cambiar la cuenta emisora a otra instalación con altas pendientes: la referencia
 se interpreta dentro del emisor autenticado.
