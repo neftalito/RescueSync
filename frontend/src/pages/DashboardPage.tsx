@@ -220,7 +220,7 @@ export function DashboardPage({ session }: DashboardPageProps): ReactElement {
                     </h3>
                     <p className="mt-3 leading-7 text-slate-600">
                       Registrá recursos y actualizá el inventario nacional de tu
-                      ONG y consultá sus certificaciones y capacidades
+                      ONG y consultá sus recursos y capacidades declaradas
                       habilitadas.
                     </p>
                     <Link

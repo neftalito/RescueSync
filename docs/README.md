@@ -20,8 +20,8 @@ referencia.
   gestión de usuarios, contraseñas, seed, sesiones, CSRF y matriz RBAC.
 - [Inventario nacional](./inventario-nacional.md): Mis recursos, vinculación de
   ONGs, conexión nacional, seeds coordinados y pruebas manuales.
-- [Certificaciones nacionales](./certificaciones-nacionales.md): historial,
-  competencia por capacidad/riesgo y condiciones de integración con la API y Bonita.
+- [Perfiles de competencia](./perfiles-competencia.md): recursos declarados,
+  alta automática y controles de disponibilidad sin certificaciones.
 - [Pruebas manuales T25–T27](./pruebas-manuales-t25-t27.md): login nacional,
   onboarding, inventario, permisos, concurrencia y fallos de integración.
 - [Migraciones](./desarrollo/migraciones.md): modelos SQLAlchemy y flujo de

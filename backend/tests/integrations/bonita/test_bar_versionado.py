@@ -58,3 +58,27 @@ def test_el_bar_define_todos_los_parametros_que_inyecta_el_deploy(
     }
     inyectados = {nombre for nombre, _ in config.process_parameters}
     assert definidos == inyectados
+
+
+def test_el_bar_transporta_el_resultado_nacional_sin_interpretar_competencias() -> None:
+    with ZipFile(_bar_versionado()) as archive:
+        root = ElementTree.fromstring(archive.read("process-design.xml"))
+    scripts = [
+        e.text or "" for e in root.iter() if e.tag.rsplit("}", 1)[-1] == "content"
+    ]
+    transporte = next(s for s in scripts if "cuerpo.validacion =" in s)
+    assert "parseText(preparacionValidacionJson)" in transporte
+    assert (
+        "cuerpo.validacion = new JsonSlurper().parseText(resultadoValidacionJson)"
+        in transporte
+    )
+    assert "JsonOutput.toJson(cuerpo)" in transporte
+    assert not any(
+        campo in s
+        for s in scripts
+        for campo in [
+            "clasificacion",
+            "capacidadesHabilitadas",
+            "nivelesRiesgoPermitidos",
+        ]
+    )

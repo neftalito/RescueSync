@@ -1,5 +1,10 @@
 # Ofertas consolidadas con referencias nacionales (T34)
 
+> Actualización 20/10/2026: [perfiles informativos](./perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
 La implementación amplía el GET local existente que consume Bonita 1.2 y la
 captura que produce sus datos. Las ofertas permanecen en PostgreSQL local;
 la API nacional conserva el inventario y posteriormente evaluará los aportes

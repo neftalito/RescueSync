@@ -1,5 +1,10 @@
 # API y frontend de T36/T37 preparados para Studio
 
+> Actualización 20/10/2026: [perfiles informativos](../perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
 Implementación local de [T36](https://github.com/neftalito/RescueSyncAPI/issues/15)
 y [T37](https://github.com/neftalito/RescueSyncAPI/issues/16), previa a la
 adaptación del proceso en [T35](https://github.com/neftalito/RescueSyncAPI/issues/14).

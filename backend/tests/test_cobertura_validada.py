@@ -24,7 +24,7 @@ def aporte(
         cantidad_disponible=Decimal(disponible),
         unidad="personas",
         admite_fracciones=False,
-        clasificacion="PRINCIPAL",
+        perfil_competencia=None,
     )
 
 

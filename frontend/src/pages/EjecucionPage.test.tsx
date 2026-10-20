@@ -16,7 +16,7 @@ const evaluacion = {
   validacion: { validacionId, revision: 2, convocatoriaId: 7, vigente: true, lotesCompatiblesCubiertos: true,
     cobertura: [{ loteId: 1, cantidadRequerida: "6.000", cantidadAsignable: "6.000", faltante: "0.000", unidad: "personas", aportes: [{ aporteId: 20, cantidad: "6.000" }] }],
   }, permiteParcial: false, diagnosticos: [],
-  aportes: [{ aporteId: 20, ofertaId: 10, version: 3, loteId: 1, ongId: 2, clasificacion: "APOYO", cantidadOfrecida: "6.000", cantidadDisponible: "6.000", unidad: "personas", admiteFracciones: false }],
+  aportes: [{ aporteId: 20, ofertaId: 10, version: 3, loteId: 1, ongId: 2, perfilCompetencia: null, cantidadOfrecida: "6.000", cantidadDisponible: "6.000", unidad: "personas", admiteFracciones: false }],
 };
 const seguimiento = { idEmergencia: 31, estado: "EN_EVALUACION", adjudicaciones: [], puedeSolicitarCierre: false, cierre: null };
 const server = setupServer(

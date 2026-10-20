@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { perfilCompetenciaSchema } from "./perfiles";
 
 const cantidad = z.string().regex(/^\d+(\.\d{1,3})?$/);
 export const validacionSchema = z.object({
@@ -16,12 +17,12 @@ export const validacionSchema = z.object({
   aportes: z.array(z.object({
     descripcion: z.string().default(""), nombreOng: z.string().default(""), tipoNecesidad: z.string().default(""),
     aporteId: z.number(), ofertaId: z.number(), version: z.number(), loteId: z.number(),
-    ongId: z.number(), clasificacion: z.enum(["PRINCIPAL", "APOYO"]),
+    ongId: z.number(), perfilCompetencia: perfilCompetenciaSchema.nullable(),
     cantidadOfrecida: cantidad, cantidadDisponible: cantidad, unidad: z.string(),
     admiteFracciones: z.boolean(),
   })),
   diagnosticos: z.array(z.object({
-    ofertaId: z.number(), ongId: z.number(), clasificacion: z.string(),
+    ofertaId: z.number(), ongId: z.number(), perfilCompetencia: perfilCompetenciaSchema.nullable().default(null),
     motivos: z.array(z.object({ codigo: z.string(), mensaje: z.string() })),
   })),
 });

@@ -16,10 +16,6 @@ from app.api.dependencies import (
 from app.db.models import Organizacion
 from app.db.session import get_db
 from app.integrations.nacional.cliente import ErrorNacional
-from app.schemas.certificaciones import (
-    CertificacionesOngResponse,
-    CertificacionResponse,
-)
 from app.schemas.errors import ErrorResponse
 from app.schemas.inventario import (
     CapacidadResponse,
@@ -32,6 +28,7 @@ from app.schemas.inventario import (
     VinculoRequest,
 )
 from app.schemas.organizaciones import OrganizacionResponse
+from app.schemas.perfiles import PerfilCompetencia
 from app.services.acceso_nacional import ejecutar_nacional
 from app.services.inventario import (
     estado_conexion,
@@ -129,48 +126,25 @@ def capacidades(
 
 
 @router.get(
-    "/catalogo-certificaciones",
-    response_model=list[CertificacionResponse],
+    "/perfil-competencia",
+    response_model=PerfilCompetencia,
     responses=errores,
-    summary="Consultar catálogo nacional de certificaciones",
-    description="Catálogo de referencia; no significa que tu ONG esté acreditada.",
+    summary="Analizar los recursos declarados de mi ONG",
+    description="La ONG se obtiene del usuario y del vínculo nacional. El perfil es informativo y no limita actividades.",
 )
-def catalogo_certificaciones(
+def perfil_competencia(
     usuario: UsuarioInventario,
     session: Db,
     cliente: ClienteNacionalDep,
     response: Response,
-) -> list[CertificacionResponse]:
+) -> PerfilCompetencia:
     response.headers["Cache-Control"] = "no-store"
     return _remoto(
         session,
         usuario,
         cliente,
-        lambda _ong, token: cliente.certificaciones(token),
-        accion="consultar catálogo de certificaciones",
-    )
-
-
-@router.get(
-    "/certificaciones",
-    response_model=CertificacionesOngResponse,
-    responses=errores,
-    summary="Consultar las acreditaciones de mi ONG",
-    description="La ONG se obtiene del usuario y del vínculo verificado, sin recibir IDs del navegador.",
-)
-def certificaciones(
-    usuario: UsuarioInventario,
-    session: Db,
-    cliente: ClienteNacionalDep,
-    response: Response,
-) -> CertificacionesOngResponse:
-    response.headers["Cache-Control"] = "no-store"
-    return _remoto(
-        session,
-        usuario,
-        cliente,
-        lambda ong, token: cliente.certificaciones_ong(token, ong),
-        accion="consultar certificaciones",
+        lambda ong, token: cliente.perfil_competencia(token, ong),
+        accion="consultar perfil de competencia",
     )
 
 

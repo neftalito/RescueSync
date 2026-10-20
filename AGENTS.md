@@ -9,6 +9,11 @@ proceso BPM. Su fuente editable de Studio es `docs/rescuesyncv1.5.bos`; ambos
 corresponden al proceso adaptado a los contratos T36/T37 descritos en
 `docs/bonita/contratos-t36-t37.md`.
 
+El cambio solicitado del 20/10/2026 elimina certificaciones y aprobación previa:
+las ONG operan desde su registro y sus perfiles de inventario son informativos.
+Ver `docs/perfiles-competencia.md`; este cambio reemplaza ese requisito del PDF,
+sin modificar el documento original ni los demás controles de recursos y permisos.
+
 La prioridad actual es la Entrega 2: alta de emergencias, creación y publicación
 de lotes, ofertas básicas de ONGs, autenticación/RBAC local e integración inicial
 con Bonita. No adelantar componentes de la API Nacional de la Entrega 3 salvo

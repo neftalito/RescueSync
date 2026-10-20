@@ -14,14 +14,8 @@ import {
   registrarOngNacional,
 } from "../api/inventario";
 import { ApiError } from "../api/client";
-import {
-  consultarCertificaciones,
-  consultarCatalogoCertificaciones,
-} from "../api/certificaciones";
-import type {
-  Certificacion,
-  CertificacionesOng,
-} from "../schemas/certificaciones";
+import { consultarPerfilCompetencia } from "../api/perfiles";
+import type { PerfilCompetencia } from "../schemas/perfiles";
 import type { Session } from "../schemas/auth";
 import type {
   Capacidad,
@@ -36,8 +30,7 @@ interface InventarioNacional {
   conexion: UseQueryResult<ConexionEstado>;
   recursos: UseQueryResult<Recurso[]>;
   capacidades: UseQueryResult<Capacidad[]>;
-  certificaciones: UseQueryResult<CertificacionesOng>;
-  catalogoCertificaciones: UseQueryResult<Certificacion[]>;
+  perfil: UseQueryResult<PerfilCompetencia>;
   registrar: UseMutationResult<OngNacional, Error, RegistroNacionalForm>;
   crear: UseMutationResult<Recurso, Error, RecursoForm>;
   editar: UseMutationResult<
@@ -50,20 +43,19 @@ interface InventarioNacional {
 
 export function useInventarioNacional(
   session: Session,
-  vista: "inventario" | "certificaciones",
+  vista: "inventario" | "perfil",
 ): InventarioNacional {
   const client = useQueryClient();
   const key = ["inventario", session.usuario.id] as const;
-  const limpiarCertificaciones = (): void => {
-    client.removeQueries({ queryKey: [...key, "certificaciones"] });
-    client.removeQueries({ queryKey: [...key, "catalogo-certificaciones"] });
+  const limpiarPerfil = (): void => {
+    client.removeQueries({ queryKey: [...key, "perfil"] });
   };
   const consultar = async <T>(operacion: () => Promise<T>): Promise<T> => {
     try {
       return await operacion();
     } catch (error: unknown) {
       if (error instanceof ApiError && [401, 403, 503].includes(error.status)) {
-        limpiarCertificaciones();
+        limpiarPerfil();
         client.setQueryData<ConexionEstado>([...key, "conexion"], (actual) =>
           actual ? { ...actual, conectada: false } : actual,
         );
@@ -90,18 +82,12 @@ export function useInventarioNacional(
     enabled: conexion.data?.estado === "LISTA" && vista === "inventario",
     retry: false,
   });
-  const certificaciones = useQuery({
-    queryKey: [...key, "certificaciones", conexion.data?.ongId],
-    queryFn: () => consultar(consultarCertificaciones),
-    enabled: conexion.data?.estado === "LISTA" && vista === "certificaciones",
+  const perfil = useQuery({
+    queryKey: [...key, "perfil", conexion.data?.ongId],
+    queryFn: () => consultar(consultarPerfilCompetencia),
+    enabled: conexion.data?.estado === "LISTA" && vista === "perfil",
     retry: false,
     refetchInterval: 60_000,
-  });
-  const catalogoCertificaciones = useQuery({
-    queryKey: [...key, "catalogo-certificaciones", conexion.data?.ongId],
-    queryFn: () => consultar(consultarCatalogoCertificaciones),
-    enabled: conexion.data?.estado === "LISTA" && vista === "certificaciones",
-    retry: false,
   });
   const actualizar = async (): Promise<void> => {
     await client.invalidateQueries({ queryKey: key });
@@ -110,7 +96,7 @@ export function useInventarioNacional(
     if (error instanceof ApiError && [401, 403, 503].includes(error.status)) {
       client.removeQueries({ queryKey: [...key, "recursos"] });
       client.removeQueries({ queryKey: [...key, "capacidades"] });
-      limpiarCertificaciones();
+      limpiarPerfil();
       await client.invalidateQueries({ queryKey: [...key, "conexion"] });
     } else {
       await client.invalidateQueries({ queryKey: [...key, "recursos"] });
@@ -142,8 +128,7 @@ export function useInventarioNacional(
     conexion,
     recursos,
     capacidades,
-    certificaciones,
-    catalogoCertificaciones,
+    perfil,
     registrar,
     crear,
     editar,

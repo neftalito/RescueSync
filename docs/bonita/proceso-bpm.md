@@ -1,5 +1,10 @@
 # Proceso BPM vigente
 
+> Actualización 20/10/2026: [perfiles informativos](../perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
 La fuente de verdad desplegable es [`RescueSync-1.5.bar`](../RescueSync-1.5.bar),
 construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente de Studio
 del mismo proceso es [`rescuesync_v1.5.bos`](../rescuesync_v1.5.bos).

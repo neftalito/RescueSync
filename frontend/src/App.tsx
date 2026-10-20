@@ -13,7 +13,7 @@ import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EmergenciasCoordinadorPage } from "./pages/EmergenciasCoordinadorPage";
 import {
-  CertificacionesOngPage,
+  PerfilCompetenciaOngPage,
   InventarioOngPage,
 } from "./pages/GestionRecursosOngPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -139,11 +139,12 @@ function ProtectedApp(): ReactElement {
           )
         }
       />
+      <Route path="/mis-recursos/certificaciones" element={<Navigate to="/mis-recursos/perfil-competencia" replace />} />
       <Route
-        path="/mis-recursos/certificaciones"
+        path="/mis-recursos/perfil-competencia"
         element={
           session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
-            <CertificacionesOngPage session={session.data} />
+            <PerfilCompetenciaOngPage session={session.data} />
           ) : (
             <Navigate to="/" replace />
           )

@@ -1013,7 +1013,8 @@ describe("emergencias del municipio", () => {
 
 describe("navegación por rol", () => {
   describe.each([
-    ["/mis-recursos/certificaciones", "Certificaciones de mi ONG"],
+    ["/mis-recursos/certificaciones", "Perfil de competencia de mi ONG"],
+    ["/mis-recursos/perfil-competencia", "Perfil de competencia de mi ONG"],
     ["/mis-recursos/inventario", "Inventario de mi ONG"],
   ])("acceso directo a %s", (path, heading) => {
     it("permite abrir la vista al representante de ONG", async () => {

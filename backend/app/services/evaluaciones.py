@@ -5,7 +5,7 @@ import json
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, JsonValue
+from pydantic import BaseModel, JsonValue, TypeAdapter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,13 +21,13 @@ from app.db.models.enums import EstadoConvocatoria, EstadoEmergencia
 from app.schemas.bonita import OfertasConsolidadasResponse
 from app.schemas.ejecucion import (
     AporteElegible,
-    Clasificacion,
     CoberturaLote,
     PerfilesRequest,
     PerfilesResponse,
     PreparacionResponse,
     PreparacionValidacion,
     ValidacionNacional,
+    ValidacionNacionalLegacy,
 )
 from app.services.callbacks_bonita import consolidar_ofertas
 from app.services.cobertura_validada import Requerimiento, calcular_cobertura
@@ -93,6 +93,13 @@ def ultima_evaluacion(session: Session, convocatoria_id: int) -> EvaluacionLocal
     )
 
 
+def leer_resultado(contenido: object) -> ValidacionNacional | ValidacionNacionalLegacy:
+    """Conserva lectura histórica sin convertir acreditaciones en permisos actuales."""
+    return TypeAdapter(ValidacionNacional | ValidacionNacionalLegacy).validate_python(
+        contenido
+    )
+
+
 def vigente(session: Session, evaluacion: EvaluacionLocal) -> bool:
     c = ultima_ronda(session, evaluacion.emergencia_id)
     v = ultima_evaluacion(session, c.id)
@@ -103,6 +110,10 @@ def vigente(session: Session, evaluacion: EvaluacionLocal) -> bool:
         and c.estado == EstadoConvocatoria.CERRADA
         and v is not None
         and v.id == evaluacion.id
+        and (
+            evaluacion.resultado is None
+            or evaluacion.resultado.get("contratoVersion") == 3
+        )
     )
 
 
@@ -187,9 +198,13 @@ def preparacion(v: EvaluacionLocal) -> PreparacionResponse:
 
 
 def elegibles(
-    session: Session, v: EvaluacionLocal, resultado: ValidacionNacional
+    session: Session,
+    v: EvaluacionLocal,
+    resultado: ValidacionNacional | ValidacionNacionalLegacy,
 ) -> list[AporteElegible]:
     """Exige el conjunto exacto de perfiles; legacy se conserva sin habilitarlo."""
+    if isinstance(resultado, ValidacionNacionalLegacy):
+        return []
     s = OfertasConsolidadasResponse.model_validate(v.snapshot)
     if (
         resultado.sistema_origen,
@@ -309,6 +324,13 @@ def elegibles(
                     raise IntegracionLocalError(
                         "Un perfil alteró las referencias o cantidades congeladas."
                     )
+                if (
+                    p.perfil_competencia is not None
+                    and p.perfil_competencia.ong_id != a.ong_nacional_id
+                ):
+                    raise IntegracionLocalError(
+                        "El perfil informativo pertenece a otra ONG."
+                    )
                 r = recursos.get(a.recurso_nacional_id)
                 pub = publicaciones[i.lote_id]
                 if (
@@ -319,29 +341,15 @@ def elegibles(
                     raise IntegracionLocalError(
                         "La disponibilidad repetida es contradictoria."
                     )
-                capacidad = next(
-                    (
-                        c
-                        for c in p.capacidades_habilitadas
-                        if c.capacidad_id == pub.capacidad_nacional_id
-                        and c.unidad == pub.unidad_publicada
-                        and pub.riesgo_requerido_publicado
-                        in c.niveles_riesgo_permitidos
-                    ),
-                    None,
-                )
                 if (
-                    p.clasificacion == Clasificacion.SIN_HABILITACION
-                    or any(m.codigo != "DISPONIBILIDAD_INSUFICIENTE" for m in p.motivos)
+                    any(m.codigo != "DISPONIBILIDAD_INSUFICIENTE" for m in p.motivos)
                     or r is None
-                    or capacidad is None
                     or a.ong_nacional_id is None
                     or p.cantidad_disponible_consultada is None
                     or (r.ong_nacional_id, r.capacidad_nacional_id, r.unidad)
                     != (a.ong_nacional_id, a.capacidad_nacional_id, a.unidad)
                     or (a.capacidad_nacional_id, a.unidad)
                     != (pub.capacidad_nacional_id, pub.unidad_publicada)
-                    or pub.riesgo_requerido_publicado not in p.niveles_riesgo_permitidos
                     or pub.admite_fracciones_publicada is None
                     or (
                         not pub.admite_fracciones_publicada
@@ -369,7 +377,7 @@ def elegibles(
                         cantidad_disponible=r.cantidad_disponible,
                         unidad=a.unidad,
                         admite_fracciones=pub.admite_fracciones_publicada,
-                        clasificacion=p.clasificacion,
+                        perfil_competencia=p.perfil_competencia,
                     )
                 )
     return salida
@@ -416,7 +424,7 @@ def guardar_perfiles(
 def confirmacion(session: Session, v: EvaluacionLocal) -> PerfilesResponse:
     if v.resultado is None or v.cobertura is None:
         raise IntegracionLocalError("La evaluación aún no tiene resultado confirmado.")
-    r = ValidacionNacional.model_validate(v.resultado)
+    r = leer_resultado(v.resultado)
     cobertura = [CoberturaLote.model_validate(c) for c in v.cobertura["lotes"]]
     return PerfilesResponse(
         **preparacion(v).model_dump(),
