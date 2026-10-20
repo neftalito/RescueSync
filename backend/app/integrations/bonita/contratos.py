@@ -1,12 +1,13 @@
 """Contratos tipados entre FastAPI y el proceso RescueSync desplegado en Bonita.
 
 Los nombres de entradas, actores, tareas y parámetros reflejan el artefacto
-`docs/RescueSync-1.2.bar`. Un cambio en el proceso obliga a publicar un `.bar`
+`docs/RescueSync-1.5.bar`. Un cambio en el proceso obliga a publicar un `.bar`
 con otra versión y actualizar, en el mismo cambio, este módulo, sus pruebas
 RESPX y la prueba E2E contra el Runtime.
 """
 
 from typing import Annotated, Final, Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -58,6 +59,38 @@ class ContratoInicioProceso(_ModeloBonita):
             "descripcion": self.descripcion,
             "municipioId": self.municipio_id,
         }
+
+
+class ContratoDecision(_ModeloBonita):
+    """Entradas acordadas para el próximo export de Studio, posterior a 1.5."""
+
+    accion_seleccionada: Literal["REABRIR", "REFORMULAR", "CONTINUAR_PARCIAL"] = Field(
+        alias="accionSeleccionada"
+    )
+    decision_coordinador_id: UUID = Field(alias="decisionCoordinadorId")
+
+
+class ContratoSeleccion(_ModeloBonita):
+    adjudicacion_id: UUID = Field(alias="adjudicacionId")
+    adjudicacion_version: PositiveInt = Field(alias="adjudicacionVersion")
+    convocatoria_id: PositiveInt = Field(alias="convocatoriaId")
+    operacion_compromiso_id: UUID = Field(alias="operacionCompromisoId")
+
+
+class ContratoFinalizacion(_ModeloBonita):
+    participacion_id: UUID = Field(alias="participacionId")
+    finalizacion_id: UUID = Field(alias="finalizacionId")
+
+
+class ContratoCierre(_ModeloBonita):
+    solicitud_cierre_id: UUID = Field(alias="solicitudCierreId")
+
+
+class ContratoRecuperacion(_ModeloBonita):
+    accion_incidente: Literal["REINTENTAR_MISMA_OPERACION", "VOLVER_A_SELECCION"] = (
+        Field(alias="accionIncidente")
+    )
+    operacion_id: UUID = Field(alias="operacionId")
 
 
 class DefinicionProceso(_ModeloBonita):

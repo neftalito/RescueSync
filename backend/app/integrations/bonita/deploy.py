@@ -21,7 +21,9 @@ from app.integrations.bonita.contratos import (
 
 LOGGER = logging.getLogger("bonita-deploy")
 
-SECRET_PARAMETERS = frozenset({PARAMETRO_CALLBACK_TOKEN})
+SECRET_PARAMETERS = frozenset(
+    {PARAMETRO_CALLBACK_TOKEN, "nationalApiPassword", "nationalApiUser"}
+)
 """Parámetros cuyo valor nunca se registra ni se incluye en errores."""
 
 MINIMUM_CALLBACK_TOKEN_LENGTH = 32
@@ -101,6 +103,28 @@ class Config:
                     ),
                 ),
                 (PARAMETRO_CALLBACK_TOKEN, _callback_token_environment()),
+            )
+            + (
+                (
+                    (
+                        "nationalApiUser",
+                        _required_environment("BONITA_NATIONAL_API_LOGIN"),
+                    ),
+                    (
+                        "nationalApiPassword",
+                        _required_secret_environment("BONITA_NATIONAL_API_PASSWORD"),
+                    ),
+                    (
+                        "maxReintentosIntegracion",
+                        str(
+                            _positive_integer_environment(
+                                "BONITA_MAX_REINTENTOS_INTEGRACION", 3
+                            )
+                        ),
+                    ),
+                )
+                if os.getenv("BONITA_PROCESS_VERSION") in {"1.5"}
+                else ()
             ),
             bar_path=Path(_required_environment("BONITA_BAR_PATH")),
             startup_timeout_seconds=int(

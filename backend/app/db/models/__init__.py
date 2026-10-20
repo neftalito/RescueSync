@@ -26,10 +26,15 @@ from app.db.models.usuario import Usuario
 
 __all__ = [
     "AccesoNacional",
+    "AdjudicacionLocal",
     "AprovisionamientoNacional",
+    "CierreLocal",
+    "ComandoBonita",
+    "CompromisoLocal",
     "ConexionNacional",
     "Convocatoria",
     "ConvocatoriaLote",
+    "DecisionLocal",
     "Emergencia",
     "EstadoConvocatoria",
     "EstadoEmergencia",
@@ -37,6 +42,8 @@ __all__ = [
     "EstadoOferta",
     "EstadoSincronizacionBonita",
     "EstadoTareaBonita",
+    "EvaluacionLocal",
+    "FinalizacionLocal",
     "GravedadEmergencia",
     "HechoMonitoreo",
     "Lote",
@@ -47,7 +54,9 @@ __all__ = [
     "OfertaParticipante",
     "OfertaVersion",
     "OfertaVersionParticipante",
+    "OperacionNacional",
     "Organizacion",
+    "ParticipacionLocal",
     "RolUsuario",
     "TipoAporte",
     "TipoNotificacion",
@@ -56,3 +65,14 @@ __all__ = [
     "Usuario",
 ]
 from app.db.models.aportes import OfertaItemAporte, OfertaVersionParticipante
+from app.db.models.ejecucion import (
+    AdjudicacionLocal,
+    CierreLocal,
+    ComandoBonita,
+    CompromisoLocal,
+    DecisionLocal,
+    EvaluacionLocal,
+    FinalizacionLocal,
+    OperacionNacional,
+    ParticipacionLocal,
+)

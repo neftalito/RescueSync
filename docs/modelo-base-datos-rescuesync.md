@@ -885,3 +885,12 @@ pytest tests/test_database_models.py
 Las pruebas verifican la metadata registrada, las relaciones del flujo básico,
 los timestamps con zona horaria y las restricciones relacionales que requieren
 triggers de PostgreSQL.
+
+## Integración nacional T36/T37
+
+La revisión `20261016_0015` incorpora `evaluacion_local`, `comando_bonita`,
+`decision_evaluacion`, `operacion_nacional_sync`, `adjudicacion_local`,
+`participacion_adjudicada`, `compromiso_nacional_local`, `finalizacion_ong` y
+`solicitud_cierre`. Son agregados locales con FKs, referencias nacionales sin
+FK remota, requests/resultados JSONB tipados y triggers de inmutabilidad. Ver
+[contratos, reglas y estados T36/T37](./bonita/contratos-t36-t37.md).

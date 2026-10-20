@@ -108,6 +108,7 @@ function TarjetaEmergencia({
             )}
           </div>
         )}
+        {["EN_EVALUACION", "EN_EJECUCION", "RESUELTA"].includes(emergencia.estado) && <Link to={`/emergencias/${emergencia.id}/ejecucion`} className="action-button mt-4 mr-2">Evaluación y ejecución</Link>}
         {rol === "COORDINADOR_REGIONAL" && (
           <Link
             to={`/emergencias/${emergencia.id}/lotes`}

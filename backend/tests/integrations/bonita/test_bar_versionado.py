@@ -25,9 +25,11 @@ def config(monkeypatch: pytest.MonkeyPatch) -> Config:
         "ADMIN_EMAIL": "admin@rescuesync.org",
         "ADMIN_INITIAL_PASSWORD": "administrador123",
         "BONITA_BAR_PATH": str(DOCS),
+        "BONITA_NATIONAL_API_LOGIN": "integracion-prueba",
+        "BONITA_NATIONAL_API_PASSWORD": "secreto-solo-pruebas",
         "BONITA_CALLBACK_TOKEN": "t" * 40,
         "BONITA_PROCESS_NAME": "RescueSync",
-        "BONITA_PROCESS_VERSION": "1.2",
+        "BONITA_PROCESS_VERSION": "1.5",
     }.items():
         monkeypatch.setenv(nombre, valor)
     return Config.from_environment()

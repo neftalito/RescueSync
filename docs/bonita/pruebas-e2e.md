@@ -2,7 +2,9 @@
 
 Las pruebas automatizadas habituales usan RESPX y no necesitan un Runtime real.
 Esta guía corresponde a una verificación controlada con Bonita, FastAPI y
-PostgreSQL levantados.
+PostgreSQL levantados. Para recorrer el proceso completo con la API nacional
+(validación, compromiso, liberación y cierre) seguir la
+[prueba local paso a paso](./prueba-local-integracion-nacional.md).
 
 ## Verificación de disponibilidad
 

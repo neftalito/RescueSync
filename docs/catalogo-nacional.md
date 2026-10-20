@@ -18,9 +18,19 @@ servidor existentes `NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`.
 nacional sea `ADMIN_NACIONAL`. Ser administrador local no cambia el rol nacional
 de esa cuenta. No se envían contraseñas ni JWT nacionales al navegador.
 
+En Compose, si ambas variables de catálogo quedan vacías, se reutiliza la cuenta
+efectiva de `NACIONAL_APROVISIONAMIENTO_LOGIN` y
+`NACIONAL_APROVISIONAMIENTO_PASSWORD`; esta última toma
+`NACIONAL_INTEGRACION_PASSWORD` cuando no tiene un override propio. Esto permite
+consultar el catálogo de Render con la cuenta `INTEGRACION` aprovisionada al
+arrancar la API, sin cargar el seed ni crear un administrador nacional.
+Los overrides explícitos de catálogo tienen prioridad y permiten conservar una
+cuenta administrativa separada para crear capacidades.
+
 Para las demostraciones, elegir el seed normal o el masivo en ambos proyectos.
 Los dos seeds nacionales preparan el mismo administrador, por lo que las
-credenciales del backend local no cambian al elegir una modalidad:
+credenciales administrativas no cambian al elegir una modalidad. Para consultar
+y crear capacidades demo, configurarlas explícitamente:
 
 ```dotenv
 NACIONAL_CATALOGO_LOGIN=admin.nacional.demo@rescuesync.org

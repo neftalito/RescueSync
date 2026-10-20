@@ -7,12 +7,12 @@ integración inicial con Bonita.
 
 ## Arquitectura
 
-| Componente | Tecnología y responsabilidad |
-| --- | --- |
-| Frontend | React, TypeScript estricto, Vite y Tailwind CSS. Consume solamente FastAPI. |
-| Backend | FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Autentica, autoriza, adapta Bonita y entrega novedades por WebSocket. |
-| Base local | PostgreSQL 16. Persiste emergencias, lotes, convocatorias, ofertas y notificaciones. |
-| BPM | Bonita Runtime 10.4. Administra el recorrido y los temporizadores. |
+| Componente | Tecnología y responsabilidad                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| Frontend   | React, TypeScript estricto, Vite y Tailwind CSS. Consume solamente FastAPI.                                          |
+| Backend    | FastAPI, SQLAlchemy, Alembic, Psycopg y HTTPX. Autentica, autoriza, adapta Bonita y entrega novedades por WebSocket. |
+| Base local | PostgreSQL 16. Persiste emergencias, lotes, convocatorias, ofertas y notificaciones.                                 |
+| BPM        | Bonita Runtime 10.4. Administra el recorrido y los temporizadores.                                                   |
 
 El frontend nunca llama directamente a Bonita ni a PostgreSQL. FastAPI concentra
 las sesiones locales, RBAC, CSRF, persistencia y traducción de contratos externos.
@@ -23,8 +23,10 @@ en [Ofertas consolidadas nacionales](./docs/ofertas-consolidadas-nacionales.md).
 El formulario de lotes usa un selector de capacidades nacionales y determina
 automáticamente el nombre y la unidad de cada necesidad. El coordinador completa
 la cantidad y una descripción opcional. Para cargar el catálogo se requieren
-`NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD` de una cuenta nacional
-autorizada; los detalles están en la guía de ofertas consolidadas enlazada arriba.
+credenciales de una cuenta nacional autorizada. Compose reutiliza la cuenta de
+integración para consultar, o permite elegir otra mediante
+`NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`; los detalles están en la
+guía de ofertas consolidadas enlazada arriba.
 
 El administrador dispone de **Gestionar capacidades** para ampliar el catálogo
 nacional usando unidades predefinidas, cargadas por migraciones en todos los
@@ -103,7 +105,9 @@ persistencia del buzón no depende de ese bus.
    el administrador inicial (`admin@rescuesync.org` / `administrador123` por defecto,
    configurable con `ADMIN_EMAIL` y `ADMIN_INITIAL_PASSWORD`). El catálogo nacional
    usa `admin.nacional.demo@rescuesync.org` / `admin-nacional-demo123` en cualquiera
-   de las dos modalidades; conservar esos valores de `.env.example`.
+   de las dos modalidades para administrar capacidades; configurar esos valores
+   explícitamente en `NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`.
+   Si quedan vacíos, Compose usa la cuenta de integración para consultar.
 
    Para probar inventario demo, ejecutar también `app.scripts.seed` de RescueSyncAPI.
    Los seeds demo de los dos proyectos dejan preparadas las cuentas técnicas y
@@ -114,7 +118,6 @@ persistencia del buzón no depende de ese bus.
    Las nuevas ONG generan su identificador y cuenta técnica al crearlas; el correo de contacto es opcional.
 
 4. Abrir los servicios:
-
    - Frontend: <http://localhost:5173>
    - API: <http://localhost:8000>
    - Swagger UI: <http://localhost:8000/docs>
@@ -157,9 +160,67 @@ entregarlo a Internet; puede inspeccionarse en <http://localhost:8025>. Las
 variables `SMTP_*` permiten apuntar el mismo cliente a un sandbox de Mailtrap u
 otro proveedor SMTP.
 
+## Integración con la API nacional de Render
+
+Cuando RescueSyncAPI se ejecuta en Render con
+`INTEGRACION_AUTO_BOOTSTRAP=true`, la cuenta nacional INTEGRACION se crea
+automáticamente en el arranque de esa API. Antes debe tener aplicadas sus
+migraciones y configurado un secreto estable en `INTEGRACION_PASSWORD`, junto con
+`INTEGRACION_LOGIN=integracion-rescuesync` e
+`INTEGRACION_SISTEMA_ORIGEN=rescuesync-local`.
+
+Para una instalación nueva, generar una sola vez la contraseña compartida y la
+clave Fernet local con la imagen del backend:
+
+```bash
+docker compose run --rm --no-deps backend python -c "from secrets import token_urlsafe; from cryptography.fernet import Fernet; print('NACIONAL_INTEGRACION_PASSWORD=' + token_urlsafe(32)); print('NACIONAL_ENCRYPTION_KEY=' + Fernet.generate_key().decode())"
+```
+
+Guardar la salida únicamente en el `.env` local y copiar el valor de
+`NACIONAL_INTEGRACION_PASSWORD` a `INTEGRACION_PASSWORD` en Render. La clave
+Fernet permanece en RescueSync: cifra las credenciales y JWT de cada ONG y debe
+mantenerse estable entre reinicios y workers. Si ya hay secretos configurados,
+conservarlos; generar otros no recupera ni rota las cuentas existentes.
+
+La configuración local para el despliegue actual es:
+
+```dotenv
+NACIONAL_BASE_URL=https://rescuesyncapi.onrender.com/api/v1
+BONITA_NATIONAL_API_BASE_URL=https://rescuesyncapi.onrender.com
+NACIONAL_SISTEMA_ORIGEN=rescuesync-local
+NACIONAL_INTEGRACION_PASSWORD=<mismo-secreto-configurado-en-Render>
+NACIONAL_ENCRYPTION_KEY=<clave-Fernet-local-estable>
+```
+
+Por defecto, Compose utiliza el login `integracion-rescuesync` en Bonita y
+para el aprovisionamiento nacional del backend. El catálogo reutiliza las
+credenciales efectivas de aprovisionamiento para consultar capacidades y unidades.
+Crear capacidades requiere configurar por separado una cuenta `ADMIN_NACIONAL` en
+`NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`.
+
+Para usar la cuenta compartida, dejar vacíos o quitar los overrides
+`NACIONAL_APROVISIONAMIENTO_PASSWORD`, `BONITA_NATIONAL_API_PASSWORD`,
+`NACIONAL_CATALOGO_LOGIN` y `NACIONAL_CATALOGO_PASSWORD`, incluidos los valores del
+administrador demo de un `.env` anterior. Los valores explícitos conservan
+prioridad. Si el login de Render es distinto del predeterminado, configurar el
+mismo en `NACIONAL_APROVISIONAMIENTO_LOGIN` y `BONITA_NATIONAL_API_LOGIN`.
+`BONITA_NATIONAL_API_BASE_URL` va sin `/api/v1`.
+
+Validar con `docker compose config --quiet`. El comando sin `--quiet` muestra los
+secretos resueltos y su salida no debe publicarse. Una vez iniciada la API
+nacional y aprovisionada la cuenta, ejecutar `docker compose up -d --build` para
+una instalación nueva de RescueSync.
+
+Si Bonita ya tiene instalado RescueSync 1.5 con otra URL o credencial, reconstruir
+los contenedores **no actualiza los parámetros de esa definición**. Un cambio de
+URL se informa como advertencia; otro usuario o contraseña nacional detiene el
+deploy. Revisar [el procedimiento de transición a Render](docs/bonita/despliegue-y-operacion.md#pasar-una-instalación-existente-a-render)
+antes de cambiar un entorno con casos. El health de Bonita comprueba el proceso
+habilitado, pero no prueba su autenticación nacional.
+
 ## Cliente reutilizable de Bonita
 
-[`docs/RescueSync-1.2.bar`](docs/RescueSync-1.2.bar) es la fuente de verdad del
+[`docs/RescueSync-1.5.bar`](docs/RescueSync-1.5.bar) es la fuente de verdad del
 proceso desplegable. FastAPI crea un único `ClienteBonita` durante el `lifespan`,
 comparte su pool HTTPX y lo cierra al apagar la aplicación.
 
@@ -195,6 +256,13 @@ contrato de inicio, todas las operaciones, el ciclo de vida fuera de FastAPI,
 los errores y las pruebas con RESPX.
 
 ## Calidad y pruebas
+
+La configuración nacional de Compose se verifica sin iniciar servicios ni leer
+el `.env` del operador. Desde la raíz, con Python y Docker Compose disponibles:
+
+```bash
+python -m unittest discover --start-directory tests --verbose
+```
 
 Backend:
 
@@ -255,3 +323,12 @@ se implementa en una rama propia y se integra mediante pull request con el check
 Las convenciones completas de ramas, arquitectura, estilo, seguridad y
 definición de terminado están en [`AGENTS.md`](AGENTS.md), que es la fuente de
 verdad para contribuir.
+
+### Evaluación, adjudicación y cierre (T36/T37)
+
+La API local y la pantalla de evaluación/ejecución implementan perfiles, cobertura
+compatible, selección municipal, finalización de cada ONG y cierre coordinador.
+Aplicar la migración `20261016_0015`. El BAR 1.5 fue adaptado en Studio y recorre
+el camino feliz completo (sin tareas de incidentes). Ver
+[contratos T36/T37](docs/bonita/contratos-t36-t37.md), incluyendo parámetros,
+permisos, reintentos, pruebas y comprobación del Runtime.

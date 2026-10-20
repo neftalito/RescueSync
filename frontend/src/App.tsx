@@ -1,6 +1,7 @@
 import { type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import { ActionIcon } from "./components/ActionIcon";
+import { EjecucionPage } from "./pages/EjecucionPage";
 import { MisRecursosPage } from "./pages/MisRecursosPage";
 
 import { ApiError } from "./api/client";
@@ -248,6 +249,7 @@ function ProtectedApp(): ReactElement {
           )
         }
       />
+      <Route path="/emergencias/:emergenciaId/ejecucion" element={["OPERADOR_MUNICIPAL", "COORDINADOR_REGIONAL", "REPRESENTANTE_ONG"].includes(session.data.usuario.rol) ? <EjecucionPage session={session.data} /> : <Navigate to="/" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
