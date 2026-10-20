@@ -10,6 +10,7 @@ from app.api.dependencies import (
     GestorTiempoRealDep,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import Convocatoria, ConvocatoriaLote, Usuario
@@ -103,6 +104,9 @@ def _respuesta_lote(publicacion: ConvocatoriaLote) -> LotePublicadoResponse:
         descripcion=publicacion.lote.descripcion,
         cantidad_publicada=publicacion.cantidad_publicada,
         unidad_publicada=publicacion.unidad_publicada,
+        capacidad_nacional_id=publicacion.capacidad_nacional_id,
+        codigo_capacidad_publicada=publicacion.codigo_capacidad_publicada,
+        riesgo_requerido_publicado=publicacion.riesgo_requerido_publicado,
     )
 
 
@@ -163,14 +167,16 @@ def publicar_convocatoria(
     ),
 )
 def listar_convocatorias_abiertas(
+    paginacion: PaginacionDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaConvocatorias,
 ) -> list[ConvocatoriaAbiertaResponse]:
     """Consulta las convocatorias abiertas sin reclamar ni modificar nada."""
 
-    convocatorias = servicio.listar_convocatorias_abiertas(session)
+    convocatorias = servicio.listar_convocatorias_abiertas(session, paginacion)
     return [
         ConvocatoriaAbiertaResponse(
+            requiere_desglose_nacional=bool(convocatoria.sistema_origen_ref),
             id=convocatoria.id,
             emergencia_id=convocatoria.emergencia_id,
             numero=convocatoria.numero,

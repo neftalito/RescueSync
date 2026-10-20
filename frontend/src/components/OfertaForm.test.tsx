@@ -94,17 +94,22 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderForm(ofertaId?: number): void {
+function renderForm(ofertaId?: number, loteInicialId?: number): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <OfertaForm csrfToken={CSRF_TOKEN} ofertaId={ofertaId} />
+        <OfertaForm
+          csrfToken={CSRF_TOKEN}
+          ofertaId={ofertaId}
+          loteInicialId={loteInicialId}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 async function agregarLote(
@@ -116,6 +121,93 @@ async function agregarLote(
 }
 
 describe("OfertaForm", () => {
+  it("ofrece modificar la oferta existente al llegar desde un lote de su convocatoria", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatorias)),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([ofertaPropia])),
+    );
+    renderForm(undefined, 55);
+
+    expect(
+      await screen.findByText(/Tu ONG ya presentó una oferta para esta convocatoria/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Modificar oferta existente" }),
+    ).toHaveAttribute("href", "/ofertas/92/editar");
+    expect(
+      screen.queryByRole("button", { name: "Presentar oferta" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("informa si el lote del enlace ya no pertenece a una convocatoria abierta", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatorias)),
+    );
+    renderForm(undefined, 999);
+
+    expect(
+      await screen.findByText(
+        "El lote seleccionado ya no está disponible en una convocatoria abierta.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Volver a convocatorias" }),
+    ).toHaveAttribute("href", "/convocatorias");
+  });
+
+  it("conserva los cambios del usuario al actualizar las consultas después de precargar un lote", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatorias)),
+    );
+    const user = userEvent.setup();
+    const queryClient = renderForm(undefined, 55);
+
+    await user.type(await screen.findByLabelText("Cantidad ofrecida"), "3");
+    await queryClient.invalidateQueries({ queryKey: ["convocatorias-abiertas"] });
+    expect(screen.getByLabelText("Cantidad ofrecida")).toHaveValue("3");
+
+    await user.click(screen.getByRole("button", { name: "Quitar lote" }));
+    await queryClient.invalidateQueries({ queryKey: ["convocatorias-abiertas"] });
+    expect(screen.queryByLabelText("Cantidad ofrecida")).not.toBeInTheDocument();
+  });
+
+  it("desglosa una oferta usando recursos propios y envía cantidades exactas", async () => {
+    const capacidadId = "00000000-0000-4000-8000-000000000101";
+    const recursoId = "00000000-0000-4000-8000-000000000201";
+    let cuerpo: unknown;
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([{ ...convocatorias[0], lotes: [{ ...convocatorias[0]?.lotes[0], capacidad_nacional_id: capacidadId }] }])),
+      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json([{ id: recursoId, ongId: "00000000-0000-4000-8000-000000000301", capacidadId, codigoInterno: "AGUA", nombre: "Agua de mi ONG", capacidad: "Agua", unidad: "litros", admiteFracciones: true, cantidadTotal: "1000.000", cantidadComprometida: "0.000", cantidadDisponible: "1000.000", activo: true, actualizadoEn: "2026-10-14T12:00:00Z" }])),
+      http.post(`${API_URL}/ofertas`, async ({ request }) => { cuerpo = await request.json(); return HttpResponse.json(ofertaCreada, { status: 201 }); }),
+    );
+    renderForm();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Convocatoria"), "8");
+    await agregarLote(user, "54");
+    await user.type(screen.getByLabelText("Cantidad ofrecida"), "250,500");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+    expect(await screen.findByText("Agregá recursos de tu inventario para este lote.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Agregar recurso" }));
+    await user.selectOptions(await screen.findByLabelText("Recurso"), recursoId);
+    await user.type(screen.getByLabelText("Cantidad del recurso"), "250,500");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+    expect(await screen.findByText(/presentada correctamente/)).toBeInTheDocument();
+    expect(cuerpo).toMatchObject({ items: [{ cantidad_ofrecida: "250.500", aportes: [{ recurso_nacional_id: recursoId, cantidad: "250.500" }] }] });
+  });
+
+  it("explica que se necesita conectar la cuenta nacional para elegir recursos", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([{ ...convocatorias[0], lotes: [{ ...convocatorias[0]?.lotes[0], capacidad_nacional_id: "00000000-0000-4000-8000-000000000101" }] }])),
+      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json({ detail: "Conectá tu cuenta nacional." }, { status: 401 })),
+    );
+    renderForm();
+    const user = userEvent.setup();
+    await user.selectOptions(await screen.findByLabelText("Convocatoria"), "8");
+    await agregarLote(user, "54");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Conectá tu cuenta nacional.");
+    expect(screen.getByRole("link", { name: "Ir a Mis recursos" })).toHaveAttribute("href", "/mis-recursos");
+  });
+
   it("presenta una oferta parcial con recursos y personal para varios lotes", async () => {
     let cuerpo: unknown;
     let csrfHeader: string | null = null;

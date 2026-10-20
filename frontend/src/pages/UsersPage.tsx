@@ -4,6 +4,9 @@ import { useState, type ReactElement } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
+import { useListadoPaginado } from "../hooks/useListadoPaginado";
+import { ListadoRemoto } from "../components/ListadoProgresivo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
 import {
   getOrganizations,
@@ -12,7 +15,6 @@ import {
 import {
   createUser,
   deactivateUser,
-  getUsers,
   reactivateUser,
   resetUserPassword,
   updateUser,
@@ -20,6 +22,7 @@ import {
 import { sessionQueryKey } from "../hooks/useSession";
 import { roleLabels, roles, type Role, type Session } from "../schemas/auth";
 import {
+  usersSchema,
   createUserSchema,
   editUserSchema,
   resetPasswordSchema,
@@ -46,13 +49,13 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [resettingUser, setResettingUser] = useState<ManagedUser | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const users = useQuery({ queryKey: usersQueryKey, queryFn: getUsers });
+  const users = useListadoPaginado(usersQueryKey, "/usuarios", usersSchema);
   const organizations = useQuery({
     queryKey: organizationsQueryKey,
     queryFn: getOrganizations,
   });
   const statusMutation = useMutation({
-    mutationFn: async ({ user, active }: { user: ManagedUser; active: boolean }) => {
+    mutationFn: async ({ user, active }: { user: ManagedUser; active: boolean; }) => {
       if (active) {
         return reactivateUser(user.id, session.csrf_token);
       }
@@ -66,7 +69,7 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
       await queryClient.invalidateQueries({ queryKey: usersQueryKey });
     },
   });
-  const loadError = users.error ?? organizations.error;
+  const loadError = (users.data === undefined ? users.error : null) ?? organizations.error;
   const actionError = statusMutation.error;
 
   const changeStatus = (user: ManagedUser): void => {
@@ -96,9 +99,11 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -163,74 +168,78 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
               Todavía no hay usuarios registrados.
             </p>
           ) : (
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              {users.data?.map((user) => (
-                <article
-                  key={user.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="break-all font-semibold text-slate-950">
-                        {user.email}
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {roleLabels[user.rol]}
-                      </p>
+            <ListadoRemoto query={users} etiqueta="Listado de usuarios registrados" className="mt-5">
+              <div className="grid gap-4 lg:grid-cols-2">
+                {users.data?.map((user) => (
+                  <article
+                    key={user.id}
+                    className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="break-all font-semibold text-slate-950">
+                          {user.email}
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {roleLabels[user.rol]}
+                        </p>
+                      </div>
+                      <StatusBadge active={user.activo} />
                     </div>
-                    <StatusBadge active={user.activo} />
-                  </div>
-                  <dl className="mt-4 space-y-2 text-sm">
-                    <div>
-                      <dt className="inline text-slate-500">Organización: </dt>
-                      <dd className="inline font-medium text-slate-800">
-                        {user.organizacion?.nombre ?? "Sin organización"}
-                      </dd>
+                    <dl className="mt-4 space-y-2 text-sm">
+                      <div>
+                        <dt className="inline text-slate-500">Organización: </dt>
+                        <dd className="inline font-medium text-slate-800">
+                          {user.organizacion?.nombre ?? "Sin organización"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="inline text-slate-500">Contraseña: </dt>
+                        <dd className="inline font-medium text-slate-800">
+                          {user.requiere_cambio_password
+                            ? "Cambio pendiente"
+                            : "Vigente"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser(user)}
+                        className="action-button action-icon"
+                        title="Editar"
+                      >
+                        <ActionIcon name="edit" />
+                        <span className="sr-only">Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setResettingUser(user)}
+                        disabled={user.id === session.usuario.id}
+                        className="action-button action-icon"
+                        title="Restablecer contraseña"
+                      >
+                        <ActionIcon name="key" />
+                        <span className="sr-only">Restablecer contraseña</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => changeStatus(user)}
+                        disabled={
+                          statusMutation.isPending ||
+                          (user.id === session.usuario.id && user.activo)
+                        }
+                        className={`action-button action-icon ${user.activo ? "action-danger" : "action-success"}`}
+                        title={user.activo ? "Desactivar" : "Reactivar"}
+                      >
+                        <ActionIcon name={user.activo ? "power" : "restore"} />
+                        <span className="sr-only">{user.activo ? "Desactivar" : "Reactivar"}</span>
+                      </button>
                     </div>
-                    <div>
-                      <dt className="inline text-slate-500">Contraseña: </dt>
-                      <dd className="inline font-medium text-slate-800">
-                        {user.requiere_cambio_password
-                          ? "Cambio pendiente"
-                          : "Vigente"}
-                      </dd>
-                    </div>
-                  </dl>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingUser(user)}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setResettingUser(user)}
-                      disabled={user.id === session.usuario.id}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      Restablecer contraseña
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => changeStatus(user)}
-                      disabled={
-                        statusMutation.isPending ||
-                        (user.id === session.usuario.id && user.activo)
-                      }
-                      className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${
-                        user.activo
-                          ? "bg-red-50 text-red-800 hover:bg-red-100"
-                          : "bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                      }`}
-                    >
-                      {user.activo ? "Desactivar" : "Reactivar"}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+                  </article>
+                ))}
+              </div>
+            </ListadoRemoto>
           )}
         </section>
       </div>
@@ -270,14 +279,13 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
   );
 }
 
-function StatusBadge({ active }: { active: boolean }): ReactElement {
+function StatusBadge({ active }: { active: boolean; }): ReactElement {
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-bold ${
-        active
+      className={`rounded-full px-3 py-1 text-xs font-bold ${active
           ? "bg-emerald-100 text-emerald-900"
           : "bg-slate-200 text-slate-700"
-      }`}
+        }`}
     >
       {active ? "Activo" : "Inactivo"}
     </span>
@@ -385,6 +393,7 @@ function CreateUserPanel({
           <input
             type="email"
             autoComplete="off"
+            placeholder="nombre@organizacion.org"
             className="form-input"
             {...register("email")}
           />
@@ -417,7 +426,7 @@ function CreateUserPanel({
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="rounded-xl bg-cyan-700 px-5 py-3 text-sm font-bold text-white hover:bg-cyan-800 disabled:opacity-60"
+            className="action-button action-primary"
           >
             {mutation.isPending ? "Creando…" : "Crear usuario"}
           </button>
@@ -488,7 +497,12 @@ function EditUserPanel({
         noValidate
       >
         <FormField label="Correo electrónico" error={errors.email?.message}>
-          <input type="email" className="form-input" {...register("email")} />
+          <input
+            type="email"
+            className="form-input"
+            placeholder="nombre@organizacion.org"
+            {...register("email")}
+          />
         </FormField>
         <FormField label="Rol" error={errors.rol?.message}>
           {user.id === currentUserId ? (
@@ -578,6 +592,7 @@ function ResetPasswordPanel({
             autoComplete="new-password"
             className="form-input"
             {...register("password")}
+            placeholder="Usá entre 8 y 128 caracteres"
           />
         </FormField>
         <FormField
@@ -589,6 +604,7 @@ function ResetPasswordPanel({
             autoComplete="new-password"
             className="form-input"
             {...register("confirmacion")}
+            placeholder="Volvé a ingresar la contraseña temporal"
           />
         </FormField>
         {mutation.isError && (
@@ -647,9 +663,10 @@ function Overlay({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+            className="action-button action-icon"
+            title="Cerrar"
           >
-            ✕
+            <ActionIcon name="close" />
           </button>
         </div>
         {children}
@@ -672,14 +689,16 @@ function PanelActions({
       <button
         type="button"
         onClick={onClose}
-        className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700"
+        className="action-button action-icon"
+        title="Cancelar"
       >
-        Cancelar
+        <ActionIcon name="close" />
+        <span className="sr-only">Cancelar</span>
       </button>
       <button
         type="submit"
         disabled={pending}
-        className="rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+        className="action-button action-primary"
       >
         {pending ? "Guardando…" : submitLabel}
       </button>

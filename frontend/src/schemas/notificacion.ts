@@ -7,6 +7,7 @@ export const tiposNotificacion = [
   "CONVOCATORIA_ACTUALIZADA",
   "CONVOCATORIA_CERRADA",
   "OFERTA_RECIBIDA",
+  "TAREA_BONITA_FALLIDA",
 ] as const;
 
 export const notificacionSchema = z.object({
@@ -31,6 +32,8 @@ export const eventoNotificacionSchema = z.object({
   evento: z.literal("notificacion.creada"),
   notificacion: notificacionSchema,
 });
+
+export const eventoMetricasSchema = z.object({ evento: z.literal("metricas.actualizadas") });
 
 export type Notificacion = z.infer<typeof notificacionSchema>;
 export type NotificacionesLeidas = z.infer<typeof notificacionesLeidasSchema>;

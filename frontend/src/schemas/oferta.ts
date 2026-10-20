@@ -37,8 +37,21 @@ export const tipoAporteLabels: Record<TipoAporte, string> = {
 
 const cantidadOfrecidaPattern = /^\d{1,11}(?:[.,]\d{1,3})?$/;
 
+function milesimas(valor: string): bigint | null {
+  if (!cantidadOfrecidaPattern.test(valor)) return null;
+  const [entero, fraccion = ""] = valor.replace(",", ".").split(".");
+  return BigInt(entero + fraccion.padEnd(3, "0"));
+}
+
+const aporteFormSchema = z.object({
+  recurso_nacional_id: z.string().uuid("Elegí un recurso de tu inventario."),
+  cantidad: z.string().regex(cantidadOfrecidaPattern, "Ingresá una cantidad válida.").refine((v) => (milesimas(v) ?? 0n) > 0n, "La cantidad debe ser positiva."),
+});
+
 export const ofertaItemFormSchema = z
   .object({
+    requiere_desglose: z.boolean().optional(),
+    aportes: z.array(aporteFormSchema).optional(),
     lote_id: z.number().int().positive("Elegí un lote publicado."),
     tipo: z.enum(tiposAporte, { message: "Elegí el tipo de aporte." }),
     descripcion: z
@@ -61,6 +74,15 @@ export const ofertaItemFormSchema = z
     unidad: z.string().min(1, "El lote no tiene una unidad válida."),
   })
   .superRefine((item, context) => {
+    if (item.requiere_desglose && !item.aportes?.length) {
+      context.addIssue({ code: "custom", path: ["aportes"], message: "Agregá recursos de tu inventario para este lote." });
+    }
+    if (item.aportes?.length) {
+      const total = item.aportes.reduce((suma, a) => suma + (milesimas(a.cantidad) ?? 0n), 0n);
+      if (total !== milesimas(item.cantidad_ofrecida)) {
+        context.addIssue({ code: "custom", path: ["aportes"], message: "La suma de recursos debe coincidir con la cantidad ofrecida." });
+      }
+    }
     if (
       Number(item.cantidad_ofrecida.replace(",", ".")) >
       Number(item.cantidad_publicada)
@@ -82,7 +104,21 @@ export const ofertaFormSchema = z.object({
   items: z.array(ofertaItemFormSchema).min(1, "Agregá al menos un lote."),
 });
 
+export const maxInvitadasConsorcio = 10;
+
+export const invitacionConsorcioFormSchema = z.object({
+  ongIds: z.array(z.string().regex(/^[1-9]\d*$/))
+    .min(1, "Seleccioná al menos una ONG para invitar.")
+    .max(maxInvitadasConsorcio, `Podés invitar hasta ${maxInvitadasConsorcio} ONGs por propuesta.`),
+});
+
+export type InvitacionConsorcioForm = z.infer<typeof invitacionConsorcioFormSchema>;
+
 export const ofertaItemSchema = z.object({
+  aportes: z.array(z.object({
+    id: z.number().int(), ong_id: z.number().int(), recurso_nacional_id: z.string().uuid(),
+    capacidad_nacional_id: z.string().uuid(), cantidad: z.string(), unidad: z.string(),
+  })).optional(),
   id: z.number().int().positive(),
   lote_id: z.number().int().positive(),
   tipo: z.enum(tiposAporte),
@@ -103,10 +139,13 @@ export const ofertaSchema = z.object({
   version_bloqueo: z.number().int().positive(),
   editable: z.boolean(),
   observaciones: z.string().nullable(),
-  presentada_en: z.string().min(1),
+  presentada_en: z.string().min(1).nullable(),
   creada_en: z.string().min(1),
   items: z.array(ofertaItemSchema),
   emergencia: emergenciaResumenSchema,
+  requiere_desglose_nacional: z.boolean().optional(),
+  consorcio_editable: z.boolean().optional(),
+  participantes: z.array(z.object({ ong_id: z.number().int().positive(), nombre: z.string(), rol: z.enum(["LIDER", "MIEMBRO"]), confirmada: z.boolean() })).optional(),
 });
 
 export const ofertaCreadaSchema = ofertaSchema.omit({ emergencia: true });

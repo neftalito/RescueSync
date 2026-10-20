@@ -1,9 +1,12 @@
 """Casos de uso para consultar, crear, editar y eliminar lotes de necesidades."""
 
+from uuid import UUID
+
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models import (
     Emergencia,
     EstadoEmergencia,
@@ -14,7 +17,9 @@ from app.db.models import (
     TipoOrganizacion,
     Usuario,
 )
+from app.schemas.inventario import CapacidadResponse
 from app.schemas.lote import LoteItem
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 
 
@@ -59,6 +64,7 @@ def guardar_lotes(
     usuario: Usuario,
     emergencia_id: int,
     items: list[LoteItem],
+    capacidades: dict[UUID, CapacidadResponse] | None = None,
 ) -> list[Lote]:
     """Crea o edita lotes en borrador dentro de una única transacción.
 
@@ -107,12 +113,33 @@ def guardar_lotes(
         emergencia.centro_coordinador_id = centro.id
 
     editables = _lotes_bloqueados(session, [item.id for item in items if item.id])
+    if get_settings().nacional_sistema_origen and any(
+        item.capacidad_nacional_id is None for item in items
+    ):
+        raise DatosLoteInvalidosError("Elegí una capacidad nacional para cada lote.")
     resultado = [
         _crear_lote(session, usuario, emergencia, item)
         if item.id is None
         else _editar_lote(emergencia, editables, item)
         for item in items
     ]
+    for lote, item in zip(resultado, items, strict=True):
+        capacidad = (
+            (capacidades or {}).get(item.capacidad_nacional_id)
+            if item.capacidad_nacional_id
+            else None
+        )
+        if item.capacidad_nacional_id is not None and capacidad is None:
+            raise DatosLoteInvalidosError(
+                "La capacidad nacional debe verificarse antes de guardar."
+            )
+        if capacidad is not None:
+            lote.tipo_necesidad = capacidad.nombre
+            lote.unidad = capacidad.unidad
+        lote.capacidad_nacional_id = capacidad.id if capacidad else None
+        lote.codigo_capacidad = capacidad.codigo if capacidad else None
+        lote.admite_fracciones = capacidad.admite_fracciones if capacidad else None
+        lote.riesgo_requerido = item.riesgo_requerido
     try:
         session.commit()
     except IntegrityError as error:
@@ -125,7 +152,12 @@ def guardar_lotes(
     return resultado
 
 
-def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list[Lote]:
+def listar_lotes(
+    session: Session,
+    usuario: Usuario,
+    emergencia_id: int,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Lote]:
     """Devuelve los lotes de la emergencia según quién consulta.
 
     El centro coordinador asignado ve todos los lotes, en borrador o
@@ -155,6 +187,8 @@ def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list
                     Lote.estado == EstadoLote.PUBLICADO,
                 )
                 .order_by(Lote.id)
+                .offset(paginacion.offset)
+                .limit(paginacion.limit)
             ).all()
         )
 
@@ -167,7 +201,11 @@ def listar_lotes(session: Session, usuario: Usuario, emergencia_id: int) -> list
         )
     return list(
         session.scalars(
-            select(Lote).where(Lote.emergencia_id == emergencia.id).order_by(Lote.id)
+            select(Lote)
+            .where(Lote.emergencia_id == emergencia.id)
+            .order_by(Lote.id)
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         ).all()
     )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
@@ -31,6 +32,9 @@ class Organizacion(Base):
     __tablename__ = "organizacion"
     __table_args__ = (
         CheckConstraint("btrim(nombre) <> ''", name="nombre_no_vacio"),
+        CheckConstraint(
+            "ong_nacional_id IS NULL OR tipo = 'ONG'", name="vinculo_nacional_solo_ong"
+        ),
         Index("uq_organizacion_tipo_nombre", "tipo", "nombre", unique=True),
     )
 
@@ -40,6 +44,7 @@ class Organizacion(Base):
         nullable=False,
     )
     nombre: Mapped[str] = mapped_column(String(160), nullable=False)
+    ong_nacional_id: Mapped[UUID | None] = mapped_column(unique=True, nullable=True)
     activa: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

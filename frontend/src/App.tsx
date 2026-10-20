@@ -1,16 +1,28 @@
 import { type ReactElement } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
+import { ActionIcon } from "./components/ActionIcon";
+import { EjecucionPage } from "./pages/EjecucionPage";
+import { NotificacionDetallePage } from "./pages/NotificacionDetallePage";
+import { MisRecursosPage } from "./pages/MisRecursosPage";
 
 import { ApiError } from "./api/client";
 import { useSession } from "./hooks/useSession";
 import { useNotificacionesTiempoReal } from "./hooks/useNotificacionesTiempoReal";
-import { ChangePasswordPage } from "./pages/ChangePasswordPage";
+import { OpcionesPage } from "./pages/OpcionesPage";
+import { CatalogoNacionalPage } from "./pages/CatalogoNacionalPage";
 import { ConvocatoriasAbiertasPage } from "./pages/ConvocatoriasAbiertasPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { EmergenciasCoordinadorPage } from "./pages/EmergenciasCoordinadorPage";
+import {
+  PerfilCompetenciaOngPage,
+  InventarioOngPage,
+} from "./pages/GestionRecursosOngPage";
 import { LoginPage } from "./pages/LoginPage";
 import { LotesPage } from "./pages/LotesPage";
 import { LotesPublicadosPage } from "./pages/LotesPublicadosPage";
+import { MisEmergenciasPage } from "./pages/MisEmergenciasPage";
 import { MisOfertasPage } from "./pages/MisOfertasPage";
+import { NuevaEmergenciaPage } from "./pages/NuevaEmergenciaPage";
 import { NuevaOfertaPage } from "./pages/NuevaOfertaPage";
 import { OrganizationsPage } from "./pages/OrganizationsPage";
 import { UsersPage } from "./pages/UsersPage";
@@ -57,9 +69,11 @@ function ProtectedApp(): ReactElement {
           <button
             type="button"
             onClick={() => void session.refetch()}
-            className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"
+            className="action-button action-primary action-icon mt-6"
+            title="Reintentar"
           >
-            Reintentar
+            <ActionIcon name="refresh" />
+            <span className="sr-only">Reintentar</span>
           </button>
         </section>
       </main>
@@ -68,17 +82,92 @@ function ProtectedApp(): ReactElement {
 
   if (
     session.data.usuario.requiere_cambio_password &&
-    location.pathname !== "/cambiar-password"
+    location.pathname !== "/opciones"
   ) {
-    return <Navigate to="/cambiar-password" replace />;
+    return <Navigate to="/opciones" replace />;
   }
 
   return (
     <Routes>
       <Route path="/" element={<DashboardPage session={session.data} />} />
       <Route
+        path="/emergencias/pendientes"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <EmergenciasCoordinadorPage vista="pendientes" />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/emergencias/con-lotes"
+        element={
+          session.data.usuario.rol === "COORDINADOR_REGIONAL" ? (
+            <EmergenciasCoordinadorPage vista="con-lotes" />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/emergencias/nueva"
+        element={
+          session.data.usuario.rol === "OPERADOR_MUNICIPAL" ? (
+            <NuevaEmergenciaPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-emergencias"
+        element={
+          session.data.usuario.rol === "OPERADOR_MUNICIPAL" ? (
+            <MisEmergenciasPage csrfToken={session.data.csrf_token} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-recursos"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <MisRecursosPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route path="/mis-recursos/certificaciones" element={<Navigate to="/mis-recursos/perfil-competencia" replace />} />
+      <Route
+        path="/mis-recursos/perfil-competencia"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <PerfilCompetenciaOngPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/mis-recursos/inventario"
+        element={
+          session.data.usuario.rol === "REPRESENTANTE_ONG" ? (
+            <InventarioOngPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/opciones"
+        element={<OpcionesPage session={session.data} />}
+      />
+      <Route
         path="/cambiar-password"
-        element={<ChangePasswordPage session={session.data} />}
+        element={<Navigate to="/opciones" replace />}
       />
       <Route
         path="/usuarios"
@@ -95,6 +184,16 @@ function ProtectedApp(): ReactElement {
         element={
           session.data.usuario.rol === "ADMINISTRADOR" ? (
             <OrganizationsPage session={session.data} />
+          ) : (
+            <Navigate to="/" replace />
+          )
+        }
+      />
+      <Route
+        path="/catalogo-nacional"
+        element={
+          session.data.usuario.rol === "ADMINISTRADOR" ? (
+            <CatalogoNacionalPage session={session.data} />
           ) : (
             <Navigate to="/" replace />
           )
@@ -152,6 +251,8 @@ function ProtectedApp(): ReactElement {
           )
         }
       />
+      <Route path="/emergencias/:emergenciaId/ejecucion" element={["OPERADOR_MUNICIPAL", "COORDINADOR_REGIONAL", "REPRESENTANTE_ONG"].includes(session.data.usuario.rol) ? <EjecucionPage session={session.data} /> : <Navigate to="/" replace />} />
+      <Route path="/notificaciones/:notificacionId" element={<NotificacionDetallePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

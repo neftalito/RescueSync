@@ -18,12 +18,15 @@ from app.api.dependencies import (
     UsuarioWebSocket,
     requerir_operacion,
 )
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import Usuario
+from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
+from app.schemas.detalle_notificacion import DetalleNotificacionResponse
 from app.schemas.notificacion import NotificacionesLeidasResponse, NotificacionResponse
+from app.services import detalle_notificaciones
 from app.services import notificaciones as servicio
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -63,11 +66,12 @@ UsuarioActualizaNotificacion = Annotated[Usuario, Depends(exigir_usuario_con_csr
     responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
     summary="Listar las notificaciones propias",
     description=(
-        "Devuelve hasta 50 novedades recientes del usuario autenticado. "
+        "Devuelve novedades del usuario autenticado. Admite limit (1–100) y offset; sin limit devuelve las últimas 50. "
         "El filtro de destinatario se aplica siempre en PostgreSQL."
     ),
 )
 def listar_notificaciones(
+    paginacion: PaginacionDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaNotificaciones,
 ) -> list[NotificacionResponse]:
@@ -75,8 +79,35 @@ def listar_notificaciones(
 
     return [
         NotificacionResponse.model_validate(notificacion)
-        for notificacion in servicio.listar_notificaciones(session, usuario)
+        for notificacion in servicio.listar_notificaciones(session, usuario, paginacion)
     ]
+
+
+@router.get(
+    "/{notificacion_id}/detalle",
+    response_model=DetalleNotificacionResponse,
+    responses={codigo: {"model": ErrorResponse} for codigo in (401, 403, 404)},
+    summary="Consultar el detalle del evento de una notificación propia",
+    description=(
+        "Abre la oferta recibida, la convocatoria exacta (incluso cerrada) "
+        "o el incidente de Bonita observado. Revalida rol y organización; "
+        "no marca el aviso como leído ni ejecuta tareas."
+    ),
+)
+def consultar_detalle_notificacion(
+    notificacion_id: NotificacionId,
+    session: Annotated[Session, Depends(get_db)],
+    usuario: UsuarioConsultaNotificaciones,
+) -> DetalleNotificacionResponse:
+    """Resuelve exclusivamente avisos del destinatario autenticado."""
+    try:
+        return detalle_notificaciones.consultar_detalle(
+            session, usuario, notificacion_id
+        )
+    except detalle_notificaciones.DetalleNoDisponibleError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except detalle_notificaciones.DetalleNoAutorizadoError as error:
+        raise HTTPException(status_code=403, detail=str(error)) from error
 
 
 @router.patch(
@@ -151,7 +182,9 @@ async def novedades_en_tiempo_real(
     if not isinstance(gestor, GestorTiempoReal):
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         return
-    await gestor.conectar(usuario.id, websocket)
+    await gestor.conectar(
+        usuario.id, websocket, auditor=usuario.rol == RolUsuario.AUDITOR_DIRECTIVO
+    )
     try:
         while True:
             await websocket.receive_text()

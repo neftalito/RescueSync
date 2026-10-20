@@ -1,8 +1,18 @@
 # Proceso BPM vigente
 
-La fuente de verdad desplegable es [`RescueSync-1.2.bar`](../RescueSync-1.2.bar),
-construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente `.bos`
-no forma parte del repositorio.
+> Actualización 20/10/2026: [perfiles informativos](../perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
+La fuente de verdad desplegable es [`RescueSync-1.5.bar`](../RescueSync-1.5.bar),
+construido con Bonita Studio 2025.2 para Runtime 10.4. El proyecto fuente de Studio
+del mismo proceso es [`rescuesync_v1.5.bos`](../rescuesync_v1.5.bos).
+
+El BAR 1.5 fue reexportado desde Studio con el tramo nacional adaptado a los
+contratos T36/T37 y verificado de punta a punta contra el Runtime y la API
+nacional. Ver [proceso 1.5 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
+El recorrido inferior describe la integración inicial de la Entrega 2.
 
 Esta versión cubre la integración inicial de la Entrega 2: alta y correlación de
 la emergencia, espera de publicación de lotes, ventana de ofertas administrada
@@ -22,13 +32,13 @@ pertenece a la Entrega 3.
 
 ## Contrato de inicio 1.2
 
-| Entrada | Tipo Bonita | Validación principal |
-| --- | --- | --- |
-| `idEmergencia` | `LONG` | Entero positivo. |
-| `gravedad` | `TEXT` | `BAJA`, `MEDIA`, `ALTA` o `CRITICA`. |
-| `zona` | `TEXT` | No vacía, máximo 255 caracteres. |
-| `descripcion` | `TEXT` | No vacía. |
-| `municipioId` | `LONG` | Entero positivo. |
+| Entrada        | Tipo Bonita | Validación principal                 |
+| -------------- | ----------- | ------------------------------------ |
+| `idEmergencia` | `LONG`      | Entero positivo.                     |
+| `gravedad`     | `TEXT`      | `BAJA`, `MEDIA`, `ALTA` o `CRITICA`. |
+| `zona`         | `TEXT`      | No vacía, máximo 255 caracteres.     |
+| `descripcion`  | `TEXT`      | No vacía.                            |
+| `municipioId`  | `LONG`      | Entero positivo.                     |
 
 Bonita guarda cada entrada en una variable persistente del mismo nombre. El
 índice de búsqueda 1 usa la etiqueta `idEmergencia` y permite reconciliar una
@@ -66,8 +76,8 @@ llamar al mismo endpoint reintenta solo ese paso: no crea una convocatoria
 nueva mientras la anterior siga `ABIERTA`, y antes de reejecutar la tarea
 vuelve a preguntarle a Bonita si sigue lista.
 
-`Validar Oferta` no tiene conector en esta versión. La validación, el bloqueo y
-la liberación de recursos del Sistema Nacional quedan fuera de la Entrega 2.
+El BAR 1.5 incorpora el tramo nacional adaptado (camino feliz, sin tareas de
+incidentes); ver [proceso 1.5 adaptado](./contratos-t36-t37.md#proceso-14-adaptado-mínimo-entregable).
 
 ## Cambiar la versión
 

@@ -50,23 +50,33 @@ En producción deben sobreescribirse antes del primer arranque y comunicarse por
 un canal seguro. El backend rechaza el arranque productivo si conserva la
 contraseña pública de desarrollo. Ninguna contraseña se imprime en los logs.
 
+Tanto el seed demo como el masivo utilizan este mismo bootstrap. Elegir uno para
+cada demostración no cambia el administrador ni exige crear una cuenta de
+administración adicional. En ambos casos se respeta la contraseña vigente.
+
 ## Datos de desarrollo
 
-Para crear un escenario completo:
+Para crear un escenario completo, configurar primero la clave Fernet y la cuenta
+de integración del [alta nacional automática](./acceso-nacional-automatico.md).
+La API de `NACIONAL_BASE_URL` debe estar disponible: el seed registra allí las dos
+ONG y sus cuentas técnicas, sin cargar inventario ni requerir el seed nacional.
 
 ```bash
 docker compose run --rm backend python -m app.scripts.seed
 ```
 
-El seed es idempotente y no duplica registros. Crea cuatro organizaciones, una
-cuenta activa por rol, una emergencia registrada, otra publicada, lotes, una
-convocatoria abierta y una oferta parcial.
+El seed es idempotente y no duplica registros. Crea seis organizaciones y
+cuentas para cada rol, con dos representantes de ONG. Conserva una emergencia
+registrada, otra publicada y su oferta parcial; agrega una
+[demo del dashboard](./dashboard-auditor.md#demo-ampliada) con 19 emergencias en
+total, tres municipios, varios meses, consorcios y versiones históricas.
 
 | Rol | Correo | Contraseña de desarrollo |
 | --- | --- | --- |
 | Operador municipal | `municipio@rescuesync.org` | `municipio123` |
 | Coordinador regional | `coordinador@rescuesync.org` | `coordinador123` |
 | Representante de ONG | `ong@rescuesync.org` | `ong123` |
+| Representante de Red Médica Solidaria | `redmedica@rescuesync.org` | `redmedica123` |
 | Auditor / Directivo | `auditor@rescuesync.org` | `auditor123` |
 | Administrador | `admin@rescuesync.org` | `administrador123` |
 
@@ -92,10 +102,12 @@ recargan el usuario y aplican la matriz RBAC antes de responder.
 | Registrar una emergencia | Operador Municipal |
 | Gestionar y publicar lotes | Centro Coordinador Regional |
 | Presentar una oferta | Representante de ONG |
+| Gestionar inventario nacional (Entrega 3) | Representante de ONG |
 | Gestionar usuarios y organizaciones | Administrador |
+| Consultar y exportar métricas globales | Auditor / Directivo |
 
-Los cinco roles pueden consultar, cambiar su contraseña y cerrar su sesión. Auditor/Directivo queda
-autenticado y modelado, pero no recibe operaciones funcionales en esta entrega.
+Los cinco roles pueden consultar, cambiar su contraseña y cerrar su sesión.
+Auditor/Directivo dispone del [dashboard de indicadores](./dashboard-auditor.md).
 El frontend puede filtrar la navegación, pero cada endpoint debe volver a
 autorizar mediante `requerir_operacion`.
 

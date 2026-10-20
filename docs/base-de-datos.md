@@ -181,11 +181,20 @@ Guarda el buzón durable que complementa la entrega por WebSocket.
 | `titulo` | `varchar(140)`, no nulo | Resumen visible. |
 | `mensaje` | `text`, no nulo | Explicación segura para el usuario. |
 | `ruta` | `varchar(255)`, nullable | Navegación interna relativa. |
+| `emergencia_id` | `bigint`, FK, nullable | Contexto del incidente de Bonita; `SET NULL` si se elimina la emergencia. |
+| `tarea_bonita_nombre` | `varchar(160)`, nullable | Nombre observado por el monitor al generar el aviso. |
 | `leida_en` | `timestamptz`, nullable | Momento en que el destinatario leyó la novedad. |
 | `creada_en` | `timestamptz`, no nulo | Momento de creación. |
 
 La unicidad por usuario y clave hace idempotentes los avisos generados por
 conectores reintentables de Bonita.
+
+La migración `20261020_0017` agrega el contexto del incidente y actualiza los
+destinos de ofertas recibidas, convocatorias e incidentes a `/notificaciones/{id}`.
+En los incidentes anteriores recupera emergencia y nombre del formato conocido
+del mensaje, validando la existencia de la emergencia. Conserva destinatarios,
+claves de evento, mensajes, fechas y estado de lectura. Su downgrade restaura
+los destinos genéricos y retira las dos columnas nuevas.
 
 ### `emergencia`
 
@@ -226,7 +235,7 @@ Describe una necesidad cuantificada dentro de una emergencia.
 | `id` | `bigint`, PK | Identificador del lote. |
 | `emergencia_id` | `bigint`, FK, no nulo | Emergencia a la que pertenece. |
 | `creado_por_usuario_id` | `bigint`, FK, no nulo | Coordinador que lo registró. |
-| `tipo_necesidad` | `varchar(120)`, no nulo | Categoría o nombre de la necesidad. |
+| `tipo_necesidad` | `varchar(160)`, no nulo | Nombre de la capacidad nacional elegida; los lotes locales anteriores conservan su texto. |
 | `descripcion` | `text`, nullable | Detalle complementario. |
 | `cantidad_requerida` | `numeric(14,3)`, no nulo | Cantidad solicitada; debe ser positiva. |
 | `unidad` | `varchar(40)`, no nulo | Unidad de medida; no puede quedar vacía. |

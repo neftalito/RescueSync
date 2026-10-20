@@ -1,6 +1,7 @@
 from functools import lru_cache
 from secrets import token_urlsafe
 from typing import Literal, Self
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
     AnyHttpUrl,
@@ -13,6 +14,8 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
+
+from app.core.cors import normalizar_origenes
 
 BONITA_CALLBACK_TOKEN_DESARROLLO = "dev-only-rescuesync-bonita-callback-token"
 """Token compartido por Compose en desarrollo; nunca es válido en producción."""
@@ -52,7 +55,10 @@ class Settings(BaseSettings):
     bonita_username: str = "install"
     bonita_password: SecretStr = SecretStr("install")
     bonita_process_name: str = "RescueSync"
-    bonita_process_version: str = "1.2"
+    bonita_process_version: str = "1.5"
+    bonita_timezone: str = "UTC"
+    bonita_monitor_enabled: bool = True
+    bonita_monitor_interval_seconds: float = Field(default=30, ge=5, le=3600)
     bonita_callback_token: SecretStr | None = None
     bonita_client_connect_timeout_seconds: float = Field(default=3.0, gt=0, le=60)
     bonita_client_read_timeout_seconds: float = Field(default=10.0, gt=0, le=120)
@@ -77,12 +83,40 @@ class Settings(BaseSettings):
     smtp_sender_email: EmailStr = "no-reply@rescuesync.org"
     smtp_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     frontend_public_url: AnyHttpUrl = "http://localhost:5173"
+    nacional_base_url: AnyHttpUrl = "http://host.docker.internal:8001/api/v1"
+    nacional_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+    nacional_encryption_key: SecretStr | None = None
+    nacional_sistema_origen: str | None = Field(
+        default=None, min_length=1, max_length=80
+    )
+    nacional_aprovisionamiento_login: str | None = None
+    nacional_aprovisionamiento_password: SecretStr | None = None
+    nacional_catalogo_login: str | None = None
+    nacional_catalogo_password: SecretStr | None = None
+
+    @field_validator("cors_origins")
+    @classmethod
+    def validar_cors_origins(cls, valores: list[str]) -> list[str]:
+        """Comparte la lista normalizada entre HTTP y WebSocket."""
+        return normalizar_origenes(valores)
+
+    @field_validator("session_cookie_secure", mode="before")
+    @classmethod
+    def normalizar_cookie_secure_vacia(cls, valor: object) -> object:
+        """Permite omitir el override desde Compose y usar el valor por entorno."""
+        return None if valor == "" else valor
 
     @field_validator(
         "session_secret",
+        "nacional_encryption_key",
         "bonita_callback_token",
         "smtp_username",
         "smtp_password",
+        "nacional_sistema_origen",
+        "nacional_aprovisionamiento_login",
+        "nacional_aprovisionamiento_password",
+        "nacional_catalogo_login",
+        "nacional_catalogo_password",
         mode="before",
     )
     @classmethod
@@ -90,6 +124,35 @@ class Settings(BaseSettings):
         """Interpreta una variable vacía como configuración no provista."""
 
         return None if valor == "" else valor
+
+    @field_validator("nacional_encryption_key")
+    @classmethod
+    def validar_nacional_encryption_key(
+        cls, valor: SecretStr | None
+    ) -> SecretStr | None:
+        """Exige una clave Fernet explícita; no reutiliza el secreto de sesión."""
+        if valor is not None:
+            from cryptography.fernet import Fernet
+
+            try:
+                Fernet(valor.get_secret_value().encode())
+            except (ValueError, TypeError) as error:
+                raise ValueError(
+                    "NACIONAL_ENCRYPTION_KEY debe ser una clave Fernet válida"
+                ) from error
+        return valor
+
+    @field_validator("bonita_timezone")
+    @classmethod
+    def validar_bonita_timezone(cls, valor: str) -> str:
+        """Valida la zona usada por Bonita para serializar fechas sin offset."""
+        try:
+            ZoneInfo(valor)
+        except ZoneInfoNotFoundError as error:
+            raise ValueError(
+                "BONITA_TIMEZONE debe ser una zona IANA válida."
+            ) from error
+        return valor
 
     @field_validator("bonita_callback_token")
     @classmethod

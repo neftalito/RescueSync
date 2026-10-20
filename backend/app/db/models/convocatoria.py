@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
@@ -23,7 +24,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.models.enums import EstadoConvocatoria, EstadoTareaBonita
+from app.db.models.enums import (
+    EstadoConvocatoria,
+    EstadoTareaBonita,
+    GravedadEmergencia,
+)
 
 if TYPE_CHECKING:
     from app.db.models.emergencia import Emergencia
@@ -62,6 +67,10 @@ class Convocatoria(Base):
         nullable=False,
     )
     numero: Mapped[int] = mapped_column(Integer, nullable=False)
+    sistema_origen_ref: Mapped[str | None] = mapped_column(String(80))
+    gravedad_publicada: Mapped[GravedadEmergencia | None] = mapped_column(
+        Enum(GravedadEmergencia, name="gravedad_emergencia")
+    )
     estado: Mapped[EstadoConvocatoria] = mapped_column(
         Enum(EstadoConvocatoria, name="estado_convocatoria"),
         nullable=False,
@@ -134,6 +143,12 @@ class ConvocatoriaLote(Base):
         nullable=False,
     )
     unidad_publicada: Mapped[str] = mapped_column(String(40), nullable=False)
+    capacidad_nacional_id: Mapped[UUID | None] = mapped_column()
+    codigo_capacidad_publicada: Mapped[str | None] = mapped_column(String(80))
+    admite_fracciones_publicada: Mapped[bool | None] = mapped_column()
+    riesgo_requerido_publicado: Mapped[GravedadEmergencia | None] = mapped_column(
+        Enum(GravedadEmergencia, name="gravedad_emergencia")
+    )
 
     convocatoria: Mapped[Convocatoria] = relationship(back_populates="lotes")
     lote: Mapped[Lote] = relationship(back_populates="publicaciones")

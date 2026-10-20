@@ -4,8 +4,15 @@
 
 Estas reglas se aplican a todo el repositorio. Antes de implementar una historia,
 consultar `docs/Trabajo integrador 2026.pdf`, `docs/Grooming Etapa 2.pdf` y el
-artefacto versionado `docs/RescueSync-1.2.bar` cuando la tarea involucre el
-proceso BPM. El proyecto fuente `.bos` no está disponible en el repositorio.
+artefacto versionado `docs/RescueSyncv1.5.bar` cuando la tarea involucre el
+proceso BPM. Su fuente editable de Studio es `docs/rescuesyncv1.5.bos`; ambos
+corresponden al proceso adaptado a los contratos T36/T37 descritos en
+`docs/bonita/contratos-t36-t37.md`.
+
+El cambio solicitado del 20/10/2026 elimina certificaciones y aprobación previa:
+las ONG operan desde su registro y sus perfiles de inventario son informativos.
+Ver `docs/perfiles-competencia.md`; este cambio reemplaza ese requisito del PDF,
+sin modificar el documento original ni los demás controles de recursos y permisos.
 
 La prioridad actual es la Entrega 2: alta de emergencias, creación y publicación
 de lotes, ofertas básicas de ONGs, autenticación/RBAC local e integración inicial
@@ -24,8 +31,10 @@ que sean necesarios para mantener un contrato claro.
 - Una rama debe corresponder a una sola tarea. No mezclar correcciones o
   refactors ajenos aunque resulten convenientes durante la implementación.
 - Usar el formato `<tipo>/<descripcion>` o `<tipo>/<ticket>-<descripcion>`, con
-  uno de estos tipos: `feature`, `fix`, `hotfix`, `refactor`, `test`, `docs`,
+  uno de estos tipos: `feat`, `feature`, `fix`, `hotfix`, `refactor`, `test`, `docs`,
   `ci`, `chore` o `release`.
+- Se admiten identificadores de grooming en mayúsculas como `feat/T36-T37`
+  cuando el usuario solicita agrupar esas tareas.
 - La descripción usa minúsculas ASCII, números y guiones medios; no usa espacios,
   guiones bajos, acentos, barras adicionales ni guiones al principio o al final.
   Ejemplos: `feature/rs-123-alta-emergencia`, `fix/cantidad-oferta` y

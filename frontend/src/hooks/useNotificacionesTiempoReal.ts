@@ -8,13 +8,16 @@ import { misOfertasQueryKey } from "./useMisOfertas";
 import { notificacionesQueryKey } from "./useNotificaciones";
 import {
   eventoNotificacionSchema,
+  eventoMetricasSchema,
   type Notificacion,
   type TipoNotificacion,
 } from "../schemas/notificacion";
 
 const DEMORA_MAXIMA_RECONEXION_MS = 30_000;
 
-function clavesAInvalidar(tipo: TipoNotificacion): readonly (readonly string[])[] {
+function clavesAInvalidar(
+  tipo: TipoNotificacion,
+): readonly (readonly string[])[] {
   switch (tipo) {
     case "EMERGENCIA_REGISTRADA":
     case "EMERGENCIA_ESTADO_ACTUALIZADO":
@@ -26,6 +29,8 @@ function clavesAInvalidar(tipo: TipoNotificacion): readonly (readonly string[])[
       return [convocatoriasAbiertasQueryKey, misOfertasQueryKey];
     case "OFERTA_RECIBIDA":
       return [];
+    case "TAREA_BONITA_FALLIDA":
+      return [["metricas"]];
   }
 }
 
@@ -44,18 +49,28 @@ export function useNotificacionesTiempoReal(habilitado: boolean): void {
       socket = new WebSocket(notificacionesWebSocketUrl());
       socket.onopen = () => {
         intentos = 0;
-        void queryClient.invalidateQueries({ queryKey: notificacionesQueryKey });
+        void queryClient.invalidateQueries({
+          queryKey: notificacionesQueryKey,
+        });
         void queryClient.invalidateQueries({ queryKey: emergenciasQueryKey });
         void queryClient.invalidateQueries({
           queryKey: convocatoriasAbiertasQueryKey,
         });
         void queryClient.invalidateQueries({ queryKey: misOfertasQueryKey });
+        void queryClient.invalidateQueries({ queryKey: ["metricas"] });
       };
       socket.onmessage = (mensaje: MessageEvent<unknown>) => {
         let externo: unknown;
         try {
           externo = JSON.parse(String(mensaje.data));
         } catch {
+          return;
+        }
+        if (eventoMetricasSchema.safeParse(externo).success) {
+          void queryClient.invalidateQueries({ queryKey: ["metricas"] });
+          void queryClient.invalidateQueries({
+            queryKey: notificacionesQueryKey,
+          });
           return;
         }
         const resultado = eventoNotificacionSchema.safeParse(externo);
@@ -71,7 +86,9 @@ export function useNotificacionesTiempoReal(habilitado: boolean): void {
             ),
           ],
         );
-        void queryClient.invalidateQueries({ queryKey: notificacionesQueryKey });
+        void queryClient.invalidateQueries({
+          queryKey: notificacionesQueryKey,
+        });
         for (const queryKey of clavesAInvalidar(nueva.tipo)) {
           void queryClient.invalidateQueries({ queryKey });
         }

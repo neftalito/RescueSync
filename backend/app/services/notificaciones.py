@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -12,6 +13,7 @@ from app.db.models import (
     TipoNotificacion,
     Usuario,
 )
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 
 LIMITE_NOTIFICACIONES = 50
 
@@ -55,12 +57,52 @@ def notificar_emergencia_registrada(
     )
 
 
+def notificar_tarea_bonita_fallida(
+    session: Session, *, tarea_id: int, emergencia_id: int, nombre: str
+) -> list[Notificacion]:
+    """Persiste una alerta por auditor y tarea sin duplicarla entre sondeos o workers."""
+    auditores = session.scalars(
+        select(Usuario.id).where(
+            Usuario.rol == RolUsuario.AUDITOR_DIRECTIVO, Usuario.activo.is_(True)
+        )
+    ).all()
+    if not auditores:
+        return []
+    notificaciones = list(
+        session.scalars(
+            insert(Notificacion)
+            .values(
+                [
+                    {
+                        "usuario_id": usuario_id,
+                        "clave_evento": f"bonita:tarea:{tarea_id}:fallida",
+                        "tipo": TipoNotificacion.TAREA_BONITA_FALLIDA,
+                        "titulo": "Tarea de Bonita con errores",
+                        "mensaje": f"La tarea {nombre[:160] or 'sin nombre'} de la emergencia #{emergencia_id} está fallida y requiere revisión.",
+                        "ruta": "/",
+                        "emergencia_id": emergencia_id,
+                        "tarea_bonita_nombre": nombre[:160] or "Sin nombre",
+                    }
+                    for usuario_id in auditores
+                ]
+            )
+            .on_conflict_do_nothing(constraint="uq_notificacion_usuario_evento")
+            .returning(Notificacion)
+        ).all()
+    )
+    for notificacion in notificaciones:
+        notificacion.ruta = f"/notificaciones/{notificacion.id}"
+    return notificaciones
+
+
 def notificar_convocatoria_publicada(
     session: Session,
     *,
     convocatoria_id: int,
+    emergencia_id: int,
     municipio_id: int,
     zona: str,
+    descripcion: str,
 ) -> None:
     """Avisa a las ONGs de la apertura y al municipio del cambio de estado."""
 
@@ -72,7 +114,7 @@ def notificar_convocatoria_publicada(
         tipo=TipoNotificacion.CONVOCATORIA_PUBLICADA,
         titulo="Nueva convocatoria abierta",
         mensaje=f"Se publicó una convocatoria para la emergencia de {zona}.",
-        ruta="/convocatorias",
+        ruta=None,
     )
     _crear_para_organizacion(
         session,
@@ -81,8 +123,11 @@ def notificar_convocatoria_publicada(
         clave_evento=clave,
         tipo=TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
         titulo="Emergencia publicada",
-        mensaje="El centro coordinador publicó la convocatoria de la emergencia.",
-        ruta="/",
+        mensaje=(
+            "El centro coordinador publicó la convocatoria de la emergencia en "
+            f"{zona}: {descripcion}"
+        ),
+        ruta=f"/emergencias/{emergencia_id}/ejecucion",
     )
 
 
@@ -90,8 +135,10 @@ def notificar_convocatoria_cerrada(
     session: Session,
     *,
     convocatoria_id: int,
+    emergencia_id: int,
     municipio_id: int,
     zona: str,
+    descripcion: str,
 ) -> None:
     """Comunica el cierre a ONGs y el paso a evaluación al municipio."""
 
@@ -103,7 +150,7 @@ def notificar_convocatoria_cerrada(
         tipo=TipoNotificacion.CONVOCATORIA_CERRADA,
         titulo="Convocatoria cerrada",
         mensaje=f"Finalizó la recepción de ofertas para la emergencia de {zona}.",
-        ruta="/mis-ofertas",
+        ruta=None,
     )
     _crear_para_organizacion(
         session,
@@ -112,8 +159,11 @@ def notificar_convocatoria_cerrada(
         clave_evento=clave,
         tipo=TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
         titulo="Emergencia en evaluación",
-        mensaje="Cerró la convocatoria y las ofertas están siendo evaluadas.",
-        ruta="/",
+        mensaje=(
+            "Cerró la convocatoria y las ofertas están siendo evaluadas. "
+            f"Emergencia en {zona}: {descripcion}"
+        ),
+        ruta=f"/emergencias/{emergencia_id}/ejecucion",
     )
 
 
@@ -136,13 +186,14 @@ def notificar_oferta_recibida(
         tipo=TipoNotificacion.OFERTA_RECIBIDA,
         titulo="Nueva oferta recibida",
         mensaje=f"Una ONG presentó una oferta para la emergencia de {zona}.",
-        ruta="/",
+        ruta=None,
     )
 
 
 def listar_notificaciones(
     session: Session,
     usuario: Usuario,
+    paginacion: Paginacion = SIN_PAGINACION,
 ) -> list[Notificacion]:
     """Devuelve las últimas novedades del usuario sin exponer otros buzones."""
 
@@ -151,7 +202,8 @@ def listar_notificaciones(
             select(Notificacion)
             .where(Notificacion.usuario_id == usuario.id)
             .order_by(Notificacion.creada_en.desc(), Notificacion.id.desc())
-            .limit(LIMITE_NOTIFICACIONES)
+            .offset(paginacion.offset)
+            .limit(paginacion.limit or LIMITE_NOTIFICACIONES)
         ).all()
     )
 
@@ -294,7 +346,7 @@ def _crear_para_usuarios(
             )
         ).all()
     )
-    session.add_all(
+    nuevas = [
         Notificacion(
             usuario_id=usuario_id,
             clave_evento=clave_evento,
@@ -305,4 +357,13 @@ def _crear_para_usuarios(
         )
         for usuario_id in ids
         if usuario_id not in existentes
-    )
+    ]
+    session.add_all(nuevas)
+    if tipo in {
+        TipoNotificacion.OFERTA_RECIBIDA,
+        TipoNotificacion.CONVOCATORIA_PUBLICADA,
+        TipoNotificacion.CONVOCATORIA_CERRADA,
+    }:
+        session.flush()
+        for notificacion in nuevas:
+            notificacion.ruta = f"/notificaciones/{notificacion.id}"

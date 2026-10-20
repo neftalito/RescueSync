@@ -16,10 +16,12 @@ body {
   margin: 0;
 }
 
-button,
-input,
-select {
-  font: inherit;
+@layer base {
+  button,
+  input,
+  select {
+    font: inherit;
+  }
 }
 
 button,
@@ -28,6 +30,90 @@ a {
 }
 
 @layer components {
+  .action-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-semibold transition-colors;
+    border-color: var(--action-border, var(--color-slate-300));
+    color: var(--action-text, var(--color-slate-600));
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+
+  .action-button:not(:disabled):hover,
+  .action-button:focus-visible {
+    border-color: var(--action-accent, var(--color-slate-500));
+    background-color: var(--action-hover, var(--color-slate-50));
+    color: var(--action-text, var(--color-slate-700));
+    outline-color: var(--action-accent, var(--color-slate-500));
+  }
+
+  .action-button:not(:disabled):active {
+    background-color: var(--action-active, var(--color-slate-100));
+    outline-color: var(--action-text, var(--color-slate-700));
+  }
+
+  .action-button:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .action-button[aria-busy="true"] {
+    @apply cursor-wait;
+  }
+
+  .action-primary {
+    --action-border: var(--color-cyan-700);
+    --action-text: var(--color-cyan-800);
+    --action-accent: var(--color-cyan-600);
+    --action-hover: var(--color-cyan-50);
+    --action-active: var(--color-cyan-100);
+  }
+
+  .action-danger {
+    --action-border: var(--color-red-300);
+    --action-text: var(--color-red-800);
+    --action-accent: var(--color-red-500);
+    --action-hover: var(--color-red-50);
+    --action-active: var(--color-red-100);
+  }
+
+  .action-success {
+    --action-border: var(--color-emerald-300);
+    --action-text: var(--color-emerald-800);
+    --action-accent: var(--color-emerald-500);
+    --action-hover: var(--color-emerald-50);
+    --action-active: var(--color-emerald-100);
+  }
+
+  .action-warning {
+    --action-border: var(--color-amber-600);
+    --action-text: var(--color-amber-800);
+    --action-accent: var(--color-amber-600);
+    --action-hover: var(--color-amber-50);
+    --action-active: var(--color-amber-100);
+  }
+
+  .action-icon {
+    @apply size-11 shrink-0 p-0;
+  }
+
+  .action-borderless,
+  .action-borderless:not(:disabled):hover,
+  .action-borderless:focus-visible,
+  .action-borderless:not(:disabled):active {
+    border-color: transparent;
+    outline: none;
+  }
+
+  .action-borderless:focus-visible {
+    box-shadow: 0 0 0 2px var(--action-accent, var(--color-slate-500));
+  }
+
+  .password-visibility,
+  .password-visibility:not(:disabled):hover,
+  .password-visibility:focus-visible,
+  .password-visibility:not(:disabled):active {
+    background-color: transparent;
+  }
+
   .form-input {
     @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-normal text-slate-950 outline-none focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100 disabled:bg-slate-100;
   }

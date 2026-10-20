@@ -2,15 +2,32 @@
 
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
 
-from app.db.models import EstadoConvocatoria, EstadoOferta, TipoAporte
+from app.db.models import (
+    EstadoConvocatoria,
+    EstadoOferta,
+    GravedadEmergencia,
+    TipoAporte,
+    TipoParticipacion,
+)
 
 Cantidad = Annotated[
     Decimal, PlainSerializer(float, return_type=float, when_used="json")
+]
+
+
+def cantidad_exacta(valor: Decimal) -> str:
+    return format(valor, ".3f")
+
+
+CantidadExacta = Annotated[
+    Decimal, PlainSerializer(cantidad_exacta, return_type=str, when_used="json")
 ]
 
 
@@ -59,6 +76,46 @@ class LoteConsolidado(_ModeloCallback):
     unidad: str
     cantidad_ofrecida: Cantidad
     cubierto: bool
+    capacidad_nacional_id: UUID | None = None
+    codigo_capacidad: str | None = None
+    riesgo_requerido: GravedadEmergencia | None = None
+    cantidad_publicada_exacta: CantidadExacta
+    cantidad_ofrecida_exacta: CantidadExacta
+
+
+class CodigoMotivoIntegracion(StrEnum):
+    ONG_NACIONAL_NO_ASOCIADA = "ONG_NACIONAL_NO_ASOCIADA"
+    CAPACIDAD_NACIONAL_NO_ASOCIADA = "CAPACIDAD_NACIONAL_NO_ASOCIADA"
+    DESGLOSE_NACIONAL_AUSENTE = "DESGLOSE_NACIONAL_AUSENTE"
+    SISTEMA_ORIGEN_NO_ASOCIADO = "SISTEMA_ORIGEN_NO_ASOCIADO"
+    RIESGO_PUBLICADO_AUSENTE = "RIESGO_PUBLICADO_AUSENTE"
+    PARTICIPANTES_NO_VERSIONADOS = "PARTICIPANTES_NO_VERSIONADOS"
+
+
+class MotivoIntegracion(_ModeloCallback):
+    codigo: CodigoMotivoIntegracion
+    mensaje: str
+    oferta_id: int | None = None
+    version: int | None = None
+    ong_id: int | None = None
+    lote_id: int | None = None
+    item_id: int | None = None
+
+
+class ParticipanteConsolidado(_ModeloCallback):
+    ong_id: int
+    ong_nacional_id: UUID | None
+    rol: TipoParticipacion
+
+
+class AporteConsolidado(_ModeloCallback):
+    aporte_id: int
+    ong_id: int
+    ong_nacional_id: UUID | None
+    recurso_nacional_id: UUID
+    capacidad_nacional_id: UUID
+    cantidad: CantidadExacta
+    unidad: str
 
 
 class ItemOfertaConsolidado(_ModeloCallback):
@@ -69,6 +126,9 @@ class ItemOfertaConsolidado(_ModeloCallback):
     descripcion: str
     cantidad_ofrecida: Cantidad
     unidad: str
+    item_id: int
+    cantidad_ofrecida_exacta: CantidadExacta
+    aportes: list[AporteConsolidado] = Field(default_factory=list)
 
 
 class OfertaConsolidada(_ModeloCallback):
@@ -80,6 +140,10 @@ class OfertaConsolidada(_ModeloCallback):
     version: int
     presentada_en: datetime
     items: list[ItemOfertaConsolidado]
+    ong_nacional_id: UUID | None = None
+    participantes: list[ParticipanteConsolidado] = Field(default_factory=list)
+    referencias_nacionales_completas: bool
+    motivos_integracion: list[MotivoIntegracion] = Field(default_factory=list)
 
 
 class OfertasConsolidadasResponse(_ModeloCallback):
@@ -94,3 +158,10 @@ class OfertasConsolidadasResponse(_ModeloCallback):
     lotes_cubiertos: bool
     lotes: list[LoteConsolidado]
     ofertas: list[OfertaConsolidada]
+    contrato_version: int = 2
+    sistema_origen: str | None = None
+    case_id: str
+    gravedad: GravedadEmergencia | None
+    cerrada_en: AwareDatetime | None
+    referencias_nacionales_completas: bool
+    motivos_integracion: list[MotivoIntegracion] = Field(default_factory=list)

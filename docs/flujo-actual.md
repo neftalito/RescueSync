@@ -1,5 +1,10 @@
 # Flujo actual de RescueSync
 
+> Actualización 20/10/2026: [perfiles informativos](./perfiles-competencia.md) reemplaza las
+> reglas de certificación, habilitación previa y clasificación por riesgo de este
+> documento. Las referencias a esas reglas describen el comportamiento anterior.
+
+
 Este documento describe el comportamiento implementado a la fecha, desde el
 alta de una emergencia hasta el último punto integrado entre React, FastAPI,
 PostgreSQL y Bonita. También separa las etapas que existen en el proceso BPM
@@ -29,9 +34,9 @@ Todas las rutas indicadas a continuación llevan el prefijo `/api/v1`.
 | Rol | Participación en el flujo actual |
 | --- | --- |
 | `OPERADOR_MUNICIPAL` | Registra emergencias, consulta las de su municipio y reintenta su vinculación con Bonita. |
-| `COORDINADOR_REGIONAL` | Ve emergencias registradas disponibles o asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
+| `COORDINADOR_REGIONAL` | Consulta emergencias disponibles y las asignadas a su centro, crea/edita/elimina lotes y publica la convocatoria. |
 | `REPRESENTANTE_ONG` | Consulta convocatorias y lotes publicados, registra una oferta parcial por convocatoria, la modifica durante la ventana y consulta las ofertas de su ONG. |
-| `AUDITOR_DIRECTIVO` | Tiene sesión local, pero todavía no posee operaciones funcionales de la Entrega 2. |
+| `AUDITOR_DIRECTIVO` | Consulta el dashboard global con indicadores locales, tiempos de Bonita y exportación CSV/JSON. |
 | `ADMINISTRADOR` | Gestiona usuarios, roles, organizaciones y contraseñas; no interviene en el recorrido operativo de una emergencia. |
 | Bonita | Usa un token técnico y el `caseId` raíz para ejecutar callbacks internos; no usa una sesión de usuario. |
 
@@ -76,6 +81,12 @@ Archivos principales:
   `backend/app/services/auth.py`, `backend/app/core/security.py`.
 
 ### 1. El municipio registra la emergencia
+
+El dashboard municipal presenta dos tarjetas: **Registrar emergencia** abre
+`/emergencias/nueva` y **Mis emergencias** abre `/mis-emergencias`. Ambas vistas
+permiten volver al inicio y navegar a la otra funcionalidad. El formulario conserva
+la confirmación del alta y permite registrar otra emergencia; el listado permite
+consultar estados y reintentar la vinculación con Bonita.
 
 El operador completa gravedad, zona y descripción en
 `frontend/src/components/EmergenciaForm.tsx`. El hook
@@ -135,9 +146,20 @@ actor **Coordinador Regional**.
 
 ### 3. El centro coordinador genera lotes
 
-La bandeja del coordinador usa `GET /emergencias`. Solo muestra emergencias en
-`REGISTRADA` sin centro o ya asignadas a su propio centro. Desde
-`frontend/src/pages/LotesPage.tsx`, el formulario
+El inicio del coordinador presenta dos tarjetas que abren vistas independientes:
+**Emergencias pendientes** (`/emergencias/pendientes`) lista únicamente emergencias
+sin lotes; **Emergencias no pendientes** (`/emergencias/con-lotes`) lista las que
+tienen al menos un lote, incluso en borrador, y permite filtrar por estado. El
+filtro se conserva en el parámetro `estado` de la URL.
+
+Ambas consultan `GET /emergencias`, cuya respuesta incluye `tiene_lotes`, calculado
+en bloque a partir de los lotes persistidos. El backend permite ver las emergencias
+`REGISTRADA` sin centro y todas las asignadas al propio centro, en cualquier estado;
+las de otros centros siguen excluidas. Crear el primer lote retira la emergencia
+de pendientes aunque siga `REGISTRADA`; eliminar el último borrador la devuelve.
+Los lotes se muestran como consulta cuando la emergencia ya no admite edición.
+
+Desde `frontend/src/pages/LotesPage.tsx`, el formulario
 `frontend/src/components/LotesForm.tsx` usa:
 
 | Endpoint | Efecto |
@@ -145,6 +167,13 @@ La bandeja del coordinador usa `GET /emergencias`. Solo muestra emergencias en
 | `GET /emergencias/{id}/lotes` | Recupera los lotes existentes del centro asignado. Consultar no reclama una emergencia libre. |
 | `POST /emergencias/{id}/lotes` | Crea o edita varios lotes `BORRADOR`; el primer guardado asigna la emergencia al centro. |
 | `DELETE /emergencias/{id}/lotes/{lote_id}` | Elimina físicamente un lote solo mientras siga en borrador. |
+| `GET /emergencias/catalogos/capacidades-nacionales` | Carga automáticamente las capacidades del selector del formulario. |
+
+Para crear o actualizar un lote desde la interfaz se elige una capacidad nacional
+y se indica la cantidad. El nombre y la unidad provienen del catálogo; la unidad
+se muestra como solo lectura. La descripción es opcional. Los borradores
+anteriores sin vínculo conservan sus datos y requieren seleccionar una capacidad
+antes de volver a guardarse.
 
 Las rutas están en `backend/app/api/routes/lotes.py` y el caso de uso en
 `backend/app/services/lotes.py`. Las ediciones exigen la versión vigente para
@@ -171,7 +200,11 @@ ejecuta una única transacción local:
 6. cambia la emergencia a `PUBLICADA`.
 
 La misma transacción crea la novedad de convocatoria para las ONGs y el cambio
-de estado para los operadores del municipio dueño.
+de estado para los operadores del municipio dueño. Los avisos municipales de
+publicación y paso a evaluación incluyen la zona y la descripción de la
+emergencia; **Ver detalle** lleva a `/emergencias/{id}/ejecucion`. La migración
+`20261020_0016` corrige también esos avisos existentes sin cambiar sus fechas ni
+marcarlos como leídos.
 
 Inicialmente `cierra_en` recibe una fecha provisoria de dos horas. Bonita la
 reemplaza luego por la fecha real de su timer.
@@ -247,6 +280,11 @@ elegir una convocatoria, agregar uno o más lotes mediante `useFieldArray`,
 declarar recursos, personal o aportes mixtos y enviar cantidades parciales o
 totales dentro del máximo publicado. Las convocatorias ya ofertadas no aparecen
 como una nueva opción; “Mis ofertas” permite modificar la propuesta vigente.
+Desde “Lotes publicados”, cada lote ofrece el botón “Crear oferta”, que abre
+el formulario con su convocatoria seleccionada y ese lote agregado. Si la ONG
+ya presentó una oferta para esa convocatoria, se ofrece modificar la existente;
+si el lote dejó de estar disponible en una convocatoria abierta, se informa y
+se permite volver a convocatorias.
 Zod valida el formulario y TanStack Query actualiza las consultas luego del alta
 o la edición.
 
@@ -312,6 +350,7 @@ Estas etapas no deben interpretarse como funcionalidad completa. Actualmente:
 | Cierre BPM | `POST /emergencias/{id}/cerrar-convocatoria` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Consolidación BPM | `GET /emergencias/{id}/ofertas-consolidadas` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Buzón | `GET /notificaciones`, `PATCH /notificaciones/{id}/leida` y `PATCH /notificaciones/leidas` | `backend/app/api/routes/notificaciones.py` | `services/notificaciones.py` | `NotificationCenter.tsx` |
+| Detalle del aviso | `GET /notificaciones/{id}/detalle` | `backend/app/api/routes/notificaciones.py` | `services/detalle_notificaciones.py` | `NotificacionDetallePage.tsx` |
 | Tiempo real | `WS /notificaciones/ws` | `backend/app/api/routes/notificaciones.py` | `services/tiempo_real.py` | `useNotificacionesTiempoReal.ts` |
 
 El prefijo se configura en `backend/app/main.py`, el montaje de routers en

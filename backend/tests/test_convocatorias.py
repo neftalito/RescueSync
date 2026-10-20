@@ -312,6 +312,46 @@ def test_publica_convocatoria_con_lotes_en_borrador_y_pasa_a_publicada(
     assert _contar_convocatorias(db_session, emergencia.id) == 1
 
 
+def test_notificacion_municipal_identifica_la_emergencia_y_enlaza_su_ejecucion(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    centro: Organizacion,
+    operador: Usuario,
+) -> None:
+    emergencia.centro_coordinador_id = centro.id
+    _lote(db_session, emergencia, coordinador)
+    db_session.flush()
+    csrf = _autenticar(client, coordinador)
+
+    with respx.mock(assert_all_called=True) as router:
+        _completar_tarea_generar_lotes(router)
+        respuesta = client.post(
+            f"/api/v1/emergencias/{emergencia.id}/publicar",
+            headers={"X-CSRF-Token": csrf},
+        )
+    assert respuesta.status_code == 201
+
+    _autenticar(client, operador)
+    buzon = client.get("/api/v1/notificaciones")
+
+    assert buzon.status_code == 200
+    [notificacion] = buzon.json()
+    assert notificacion["titulo"] == "Emergencia publicada"
+    assert notificacion["mensaje"] == (
+        "El centro coordinador publicó la convocatoria de la emergencia en "
+        f"{emergencia.zona}: {emergencia.descripcion}"
+    )
+    assert notificacion["ruta"] == f"/emergencias/{emergencia.id}/ejecucion"
+    assert notificacion["usuario_id"] == operador.id
+
+    seguimiento = client.get(f"/api/v1/emergencias/{emergencia.id}/adjudicaciones")
+    assert seguimiento.status_code == 200
+    assert seguimiento.json()["idEmergencia"] == emergencia.id
+    assert seguimiento.json()["estado"] == "PUBLICADA"
+
+
 @pytest.mark.parametrize("con_lote_publicado", [False, True])
 def test_rechaza_publicar_sin_lotes_en_borrador(
     client: TestClient,
@@ -813,3 +853,34 @@ def test_openapi_documenta_listar_convocatorias(client: TestClient) -> None:
     assert operacion["responses"]["200"]["description"]
     assert operacion["summary"]
     assert operacion["description"]
+
+
+def test_pagina_convocatorias_abiertas_con_un_orden_estable(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    abiertas = []
+    for indice in range(3):
+        nueva = Emergencia(
+            municipio_id=emergencia.municipio_id,
+            creada_por_usuario_id=emergencia.creada_por_usuario_id,
+            centro_coordinador_id=emergencia.centro_coordinador_id,
+            gravedad=GravedadEmergencia.ALTA,
+            zona=f"Zona paginada {indice}",
+            descripcion="Emergencia de prueba",
+        )
+        db_session.add(nueva)
+        db_session.flush()
+        lote = _lote(db_session, nueva, coordinador, tipo="Agua")
+        abiertas.append(_convocatoria(db_session, nueva, [lote]))
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+    primera = client.get("/api/v1/convocatorias?limit=2&offset=0")
+    ultima = client.get("/api/v1/convocatorias?limit=2&offset=2")
+    assert primera.status_code == ultima.status_code == 200
+    assert [item["id"] for item in primera.json() + ultima.json()] == [
+        convocatoria.id for convocatoria in reversed(abiertas)
+    ]

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { gravedades } from "./emergencia";
 
 // Espeja `LoteItem.cantidad_requerida` (Numeric(14, 3)): hasta 11 enteros y 3
 // decimales. Se envía como texto para no perder precisión con floats.
@@ -21,13 +22,14 @@ export const estadoLoteLabels: Record<EstadoLote, string> = {
 };
 
 export const loteItemFormSchema = z.object({
+  capacidad_nacional_id: z.string().uuid("Seleccioná una capacidad."),
+  riesgo_requerido: z.union([z.enum(gravedades), z.literal("")]).optional(),
   id: z.number().int().positive().nullable(),
   version: z.number().int().positive().nullable(),
   tipo_necesidad: z
     .string()
     .trim()
-    .min(1, "Ingresá el tipo de necesidad.")
-    .max(120, "El tipo no puede superar los 120 caracteres."),
+    .max(160, "El nombre de la capacidad no puede superar los 160 caracteres."),
   cantidad_requerida: z
     .string()
     .trim()
@@ -43,7 +45,6 @@ export const loteItemFormSchema = z.object({
   unidad: z
     .string()
     .trim()
-    .min(1, "Ingresá la unidad.")
     .max(40, "La unidad no puede superar los 40 caracteres."),
   descripcion: z
     .string()
@@ -67,6 +68,9 @@ export const lotePublicadoSchema = z.object({
 });
 
 export const loteSchema = lotePublicadoSchema.extend({
+  capacidad_nacional_id: z.string().uuid().nullable().optional(),
+  codigo_capacidad: z.string().nullable().optional(),
+  riesgo_requerido: z.enum(gravedades).nullable().optional(),
   creado_por_usuario_id: z.number().int().positive(),
   version: z.number().int().positive(),
   creado_en: z.string().min(1),

@@ -12,14 +12,17 @@ class OperacionProtegida(StrEnum):
     CERRAR_SESION = "CERRAR_SESION"
     CAMBIAR_PASSWORD = "CAMBIAR_PASSWORD"
     GESTIONAR_USUARIOS = "GESTIONAR_USUARIOS"
+    GESTIONAR_CATALOGO_NACIONAL = "GESTIONAR_CATALOGO_NACIONAL"
     REGISTRAR_EMERGENCIA = "REGISTRAR_EMERGENCIA"
     CONSULTAR_EMERGENCIAS = "CONSULTAR_EMERGENCIAS"
+    CONSULTAR_METRICAS = "CONSULTAR_METRICAS"
     GESTIONAR_LOTES = "GESTIONAR_LOTES"
     CONSULTAR_LOTES_PUBLICADOS = "CONSULTAR_LOTES_PUBLICADOS"
     PUBLICAR_CONVOCATORIA = "PUBLICAR_CONVOCATORIA"
     CONSULTAR_CONVOCATORIAS = "CONSULTAR_CONVOCATORIAS"
     PRESENTAR_OFERTA = "PRESENTAR_OFERTA"
     CONSULTAR_OFERTAS_PROPIAS = "CONSULTAR_OFERTAS_PROPIAS"
+    GESTIONAR_INVENTARIO = "GESTIONAR_INVENTARIO"
     CONSULTAR_NOTIFICACIONES = "CONSULTAR_NOTIFICACIONES"
     MARCAR_NOTIFICACION_LEIDA = "MARCAR_NOTIFICACION_LEIDA"
 
@@ -35,11 +38,17 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
             OperacionProtegida.GESTIONAR_USUARIOS: frozenset(
                 {RolUsuario.ADMINISTRADOR}
             ),
+            OperacionProtegida.GESTIONAR_CATALOGO_NACIONAL: frozenset(
+                {RolUsuario.ADMINISTRADOR}
+            ),
             OperacionProtegida.REGISTRAR_EMERGENCIA: frozenset(
                 {RolUsuario.OPERADOR_MUNICIPAL}
             ),
             OperacionProtegida.CONSULTAR_EMERGENCIAS: frozenset(
                 {RolUsuario.OPERADOR_MUNICIPAL, RolUsuario.COORDINADOR_REGIONAL}
+            ),
+            OperacionProtegida.CONSULTAR_METRICAS: frozenset(
+                {RolUsuario.AUDITOR_DIRECTIVO}
             ),
             OperacionProtegida.GESTIONAR_LOTES: frozenset(
                 {RolUsuario.COORDINADOR_REGIONAL}
@@ -57,6 +66,9 @@ ROLES_POR_OPERACION: Mapping[OperacionProtegida, frozenset[RolUsuario]] = (
                 {RolUsuario.REPRESENTANTE_ONG}
             ),
             OperacionProtegida.CONSULTAR_OFERTAS_PROPIAS: frozenset(
+                {RolUsuario.REPRESENTANTE_ONG}
+            ),
+            OperacionProtegida.GESTIONAR_INVENTARIO: frozenset(
                 {RolUsuario.REPRESENTANTE_ONG}
             ),
             OperacionProtegida.CONSULTAR_NOTIFICACIONES: ROLES_AUTENTICADOS,

@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from typing import Self
+from uuid import UUID
 
 from pydantic import (
     AwareDatetime,
@@ -12,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.models.enums import EstadoLote
+from app.db.models.enums import EstadoLote, GravedadEmergencia
 
 
 class LoteItem(BaseModel):
@@ -20,10 +21,12 @@ class LoteItem(BaseModel):
 
     id: int | None = Field(default=None, gt=0)
     version: int | None = Field(default=None, gt=0)
-    tipo_necesidad: str = Field(min_length=1, max_length=120)
+    tipo_necesidad: str = Field(min_length=1, max_length=160)
     descripcion: str | None = Field(default=None, max_length=2000)
     cantidad_requerida: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     unidad: str = Field(min_length=1, max_length=40)
+    capacidad_nacional_id: UUID | None = None
+    riesgo_requerido: GravedadEmergencia | None = None
 
     @field_validator("tipo_necesidad", "unidad", mode="before")
     @classmethod
@@ -68,6 +71,10 @@ class LoteResponse(BaseModel):
     descripcion: str | None
     cantidad_requerida: Decimal
     unidad: str
+    capacidad_nacional_id: UUID | None = None
+    codigo_capacidad: str | None = None
+    admite_fracciones: bool | None = None
+    riesgo_requerido: GravedadEmergencia | None = None
     estado: EstadoLote
     version: int
     creado_en: AwareDatetime

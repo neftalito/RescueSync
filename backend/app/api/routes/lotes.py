@@ -5,14 +5,22 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import requerir_operacion
+from app.api.dependencies import (
+    ClienteNacionalDep,
+    GestorTiempoRealDep,
+    requerir_operacion,
+)
+from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
 from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
+from app.integrations.nacional.cliente import ErrorNacional
 from app.schemas import ErrorResponse
+from app.schemas.inventario import CapacidadResponse
 from app.schemas.lote import LotePublicadoPublicoResponse, LoteResponse, LotesRequest
 from app.services import lotes as servicio
+from app.services.referencias_nacionales import capacidades_para_lotes, catalogo_tecnico
 
 router = APIRouter()
 
@@ -45,6 +53,9 @@ def exigir_coordinador_con_csrf(
 UsuarioGestionaLotes = Annotated[Usuario, Depends(exigir_coordinador_con_csrf)]
 
 RESPUESTAS_ERROR: dict[int | str, dict[str, object]] = {
+    502: {"model": ErrorResponse},
+    503: {"model": ErrorResponse},
+    504: {"model": ErrorResponse},
     status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
     status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
     status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
@@ -82,16 +93,46 @@ def guardar_lotes(
     datos: LotesRequest,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioGestionaLotes,
+    cliente_nacional: ClienteNacionalDep,
+    gestor_tiempo_real: GestorTiempoRealDep,
 ) -> list[LoteResponse]:
     """Valida con Pydantic, guarda en una transacción y devuelve los lotes."""
 
     try:
-        lotes = servicio.guardar_lotes(session, usuario, emergencia_id, datos.lotes)
+        capacidades = capacidades_para_lotes(cliente_nacional, datos.lotes)
+        lotes = servicio.guardar_lotes(
+            session, usuario, emergencia_id, datos.lotes, capacidades
+        )
+    except ErrorNacional as error:
+        session.rollback()
+        raise HTTPException(error.status, str(error)) from error
     except servicio.LoteError as error:
+        session.rollback()
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)
         ) from error
+    gestor_tiempo_real.programar_metricas()
     return [LoteResponse.model_validate(lote) for lote in lotes]
+
+
+@router.get(
+    "/catalogos/capacidades-nacionales",
+    response_model=list[CapacidadResponse],
+    summary="Consultar capacidades nacionales para lotes",
+    responses={
+        codigo: {"model": ErrorResponse} for codigo in (401, 403, 502, 503, 504)
+    },
+)
+def capacidades_nacionales(
+    usuario: UsuarioConsultaLotes,
+    cliente_nacional: ClienteNacionalDep,
+) -> list[CapacidadResponse]:
+    if usuario.rol != RolUsuario.COORDINADOR_REGIONAL:
+        raise HTTPException(403, "El catálogo de coordinación requiere un coordinador.")
+    try:
+        return catalogo_tecnico(cliente_nacional)
+    except ErrorNacional as error:
+        raise HTTPException(error.status, str(error)) from error
 
 
 @router.get(
@@ -117,6 +158,7 @@ def guardar_lotes(
     ),
 )
 def listar_lotes(
+    paginacion: PaginacionDep,
     emergencia_id: EmergenciaId,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaLotes,
@@ -124,7 +166,7 @@ def listar_lotes(
     """Consulta los lotes del centro autenticado sin modificar la emergencia."""
 
     try:
-        lotes = servicio.listar_lotes(session, usuario, emergencia_id)
+        lotes = servicio.listar_lotes(session, usuario, emergencia_id, paginacion)
     except servicio.LoteError as error:
         raise _error_http(error) from error
     if usuario.rol is RolUsuario.REPRESENTANTE_ONG:

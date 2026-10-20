@@ -2,7 +2,9 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import NAMESPACE_URL, uuid5
 
+from cryptography.fernet import InvalidToken
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -10,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import generar_password_hash
 from app.db.models import (
+    AccesoNacional,
     Convocatoria,
     ConvocatoriaLote,
     Emergencia,
@@ -31,7 +34,16 @@ from app.db.models import (
     Usuario,
 )
 from app.db.session import SessionLocal
+from app.integrations.nacional.cliente import ClienteNacional, ErrorNacional
+from app.schemas.inventario import ConexionRequest, RegistroNacionalRequest
+from app.services.acceso_nacional import cifrador
+from app.services.aprovisionamiento_nacional import completar_alta, preparar_alta
 from app.services.bootstrap import asegurar_admin_inicial
+
+ONGS_DEMO = (
+    ("Ayuda Sin Fronteras", "ayuda-sin-fronteras"),
+    ("Red Médica Solidaria", "red-medica-solidaria"),
+)
 
 
 @dataclass(frozen=True)
@@ -305,10 +317,123 @@ def _oferta(
     return oferta
 
 
-def seed_development_data(session: Session) -> SeedResult:
-    """Crea o actualiza un escenario reproducible de la Entrega 2 sin duplicarlo."""
+def _acceso_demo_original(session: Session, ong: Organizacion, referencia: str) -> bool:
+    """Reconoce exclusivamente las credenciales públicas del seed anterior."""
+    acceso = session.get(AccesoNacional, ong.id)
+    if acceso is None:
+        return True
+    if (
+        acceso.ong_id != ong.ong_nacional_id
+        or acceso.cuenta_id
+        != uuid5(NAMESPACE_URL, f"rescuesync-demo:cuenta-tecnica:{referencia}")
+        or acceso.identificador_login != f"demo-tecnica-{referencia}"
+    ):
+        return False
+    try:
+        return cifrador().decrypt(acceso.secreto_cifrado.encode()).decode() == (
+            f"demo-only-rescuesync-tecnica:{referencia}:2026"
+        )
+    except InvalidToken:
+        return False
 
-    administrador = asegurar_admin_inicial(session, get_settings())
+
+def _migrar_vinculo_demo_inexistente(
+    session: Session,
+    organizacion_id: int,
+    referencia: str,
+    cliente: ClienteNacional,
+) -> None:
+    """Reemplaza un vínculo sintético sólo tras confirmar su ausencia nacional."""
+    ong = session.get(Organizacion, organizacion_id, populate_existing=True)
+    assert ong is not None
+    anterior_id = uuid5(NAMESPACE_URL, f"rescuesync-demo:ong:{referencia}")
+    if ong.ong_nacional_id != anterior_id or not _acceso_demo_original(
+        session, ong, referencia
+    ):
+        return
+    acceso = session.get(AccesoNacional, organizacion_id)
+    configuracion_id = acceso.configuracion_id if acceso is not None else None
+    session.rollback()
+    settings = get_settings()
+    assert settings.nacional_aprovisionamiento_login is not None
+    assert settings.nacional_aprovisionamiento_password is not None
+    token = cliente.login(
+        ConexionRequest(
+            identificador_login=settings.nacional_aprovisionamiento_login,
+            password=settings.nacional_aprovisionamiento_password,
+        )
+    )
+    try:
+        cliente.perfil_competencia(token.access_token.get_secret_value(), anterior_id)
+        return
+    except ErrorNacional as error:
+        if error.status != 404:
+            raise
+    # Una caída, un 401 o una revocación no justifican reemplazar identidades.
+    ong = session.scalar(
+        select(Organizacion)
+        .where(Organizacion.id == organizacion_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    assert ong is not None
+    acceso = session.get(AccesoNacional, organizacion_id, populate_existing=True)
+    if (
+        ong.ong_nacional_id != anterior_id
+        or (acceso.configuracion_id if acceso is not None else None) != configuracion_id
+        or not _acceso_demo_original(session, ong, referencia)
+    ):
+        raise ErrorNacional(
+            409, "El acceso demo cambió durante la comprobación nacional."
+        )
+    if acceso is not None:
+        session.delete(acceso)
+    ong.ong_nacional_id = None
+    session.flush()
+    preparar_alta(session, ong, RegistroNacionalRequest())
+    session.commit()
+
+
+def aprovisionar_ongs_demo(session: Session, cliente: ClienteNacional) -> None:
+    """Completa las altas confirmadas localmente, sin crear inventario nacional."""
+    settings = get_settings()
+    if settings.app_env.casefold() not in {"development", "test"}:
+        raise ValueError("El seed sólo está disponible en desarrollo y pruebas.")
+    if (
+        not settings.nacional_aprovisionamiento_login
+        or settings.nacional_aprovisionamiento_password is None
+    ):
+        raise ValueError(
+            "Configurá NACIONAL_APROVISIONAMIENTO_LOGIN y "
+            "NACIONAL_APROVISIONAMIENTO_PASSWORD (NACIONAL_INTEGRACION_PASSWORD "
+            "en Compose) antes de ejecutar el seed."
+        )
+    for nombre, referencia in ONGS_DEMO:
+        organizacion_id = session.scalar(
+            select(Organizacion.id).where(
+                Organizacion.tipo == TipoOrganizacion.ONG,
+                Organizacion.nombre == nombre,
+            )
+        )
+        if organizacion_id is None:
+            raise ValueError("Cargá primero los datos locales del seed demo.")
+        _migrar_vinculo_demo_inexistente(session, organizacion_id, referencia, cliente)
+        completar_alta(session, organizacion_id, cliente)
+
+
+def seed_development_data(
+    session: Session, *, incluir_dashboard: bool = True
+) -> SeedResult:
+    """Carga escenarios operativos y de auditoría reproducibles sin duplicarlos."""
+
+    settings = get_settings()
+    if settings.app_env.casefold() not in {"development", "test"}:
+        raise ValueError("El seed sólo está disponible en desarrollo y pruebas.")
+    if settings.nacional_encryption_key is None:
+        raise ValueError(
+            "Configurá NACIONAL_ENCRYPTION_KEY en el backend antes de ejecutar el seed."
+        )
+    administrador = asegurar_admin_inicial(session, settings)
 
     municipio = _organizacion(
         session,
@@ -321,7 +446,10 @@ def seed_development_data(session: Session) -> SeedResult:
         "Centro Coordinador Litoral",
     )
     ong = _organizacion(session, TipoOrganizacion.ONG, "Ayuda Sin Fronteras")
-    _organizacion(session, TipoOrganizacion.ONG, "Red Médica Solidaria")
+    red_medica = _organizacion(session, TipoOrganizacion.ONG, "Red Médica Solidaria")
+    for organizacion in (ong, red_medica):
+        if organizacion.ong_nacional_id is None:
+            preparar_alta(session, organizacion, RegistroNacionalRequest())
 
     operador = _usuario(
         session,
@@ -343,6 +471,13 @@ def seed_development_data(session: Session) -> SeedResult:
         "ong@demo.rescuesync.org",
         RolUsuario.REPRESENTANTE_ONG,
         ong,
+    )
+    representante_red = _usuario(
+        session,
+        "redmedica@rescuesync.org",
+        "redmedica@demo.rescuesync.org",
+        RolUsuario.REPRESENTANTE_ONG,
+        red_medica,
     )
     _usuario(
         session,
@@ -416,6 +551,38 @@ def seed_development_data(session: Session) -> SeedResult:
         ahora,
     )
 
+    extras: list[CuentaSeed] = []
+    demo_emergencias = demo_lotes = demo_ofertas = 0
+    if incluir_dashboard:
+        from app.scripts.seed_auditoria import ampliar_demo_auditoria
+
+        municipios_demo = [(municipio, operador)]
+        for sufijo, nombre in [
+            ("rio", "Municipalidad de Villa del Río"),
+            ("sierra", "Municipalidad de Sierra Clara"),
+        ]:
+            organizacion_demo = _organizacion(
+                session, TipoOrganizacion.MUNICIPIO, nombre
+            )
+            email_demo = f"municipio-{sufijo}@rescuesync.org"
+            operador_demo = _usuario(
+                session,
+                email_demo,
+                email_demo,
+                RolUsuario.OPERADOR_MUNICIPAL,
+                organizacion_demo,
+            )
+            municipios_demo.append((organizacion_demo, operador_demo))
+            extras.append(CuentaSeed(email_demo, RolUsuario.OPERADOR_MUNICIPAL, nombre))
+        demo_emergencias, demo_lotes, demo_ofertas = ampliar_demo_auditoria(
+            session,
+            municipios_demo,
+            centro,
+            coordinador,
+            [(ong, representante), (red_medica, representante_red)],
+            ahora,
+        )
+
     return SeedResult(
         cuentas=(
             CuentaSeed(
@@ -434,6 +601,11 @@ def seed_development_data(session: Session) -> SeedResult:
                 ong.nombre,
             ),
             CuentaSeed(
+                "redmedica@rescuesync.org",
+                RolUsuario.REPRESENTANTE_ONG,
+                red_medica.nombre,
+            ),
+            CuentaSeed(
                 "auditor@rescuesync.org",
                 RolUsuario.AUDITOR_DIRECTIVO,
                 None,
@@ -443,10 +615,11 @@ def seed_development_data(session: Session) -> SeedResult:
                 RolUsuario.ADMINISTRADOR,
                 None,
             ),
-        ),
-        emergencias=2,
-        lotes_publicados=3,
-        ofertas=1,
+        )
+        + tuple(extras),
+        emergencias=2 + demo_emergencias,
+        lotes_publicados=3 + demo_lotes,
+        ofertas=1 + demo_ofertas,
     )
 
 
@@ -463,6 +636,22 @@ def main() -> int:
     try:
         with SessionLocal.begin() as session:
             resultado = seed_development_data(session)
+        settings = get_settings()
+        cliente = ClienteNacional(
+            str(settings.nacional_base_url), settings.nacional_timeout_seconds
+        )
+        try:
+            with SessionLocal() as session:
+                aprovisionar_ongs_demo(session, cliente)
+        finally:
+            cliente.close()
+    except ErrorNacional as error:
+        print(
+            f"Datos locales conservados; alta nacional pendiente: {error} "
+            "Corregí la causa y volvé a ejecutar el mismo comando.",
+            file=sys.stderr,
+        )
+        return 1
     except IntegrityError:
         print(
             "No se pudo cargar el seed por una restricción de los datos.",
@@ -472,14 +661,17 @@ def main() -> int:
     except ValueError as error:
         print(f"No se pudo cargar el seed: {error}", file=sys.stderr)
         return 1
-    print("Seed de desarrollo listo. Usuarios disponibles:")
+    print(
+        "Seed de desarrollo listo; altas nacionales completadas y vínculos previos "
+        "conservados, sin cargar inventario. Usuarios disponibles:"
+    )
     for cuenta in resultado.cuentas:
         contexto = f" — {cuenta.organizacion}" if cuenta.organizacion else ""
         print(f"- {cuenta.email} — {cuenta.rol.value}{contexto}")
     print(
         f"Datos: {resultado.emergencias} emergencias, "
         f"{resultado.lotes_publicados} lotes publicados y "
-        f"{resultado.ofertas} oferta."
+        f"{resultado.ofertas} ofertas."
     )
     return 0
 

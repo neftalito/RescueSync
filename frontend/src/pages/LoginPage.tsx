@@ -1,9 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { useNavigate } from "react-router";
 
+import { ActionIcon } from "../components/ActionIcon";
 import { login } from "../api/auth";
 import { ApiError } from "../api/client";
 import { sessionQueryKey } from "../hooks/useSession";
@@ -18,6 +19,7 @@ export function LoginPage(): ReactElement {
   const queryClient = useQueryClient();
   const [showPassword, setShowPassword] = useState(false);
   const {
+    control,
     register,
     handleSubmit,
     formState: { errors },
@@ -25,6 +27,7 @@ export function LoginPage(): ReactElement {
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+  const password = useWatch({ control, name: "password" });
   const mutation = useMutation({
     mutationFn: login,
     onSuccess: (session: Session) => {
@@ -37,7 +40,7 @@ export function LoginPage(): ReactElement {
       queryClient.clear();
       queryClient.setQueryData(sessionQueryKey, session);
       navigate(
-        session.usuario.requiere_cambio_password ? "/cambiar-password" : "/",
+        session.usuario.requiere_cambio_password ? "/opciones" : "/",
         { replace: true },
       );
     },
@@ -134,23 +137,31 @@ export function LoginPage(): ReactElement {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
+                  placeholder="Ingresá tu contraseña"
                   aria-invalid={errors.password !== undefined}
                   aria-describedby={
                     errors.password ? "password-error" : undefined
                   }
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 pr-24 text-base shadow-sm outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 pr-16 text-base shadow-sm outline-none transition focus:border-cyan-600 focus:ring-4 focus:ring-cyan-100 [&::-ms-reveal]:hidden"
                   {...register("password")}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((visible) => !visible)}
-                  className="absolute inset-y-0 right-3 my-auto h-fit rounded-lg px-2 py-1 text-sm font-semibold text-cyan-800 hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-cyan-700"
-                  aria-label={
-                    showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
-                  }
-                >
-                  {showPassword ? "Ocultar" : "Mostrar"}
-                </button>
+                {password.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    className="action-button action-icon action-borderless password-visibility absolute inset-y-0 right-2 my-auto"
+                    aria-label={
+                      showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
+                    }
+                    title={
+                      showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
+                    }
+                    aria-controls="password"
+                    aria-pressed={showPassword}
+                  >
+                    <ActionIcon name={showPassword ? "eye-off" : "eye"} />
+                  </button>
+                )}
               </div>
               {errors.password && (
                 <p id="password-error" className="mt-2 text-sm text-red-700">
@@ -171,7 +182,7 @@ export function LoginPage(): ReactElement {
             <button
               type="submit"
               disabled={mutation.isPending}
-              className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+              className="action-button action-primary w-full"
             >
               {mutation.isPending ? "Ingresando…" : "Ingresar a RescueSync"}
             </button>

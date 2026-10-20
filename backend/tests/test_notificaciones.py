@@ -1,9 +1,14 @@
 """Pruebas del buzón persistente y su canal WebSocket autenticado."""
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from alembic.script import ScriptDirectory
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +20,9 @@ from app.core.security import (
     generar_password_hash,
 )
 from app.db.models import (
+    Convocatoria,
+    Emergencia,
+    GravedadEmergencia,
     Notificacion,
     Organizacion,
     RolUsuario,
@@ -142,6 +150,102 @@ def test_distribuye_el_evento_solo_a_usuarios_del_rol_activo(
     assert usuarios["ong"].id not in destinatarios
 
 
+@pytest.mark.parametrize("evento", ["publicada", "cerrada"])
+@pytest.mark.parametrize("leida", [False, True])
+def test_migracion_corrige_avisos_municipales_sin_alterar_lecturas_ni_otros_buzones(
+    db_session: Session,
+    usuarios: dict[str, Usuario],
+    evento: str,
+    leida: bool,
+) -> None:
+    operador = usuarios["municipio"]
+    otro_municipio = Organizacion(
+        nombre="Otro municipio", tipo=TipoOrganizacion.MUNICIPIO
+    )
+    db_session.add(otro_municipio)
+    db_session.flush()
+    otro_operador = Usuario(
+        email="otro-municipio-notificaciones@prueba.org",
+        rol=RolUsuario.OPERADOR_MUNICIPAL,
+        organizacion_id=otro_municipio.id,
+        password_hash=operador.password_hash,
+    )
+    emergencia = Emergencia(
+        municipio_id=operador.organizacion_id,
+        creada_por_usuario_id=operador.id,
+        gravedad=GravedadEmergencia.ALTA,
+        zona="Ribera norte",
+        descripcion="Inundación con familias evacuadas",
+    )
+    db_session.add_all([otro_operador, emergencia])
+    db_session.flush()
+    fecha = datetime(2026, 10, 19, 12, tzinfo=UTC)
+    convocatoria = Convocatoria(
+        emergencia_id=emergencia.id,
+        numero=1,
+        publicada_en=fecha,
+        cierra_en=fecha + timedelta(hours=2),
+    )
+    db_session.add(convocatoria)
+    db_session.flush()
+    mensaje_anterior = (
+        "El centro coordinador publicó la convocatoria de la emergencia."
+        if evento == "publicada"
+        else "Cerró la convocatoria y las ofertas están siendo evaluadas."
+    )
+    avisos = [
+        Notificacion(
+            usuario_id=destinatario.id,
+            clave_evento=f"convocatoria:{convocatoria.id}:{evento}",
+            tipo=TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
+            titulo="Emergencia publicada"
+            if evento == "publicada"
+            else "Emergencia en evaluación",
+            mensaje=mensaje_anterior,
+            ruta="/",
+            creada_en=fecha,
+            leida_en=fecha if leida else None,
+        )
+        for destinatario in (operador, otro_operador, usuarios["ong"])
+    ]
+    db_session.add_all(avisos)
+    db_session.flush()
+
+    config = Config()
+    config.set_main_option(
+        "script_location", str(Path(__file__).resolve().parents[1] / "alembic")
+    )
+    revision = ScriptDirectory.from_config(config).get_revision("20261020_0016")
+    assert revision is not None
+    with Operations.context(MigrationContext.configure(db_session.connection())):
+        revision.module.upgrade()
+        revision.module.upgrade()
+    db_session.expire_all()
+
+    propia, ajena, ong = avisos
+    prefijo = (
+        "El centro coordinador publicó la convocatoria de la emergencia en "
+        if evento == "publicada"
+        else "Cerró la convocatoria y las ofertas están siendo evaluadas. Emergencia en "
+    )
+    assert propia.mensaje == f"{prefijo}{emergencia.zona}: {emergencia.descripcion}"
+    assert propia.ruta == f"/emergencias/{emergencia.id}/ejecucion"
+    for aviso in avisos:
+        assert aviso.creada_en == fecha
+        assert aviso.leida_en == (fecha if leida else None)
+    for aviso in (ajena, ong):
+        assert aviso.mensaje == mensaje_anterior
+        assert aviso.ruta == "/"
+
+    with Operations.context(MigrationContext.configure(db_session.connection())):
+        revision.module.downgrade()
+    db_session.expire_all()
+    assert propia.mensaje == mensaje_anterior
+    assert propia.ruta == "/"
+    assert propia.creada_en == fecha
+    assert propia.leida_en == (fecha if leida else None)
+
+
 def test_buzon_no_expone_notificaciones_de_otro_usuario_y_exige_csrf(
     client: TestClient,
     db_session: Session,
@@ -237,6 +341,33 @@ def test_websocket_entrega_solo_al_usuario_autenticado(
     assert mensaje["evento"] == "notificacion.creada"
     assert mensaje["notificacion"]["id"] == notificacion.id
     assert mensaje["notificacion"]["usuario_id"] == usuario.id
+
+
+def test_websocket_actualiza_metricas_solo_en_conexiones_auditoras(
+    client: TestClient, db_session: Session, usuarios: dict[str, Usuario]
+) -> None:
+    auditor = Usuario(
+        email="auditor-socket@prueba.org",
+        rol=RolUsuario.AUDITOR_DIRECTIVO,
+        password_hash=usuarios["ong"].password_hash,
+    )
+    db_session.add(auditor)
+    db_session.flush()
+    client.cookies.set("rescuesync_session", crear_valor_sesion(auditor.id))
+    with client.websocket_connect(
+        "/api/v1/notificaciones/ws", headers={"origin": ORIGEN_FRONTEND}
+    ) as socket_auditor:
+        usuario = usuarios["ong"]
+        client.cookies.set("rescuesync_session", crear_valor_sesion(usuario.id))
+        with client.websocket_connect(
+            "/api/v1/notificaciones/ws", headers={"origin": ORIGEN_FRONTEND}
+        ) as socket_ong:
+            gestor = app.state.gestor_tiempo_real
+            notificacion = _crear_notificacion(db_session, usuario, "socket:control")
+            gestor.programar_metricas()
+            gestor.programar([NotificacionResponse.model_validate(notificacion)])
+            assert socket_auditor.receive_json() == {"evento": "metricas.actualizadas"}
+            assert socket_ong.receive_json()["evento"] == "notificacion.creada"
 
 
 def test_websocket_rechaza_origen_no_permitido(

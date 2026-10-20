@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     UsuarioCambioPassword,
+    UsuarioCierreSesion,
     UsuarioConsultaSesion,
     validar_csrf,
 )
@@ -64,7 +65,7 @@ def _evitar_cache(response: Response) -> None:
     summary="Iniciar sesión local",
     description=(
         "Valida las credenciales locales y crea una sesión firmada en una cookie "
-        "HttpOnly. No utiliza el JWT del futuro Sistema Nacional."
+        "HttpOnly. El acceso nacional se obtiene automáticamente al necesitarlo."
     ),
 )
 def iniciar_sesion(
@@ -165,6 +166,7 @@ def cambiar_password(
 )
 def cerrar_sesion(
     response: Response,
+    usuario: UsuarioCierreSesion,
     _: Annotated[None, Depends(validar_csrf)],
 ) -> None:
     response.delete_cookie(

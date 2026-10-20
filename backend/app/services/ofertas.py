@@ -1,8 +1,9 @@
 """Caso de uso para registrar una oferta básica sobre lotes publicados."""
 
 from datetime import UTC, datetime
+from uuid import UUID
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -15,16 +16,21 @@ from app.db.models import (
     Lote,
     Oferta,
     OfertaItem,
+    OfertaItemAporte,
     OfertaVersion,
+    OfertaVersionParticipante,
     TipoOrganizacion,
+    TipoParticipacion,
     Usuario,
 )
+from app.schemas.inventario import RecursoResponse
 from app.schemas.oferta import (
     OfertaContenidoRequest,
     OfertaCreateRequest,
     OfertaItemRequest,
     OfertaUpdateRequest,
 )
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 from app.services.notificaciones import notificar_oferta_recibida
 
@@ -81,6 +87,8 @@ def registrar_oferta(
     session: Session,
     usuario: Usuario,
     datos: OfertaCreateRequest,
+    *,
+    referencias: tuple[UUID | None, dict[UUID, RecursoResponse]] | None = None,
 ) -> Oferta:
     """Persiste oferta, versión 1 e ítems en una única transacción."""
 
@@ -104,7 +112,21 @@ def registrar_oferta(
     oferta_existente_id = session.scalar(
         select(Oferta.id).where(
             Oferta.convocatoria_id == convocatoria.id,
-            Oferta.ong_creadora_id == ong.id,
+            or_(
+                Oferta.ong_creadora_id == ong.id,
+                select(OfertaVersionParticipante.oferta_version_id)
+                .join(
+                    OfertaVersion,
+                    OfertaVersion.id == OfertaVersionParticipante.oferta_version_id,
+                )
+                .where(
+                    OfertaVersion.oferta_id == Oferta.id,
+                    OfertaVersion.numero == Oferta.version_actual,
+                    OfertaVersionParticipante.ong_id == ong.id,
+                )
+                .correlate(Oferta)
+                .exists(),
+            ),
             Oferta.fusionada_en_oferta_id.is_(None),
         )
     )
@@ -120,6 +142,9 @@ def registrar_oferta(
     publicaciones_validadas = [
         _publicacion_de(publicaciones, item) for item in datos.items
     ]
+    recursos = _validar_referencias(
+        session, usuario, datos, publicaciones_validadas, referencias
+    )
     oferta = Oferta(
         convocatoria_id=convocatoria.id,
         ong_creadora_id=ong.id,
@@ -137,6 +162,7 @@ def registrar_oferta(
         datos=datos,
         publicaciones=publicaciones_validadas,
         numero=1,
+        recursos=recursos,
     )
 
     try:
@@ -154,7 +180,7 @@ def registrar_oferta(
             "Los datos de la oferta no son válidos."
         ) from error
 
-    return _recargar_oferta(session, oferta.id)
+    return recargar_oferta(session, oferta.id)
 
 
 def actualizar_oferta(
@@ -162,6 +188,8 @@ def actualizar_oferta(
     usuario: Usuario,
     oferta_id: int,
     datos: OfertaUpdateRequest,
+    *,
+    referencias: tuple[UUID | None, dict[UUID, RecursoResponse]] | None = None,
 ) -> Oferta:
     """Agrega una versión inmutable a la oferta propia durante la convocatoria."""
 
@@ -201,6 +229,16 @@ def actualizar_oferta(
         .with_for_update()
     )
     assert oferta is not None
+    vigente = session.scalar(
+        select(OfertaVersion).where(
+            OfertaVersion.oferta_id == oferta.id,
+            OfertaVersion.numero == oferta.version_actual,
+        )
+    )
+    if vigente is not None and len(vigente.participantes) > 1:
+        raise OfertaNoEditableError(
+            "Desarmá el consorcio antes de editar los aportes individuales."
+        )
     if oferta.estado is not EstadoOferta.PRESENTADA:
         raise OfertaNoEditableError(
             f"La oferta está {oferta.estado.value} y no admite modificaciones."
@@ -217,7 +255,10 @@ def actualizar_oferta(
     publicaciones_validadas = [
         _publicacion_de(publicaciones, item) for item in datos.items
     ]
-    siguiente_version = oferta.version_actual + 1
+    recursos = _validar_referencias(
+        session, usuario, datos, publicaciones_validadas, referencias
+    )
+    siguiente_version = siguiente_numero_version(session, oferta.id)
     _agregar_version(
         session,
         oferta=oferta,
@@ -225,6 +266,7 @@ def actualizar_oferta(
         datos=datos,
         publicaciones=publicaciones_validadas,
         numero=siguiente_version,
+        recursos=recursos,
     )
     oferta.version_actual = siguiente_version
     oferta.version_bloqueo += 1
@@ -237,10 +279,16 @@ def actualizar_oferta(
             "Los datos de la oferta no son válidos."
         ) from error
 
-    return _recargar_oferta(session, oferta_id)
+    return recargar_oferta(session, oferta_id)
 
 
-def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
+def listar_ofertas_propias(
+    session: Session,
+    usuario: Usuario,
+    paginacion: Paginacion = SIN_PAGINACION,
+    *,
+    convocatoria_id: int | None = None,
+) -> list[Oferta]:
     """Devuelve las ofertas de la ONG activa del usuario, sin importar quién las creó.
 
     Nunca incluye ofertas de otra organización: la consulta filtra siempre
@@ -265,16 +313,39 @@ def listar_ofertas_propias(session: Session, usuario: Usuario) -> list[Oferta]:
                 ),
             )
             .where(
-                Oferta.ong_creadora_id == ong.id,
+                or_(convocatoria_id is None, Oferta.convocatoria_id == convocatoria_id),
+                or_(
+                    Oferta.ong_creadora_id == ong.id,
+                    select(OfertaVersionParticipante.oferta_version_id)
+                    .where(
+                        OfertaVersionParticipante.oferta_version_id == OfertaVersion.id,
+                        OfertaVersionParticipante.ong_id == ong.id,
+                    )
+                    .correlate(OfertaVersion)
+                    .exists(),
+                ),
                 Oferta.fusionada_en_oferta_id.is_(None),
-                Oferta.estado != EstadoOferta.BORRADOR,
-                OfertaVersion.presentada_en.is_not(None),
+                or_(
+                    OfertaVersion.presentada_en.is_not(None),
+                    and_(
+                        Oferta.estado == EstadoOferta.BORRADOR,
+                        OfertaVersion.requiere_desglose_nacional,
+                    ),
+                ),
             )
             .options(
                 joinedload(Oferta.convocatoria).joinedload(Convocatoria.emergencia),
                 selectinload(Oferta.versiones).selectinload(OfertaVersion.items),
+                selectinload(Oferta.versiones)
+                .selectinload(OfertaVersion.items)
+                .selectinload(OfertaItem.aportes),
+                selectinload(Oferta.versiones).selectinload(
+                    OfertaVersion.participantes
+                ),
             )
-            .order_by(Oferta.creada_en.desc())
+            .order_by(Oferta.creada_en.desc(), Oferta.id.desc())
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         ).all()
     )
 
@@ -324,6 +395,7 @@ def _agregar_version(
     datos: OfertaContenidoRequest,
     publicaciones: list[ConvocatoriaLote],
     numero: int,
+    recursos: dict[UUID, RecursoResponse],
 ) -> None:
     """Persiste una revisión completa sin alterar las revisiones anteriores."""
 
@@ -332,25 +404,119 @@ def _agregar_version(
         creada_por_usuario_id=usuario.id,
         numero=numero,
         observaciones=datos.observaciones,
-        presentada_en=datetime.now(UTC),
+        presentada_en=None,
+        requiere_desglose_nacional=bool(oferta.convocatoria.sistema_origen_ref)
+        or any(p.capacidad_nacional_id is not None for p in publicaciones),
     )
     session.add(version)
     session.flush()
+    ong = usuario.organizacion
+    assert ong is not None
+    session.add(
+        OfertaVersionParticipante(
+            oferta_version_id=version.id,
+            ong_id=ong.id,
+            ong_nacional_id=ong.ong_nacional_id,
+            nombre_ong=ong.nombre,
+            rol=TipoParticipacion.LIDER,
+            confirmada_en=datetime.now(UTC),
+        )
+    )
+    session.flush()
     for item, publicacion in zip(datos.items, publicaciones, strict=True):
-        session.add(
-            OfertaItem(
-                oferta_version_id=version.id,
-                convocatoria_id=oferta.convocatoria_id,
-                lote_id=item.lote_id,
-                tipo=item.tipo,
-                descripcion=item.descripcion,
-                cantidad_ofrecida=item.cantidad_ofrecida,
-                unidad=publicacion.unidad_publicada,
+        persistido = OfertaItem(
+            oferta_version_id=version.id,
+            convocatoria_id=oferta.convocatoria_id,
+            lote_id=item.lote_id,
+            tipo=item.tipo,
+            descripcion=item.descripcion,
+            cantidad_ofrecida=item.cantidad_ofrecida,
+            unidad=publicacion.unidad_publicada,
+        )
+        session.add(persistido)
+        session.flush()
+        for aporte in item.aportes:
+            recurso = recursos[aporte.recurso_nacional_id]
+            session.add(
+                OfertaItemAporte(
+                    oferta_item_id=persistido.id,
+                    oferta_version_id=version.id,
+                    ong_id=ong.id,
+                    recurso_nacional_id=recurso.id,
+                    capacidad_nacional_id=recurso.capacidad_id,
+                    cantidad=aporte.cantidad,
+                    unidad=recurso.unidad,
+                )
+            )
+    session.flush()
+    version.presentada_en = datetime.now(UTC)
+
+
+def siguiente_numero_version(session: Session, oferta_id: int) -> int:
+    """No reutiliza números de propuestas de consorcio que fueron desarmadas."""
+    return (
+        session.scalar(
+            select(func.max(OfertaVersion.numero)).where(
+                OfertaVersion.oferta_id == oferta_id
             )
         )
+        or 0
+    ) + 1
 
 
-def _recargar_oferta(session: Session, oferta_id: int) -> Oferta:
+def _validar_referencias(
+    session: Session,
+    usuario: Usuario,
+    datos: OfertaContenidoRequest,
+    publicaciones: list[ConvocatoriaLote],
+    referencias: tuple[UUID | None, dict[UUID, RecursoResponse]] | None,
+) -> dict[UUID, RecursoResponse]:
+    """Revalida el mapping local tras HTTP; las competencias y reservas son posteriores."""
+    ong = usuario.organizacion
+    assert ong is not None
+    session.refresh(ong, with_for_update=True)
+    if not ong.activa or ong.tipo != TipoOrganizacion.ONG:
+        raise OngNoAutorizadaError("Tu ONG local ya no está activa.")
+    ong_id, recursos = referencias or (None, {})
+    if ong_id is not None and ong_id != ong.ong_nacional_id:
+        raise DatosOfertaInvalidosError(
+            "La vinculación nacional cambió. Volvé a conectar tu cuenta."
+        )
+    for item, publicacion in zip(datos.items, publicaciones, strict=True):
+        if publicacion.capacidad_nacional_id is not None and (
+            not item.aportes or ong.ong_nacional_id is None
+        ):
+            raise DatosOfertaInvalidosError(
+                "El lote requiere recursos nacionales propios y desglose de cantidades."
+            )
+        for aporte in item.aportes:
+            recurso = recursos.get(aporte.recurso_nacional_id)
+            if (
+                recurso is None
+                or recurso.ong_id != ong.ong_nacional_id
+                or not recurso.activo
+            ):
+                raise DatosOfertaInvalidosError(
+                    "El recurso debe pertenecer a tu inventario nacional activo."
+                )
+            if (
+                recurso.capacidad_id != publicacion.capacidad_nacional_id
+                or recurso.unidad != publicacion.unidad_publicada
+            ):
+                raise DatosOfertaInvalidosError(
+                    "La capacidad y unidad del recurso no coinciden con el lote."
+                )
+            if (
+                not recurso.admite_fracciones
+                and aporte.cantidad != aporte.cantidad.to_integral_value()
+            ):
+                raise DatosOfertaInvalidosError(
+                    "Esta capacidad requiere cantidades enteras."
+                )
+    return recursos
+
+
+def recargar_oferta(session: Session, oferta_id: int) -> Oferta:
     """Carga la oferta con su convocatoria y versiones para formar la respuesta."""
 
     oferta = session.scalar(
@@ -358,8 +524,13 @@ def _recargar_oferta(session: Session, oferta_id: int) -> Oferta:
         .options(
             selectinload(Oferta.convocatoria),
             selectinload(Oferta.versiones).selectinload(OfertaVersion.items),
+            selectinload(Oferta.versiones)
+            .selectinload(OfertaVersion.items)
+            .selectinload(OfertaItem.aportes),
+            selectinload(Oferta.versiones).selectinload(OfertaVersion.participantes),
         )
         .where(Oferta.id == oferta_id)
+        .execution_options(populate_existing=True)
     )
     assert oferta is not None
     return oferta

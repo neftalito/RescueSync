@@ -9,7 +9,7 @@ import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { emergenciasQueryKey } from "../hooks/useEmergencias";
-import type { Emergencia } from "../schemas/emergencia";
+import type { EmergenciaEnBandeja } from "../schemas/emergencia";
 import { BandejaEmergencias } from "./BandejaEmergencias";
 
 const API_URL = "http://localhost:8000/api/v1";
@@ -23,13 +23,14 @@ const emergenciaBase = {
   zona: "Ribera norte",
   descripcion: "Inundación con familias evacuadas y acceso restringido.",
   estado: "REGISTRADA",
+  tiene_lotes: false,
   bonita_sync: "PENDIENTE",
   bonita_process_instance_id: null,
   bonita_ultimo_error: null,
   bonita_ultimo_intento_en: null,
   creada_en: "2026-09-19T18:20:39.102766Z",
   actualizada_en: "2026-09-19T18:20:39.102766Z",
-} satisfies Emergencia;
+} satisfies EmergenciaEnBandeja;
 
 const server = setupServer();
 
@@ -43,13 +44,16 @@ afterAll(() => server.close());
 function renderBandeja(
   rol: "OPERADOR_MUNICIPAL" | "COORDINADOR_REGIONAL",
   csrfToken?: string,
-  emergenciasEnCache?: Emergencia[],
+  emergenciasEnCache?: EmergenciaEnBandeja[],
 ): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   if (emergenciasEnCache !== undefined) {
-    queryClient.setQueryData(emergenciasQueryKey, emergenciasEnCache);
+    queryClient.setQueryData(
+      [...emergenciasQueryKey, "bandeja", rol === "COORDINADOR_REGIONAL" ? false : undefined, undefined, "paginas"],
+      { pages: [{ items: emergenciasEnCache, siguiente: undefined }], pageParams: [0] },
+    );
   }
   render(
     <QueryClientProvider client={queryClient}>
@@ -103,17 +107,17 @@ describe("BandejaEmergencias", () => {
     renderBandeja("COORDINADOR_REGIONAL");
 
     expect(
-      await screen.findByText("No hay emergencias registradas pendientes."),
+      await screen.findByText("No hay emergencias pendientes sin lotes."),
     ).toBeInTheDocument();
   });
 
   it("retira una emergencia publicada de la bandeja en caché del coordinador", async () => {
     renderBandeja("COORDINADOR_REGIONAL", undefined, [
-      { ...emergenciaBase, estado: "PUBLICADA" },
+      { ...emergenciaBase, estado: "PUBLICADA", tiene_lotes: true },
     ]);
 
     expect(
-      await screen.findByText("No hay emergencias registradas pendientes."),
+      await screen.findByText("No hay emergencias pendientes sin lotes."),
     ).toBeInTheDocument();
     expect(screen.queryByText("Alta · Ribera norte")).not.toBeInTheDocument();
     expect(
@@ -204,7 +208,7 @@ describe("BandejaEmergencias", () => {
     expect(screen.getByText("Error de vinculación")).toBeVisible();
     expect(screen.getByText("Bonita no está disponible.")).toBeVisible();
     await user.click(
-      screen.getByRole("button", { name: "Reintentar vinculación" }),
+      screen.getByRole("button", { name: "Vincular con Bonita" }),
     );
 
     expect(

@@ -1,6 +1,8 @@
 """Caso de uso para registrar una emergencia municipal."""
 
-from sqlalchemy import or_, select
+from collections.abc import Sequence
+
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -8,11 +10,13 @@ from app.db.models import (
     Emergencia,
     EstadoEmergencia,
     EstadoSincronizacionBonita,
+    Lote,
     RolUsuario,
     TipoOrganizacion,
     Usuario,
 )
 from app.schemas.emergencia import EmergenciaCreate
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 from app.services.notificaciones import notificar_emergencia_registrada
 
@@ -94,12 +98,19 @@ def registrar_emergencia(
     return emergencia
 
 
-def listar_emergencias(session: Session, usuario: Usuario) -> list[Emergencia]:
+def listar_emergencias(
+    session: Session,
+    usuario: Usuario,
+    paginacion: Paginacion = SIN_PAGINACION,
+    *,
+    tiene_lotes: bool | None = None,
+    estado: EstadoEmergencia | None = None,
+) -> list[Emergencia]:
     """Filtra la bandeja de emergencias visible según el rol autenticado.
 
     Un municipio ve únicamente sus propias emergencias, con su estado actual.
-    Un centro coordinador ve las emergencias en REGISTRADA que aún no tienen
-    centro asignado o que ya están asignadas al suyo.
+    Un centro coordinador ve las emergencias en REGISTRADA aún sin asignar
+    y todas las asignadas a su centro, cualquiera sea su estado.
 
     Args:
         session: Sesión SQLAlchemy con la que se ejecuta la consulta.
@@ -125,7 +136,7 @@ def listar_emergencias(session: Session, usuario: Usuario) -> list[Emergencia]:
         enunciado = (
             select(Emergencia)
             .where(Emergencia.municipio_id == municipio.id)
-            .order_by(Emergencia.creada_en.desc())
+            .order_by(Emergencia.creada_en.desc(), Emergencia.id.desc())
         )
     elif usuario.rol is RolUsuario.COORDINADOR_REGIONAL:
         centro = organizacion_vigente_de_tipo(
@@ -138,18 +149,49 @@ def listar_emergencias(session: Session, usuario: Usuario) -> list[Emergencia]:
         enunciado = (
             select(Emergencia)
             .where(
-                Emergencia.estado == EstadoEmergencia.REGISTRADA,
                 or_(
-                    Emergencia.centro_coordinador_id.is_(None),
+                    and_(
+                        Emergencia.estado == EstadoEmergencia.REGISTRADA,
+                        Emergencia.centro_coordinador_id.is_(None),
+                    ),
                     Emergencia.centro_coordinador_id == centro.id,
                 ),
             )
-            .order_by(Emergencia.creada_en.asc())
+            .order_by(Emergencia.creada_en.asc(), Emergencia.id.asc())
         )
     else:
         raise EmergenciaError("El rol autenticado no tiene una bandeja de emergencias.")
 
-    return list(session.scalars(enunciado).all())
+    if estado is not None:
+        enunciado = enunciado.where(Emergencia.estado == estado)
+    if tiene_lotes is not None:
+        existen_lotes = (
+            select(Lote.id).where(Lote.emergencia_id == Emergencia.id).exists()
+        )
+        enunciado = enunciado.where(existen_lotes if tiene_lotes else ~existen_lotes)
+    return list(
+        session.scalars(
+            enunciado.offset(paginacion.offset).limit(paginacion.limit)
+        ).all()
+    )
+
+
+def ids_emergencias_con_lotes(
+    session: Session, emergencias: Sequence[Emergencia]
+) -> set[int]:
+    """Consulta en bloque qué emergencias visibles tienen al menos un lote."""
+
+    if not emergencias:
+        return set()
+    return set(
+        session.scalars(
+            select(Lote.emergencia_id)
+            .where(
+                Lote.emergencia_id.in_([emergencia.id for emergencia in emergencias])
+            )
+            .distinct()
+        ).all()
+    )
 
 
 def obtener_emergencia_para_reintento(

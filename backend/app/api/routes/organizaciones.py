@@ -3,15 +3,19 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import UsuarioAdministrador, validar_csrf
-from app.db.models import Organizacion
+from app.api.dependencies import ClienteNacionalDep, UsuarioAdministrador, validar_csrf
+from app.api.paginacion import PaginacionDep
+from app.db.models import Organizacion, TipoOrganizacion
 from app.db.session import get_db
+from app.integrations.nacional.cliente import ErrorNacional
 from app.schemas import ErrorResponse
+from app.schemas.inventario import RegistroNacionalRequest
 from app.schemas.organizaciones import (
     OrganizacionCreate,
     OrganizacionResponse,
     OrganizacionUpdate,
 )
+from app.services.aprovisionamiento_nacional import completar_alta, preparar_alta
 from app.services.organizaciones import (
     OrganizacionDuplicadaError,
     OrganizacionNoEncontradaError,
@@ -35,10 +39,11 @@ router = APIRouter()
     ),
 )
 def obtener_organizaciones(
+    paginacion: PaginacionDep,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
 ) -> list[Organizacion]:
-    return listar_organizaciones(session)
+    return listar_organizaciones(session, paginacion)
 
 
 @router.post(
@@ -50,23 +55,42 @@ def obtener_organizaciones(
         status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
         status.HTTP_409_CONFLICT: {"model": ErrorResponse},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
     },
     summary="Crear una organización",
     description=(
         "Registra una organización activa para luego asignarla a usuarios "
-        "municipales, coordinadores o representantes de ONG."
+        "municipales, coordinadores o representantes de ONG. Para ONG, genera el "
+        "identificador, registra y vincula su cuenta técnica nacional. El correo "
+        "es opcional. Si la API falla, conserva el alta local para reintentar."
     ),
 )
 def alta_organizacion(
     datos: OrganizacionCreate,
+    cliente: ClienteNacionalDep,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
     __: Annotated[None, Depends(validar_csrf)],
 ) -> Organizacion:
     try:
         organizacion = crear_organizacion(session, datos)
+        if datos.tipo == TipoOrganizacion.ONG:
+            preparar_alta(
+                session,
+                organizacion,
+                RegistroNacionalRequest(email_contacto=datos.email_contacto),
+            )
         session.commit()
+        if datos.tipo == TipoOrganizacion.ONG:
+            try:
+                return completar_alta(session, organizacion.id, cliente)
+            except ErrorNacional:
+                # El alta local y su solicitud durable permiten reintentar desde la web.
+                session.rollback()
         return organizacion
+    except ErrorNacional as error:
+        session.rollback()
+        raise HTTPException(error.status, str(error)) from error
     except OrganizacionDuplicadaError as error:
         session.rollback()
         raise HTTPException(
@@ -120,7 +144,7 @@ def editar_organizacion(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "No se puede cambiar el tipo de una organización que tiene "
-                "usuarios relacionados."
+                "usuarios relacionados o una vinculación nacional."
             ),
         ) from error
 
@@ -155,3 +179,25 @@ def baja_organizacion(
             detail="La organización solicitada no existe.",
         ) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/{organizacion_id}/aprovisionamiento-nacional",
+    response_model=OrganizacionResponse,
+    responses={
+        codigo: {"model": ErrorResponse} for codigo in (401, 403, 409, 502, 503, 504)
+    },
+    summary="Reintentar el alta nacional de una ONG",
+    dependencies=[Depends(validar_csrf)],
+)
+def reintentar_alta_nacional(
+    organizacion_id: int,
+    _: UsuarioAdministrador,
+    session: Annotated[Session, Depends(get_db)],
+    cliente: ClienteNacionalDep,
+) -> Organizacion:
+    try:
+        return completar_alta(session, organizacion_id, cliente)
+    except ErrorNacional as error:
+        session.rollback()
+        raise HTTPException(error.status, str(error)) from error

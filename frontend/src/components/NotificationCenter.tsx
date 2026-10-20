@@ -12,11 +12,15 @@ import {
   marcarNotificacionLeida,
   marcarTodasLasNotificacionesLeidas,
 } from "../api/notificaciones";
+import { ListadoRemoto } from "./ListadoProgresivo";
+import { ActionIcon } from "./ActionIcon";
 import { ApiError } from "../api/client";
 import {
   notificacionesQueryKey,
   useNotificaciones,
+  useNotificacionesPaginadas,
 } from "../hooks/useNotificaciones";
+import { actualizarPaginas } from "../utils/actualizarPaginas";
 import type { Notificacion } from "../schemas/notificacion";
 
 interface NotificationCenterProps {
@@ -55,7 +59,10 @@ export function NotificationCenter({
           window.innerWidth - panel.offsetWidth - 16,
         ),
       );
-      const top = Math.max(16, Math.min(rect.bottom + 8, window.innerHeight - 160));
+      const top = Math.max(
+        16,
+        Math.min(rect.bottom + 8, window.innerHeight - 160),
+      );
       panel.style.setProperty("--notification-left", `${left}px`);
       panel.style.setProperty("--notification-top", `${top}px`);
       panel.style.setProperty(
@@ -100,11 +107,14 @@ export function NotificationCenter({
   }, [abierto]);
 
   const query = useNotificaciones();
+  const historial = useNotificacionesPaginadas(abierto);
   const queryClient = useQueryClient();
   const marcarLeida = useMutation({
     mutationFn: (notificacionId: number) =>
       marcarNotificacionLeida(notificacionId, csrfToken),
     onSuccess: (actualizada) => {
+      actualizarPaginas<Notificacion>(queryClient, notificacionesQueryKey,
+        (notificacion) => notificacion.id === actualizada.id ? actualizada : notificacion);
       queryClient.setQueryData<Notificacion[]>(
         notificacionesQueryKey,
         (anteriores = []) =>
@@ -117,6 +127,8 @@ export function NotificationCenter({
   const marcarTodasLeidas = useMutation({
     mutationFn: () => marcarTodasLasNotificacionesLeidas(csrfToken),
     onSuccess: (resultado) => {
+      actualizarPaginas<Notificacion>(queryClient, notificacionesQueryKey,
+        (notificacion) => notificacion.leida_en === null ? { ...notificacion, leida_en: resultado.leida_en } : notificacion);
       queryClient.setQueryData<Notificacion[]>(
         notificacionesQueryKey,
         (anteriores = []) =>
@@ -128,7 +140,8 @@ export function NotificationCenter({
       );
     },
   });
-  const noLeidas = query.data?.filter((item) => item.leida_en === null).length ?? 0;
+  const noLeidas =
+    query.data?.filter((item) => item.leida_en === null).length ?? 0;
   const error = marcarLeida.error ?? marcarTodasLeidas.error;
   const errorMutacion =
     error instanceof ApiError
@@ -146,18 +159,50 @@ export function NotificationCenter({
       <button
         ref={botonRef}
         type="button"
+        aria-label="Notificaciones"
+        aria-describedby="estado-notificaciones"
+        title={
+          noLeidas > 0
+            ? `Notificaciones: ${noLeidas} sin leer`
+            : "Notificaciones"
+        }
         aria-expanded={abierto}
         aria-controls="panel-notificaciones"
         onClick={() => setAbierto((valor) => !valor)}
-        className="relative rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        className={`relative inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white outline-2 outline-offset-2 outline-transparent transition-colors hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700 hover:outline-yellow-500 focus-visible:outline-yellow-600 active:border-yellow-700 active:bg-yellow-100 active:text-yellow-900 active:outline-yellow-700 ${noLeidas > 0 ? "text-yellow-600" : "text-slate-600"}`}
       >
-        Notificaciones
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="size-5"
+          data-estado={noLeidas > 0 ? "sonando" : "quieta"}
+        >
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path d="M10 21h4" />
+          {noLeidas > 0 && (
+            <path d="M2 8a10 10 0 0 1 2-5m18 5a10 10 0 0 0-2-5" />
+          )}
+        </svg>
         {noLeidas > 0 && (
-          <span className="ml-2 inline-flex min-w-5 justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs text-white">
-            {noLeidas > 99 ? "99+" : noLeidas}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] leading-none font-bold text-white tabular-nums ring-2 ring-white"
+          >
+            {noLeidas}
           </span>
         )}
       </button>
+      <span id="estado-notificaciones" className="sr-only" aria-live="polite">
+        {noLeidas > 0
+          ? `${noLeidas} ${noLeidas === 1 ? "notificación sin leer" : "notificaciones sin leer"}`
+          : "No hay notificaciones sin leer"}
+      </span>
 
       {abierto && (
         <section
@@ -169,14 +214,16 @@ export function NotificationCenter({
           <div className="flex shrink-0 flex-wrap items-center gap-3">
             <h2 className="font-semibold text-slate-950">Novedades</h2>
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-xs text-slate-500">{noLeidas} sin leer</span>
+              <span className="text-xs text-slate-500">
+                {noLeidas} sin leer
+              </span>
               <button
                 type="button"
                 aria-label="Marcar todas como vistas"
                 title="Marcar todas como vistas"
                 disabled={noLeidas === 0 || marcarTodasLeidas.isPending}
                 onClick={() => marcarTodasLeidas.mutate()}
-                className="inline-flex size-8 items-center justify-center rounded-lg text-cyan-800 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                className="action-button action-primary action-icon action-borderless"
               >
                 <svg
                   aria-hidden="true"
@@ -195,67 +242,77 @@ export function NotificationCenter({
             </div>
           </div>
 
-          {query.isPending ? (
+          {historial.isPending ? (
             <p role="status" className="py-6 text-sm text-slate-500">
               Cargando notificaciones…
             </p>
-          ) : query.isError ? (
+          ) : historial.data === undefined ? (
             <div role="alert" className="py-5 text-sm text-red-800">
               <p>No pudimos cargar las notificaciones.</p>
               <button
                 type="button"
-                onClick={() => void query.refetch()}
-                className="mt-3 font-semibold underline"
+                onClick={() => void historial.refetch()}
+                className="action-button action-icon mt-3"
+                title="Reintentar"
               >
-                Reintentar
+                <ActionIcon name="refresh" />
+                <span className="sr-only">Reintentar</span>
               </button>
             </div>
-          ) : query.data.length === 0 ? (
+          ) : historial.data.length === 0 ? (
             <p role="status" className="py-6 text-sm text-slate-500">
               No hay novedades todavía.
             </p>
           ) : (
-            <ul className="mt-3 min-h-0 space-y-2 overflow-y-auto overscroll-contain">
-              {query.data.map((notificacion) => (
-                <li
-                  key={notificacion.id}
-                  className={`rounded-xl border p-3 [overflow-wrap:anywhere] ${
-                    notificacion.leida_en === null
-                      ? "border-cyan-200 bg-cyan-50"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-slate-950">
-                    {notificacion.titulo}
-                  </p>
-                  <p className="mt-1 text-sm leading-5 text-slate-600">
-                    {notificacion.mensaje}
-                  </p>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                    <time className="text-xs text-slate-500">
-                      {formatearFecha(notificacion.creada_en)}
-                    </time>
-                    {notificacion.ruta ? (
-                      <Link
-                        to={notificacion.ruta}
-                        onClick={() => leer(notificacion)}
-                        className="text-xs font-semibold text-cyan-800 underline"
-                      >
-                        Ver detalle
-                      </Link>
-                    ) : notificacion.leida_en === null ? (
-                      <button
-                        type="button"
-                        onClick={() => leer(notificacion)}
-                        className="text-xs font-semibold text-cyan-800 underline"
-                      >
-                        Marcar como leída
-                      </button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <ListadoRemoto query={historial} etiqueta="Historial de notificaciones" className="mt-3">
+              <ul className="space-y-2">
+                {historial.data.map((notificacion) => (
+                  <li
+                    key={notificacion.id}
+                    className={`rounded-xl border p-3 [overflow-wrap:anywhere] ${notificacion.leida_en === null
+                        ? "border-cyan-200 bg-cyan-50"
+                        : "border-slate-200 bg-white"
+                      }`}
+                  >
+                    <p className="text-sm font-semibold text-slate-950">
+                      {notificacion.titulo}
+                    </p>
+                    <p className="mt-1 text-sm leading-5 text-slate-600">
+                      {notificacion.mensaje}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                      <time className="text-xs text-slate-500">
+                        {formatearFecha(notificacion.creada_en)}
+                      </time>
+                      {notificacion.ruta ? (
+                        <Link
+                          to={notificacion.ruta}
+                          onClick={() => {
+                            leer(notificacion);
+                            setAbierto(false);
+                          }}
+                          className="action-button action-primary action-icon"
+                          title="Ver detalle"
+                        >
+                          <ActionIcon name="eye" />
+                          <span className="sr-only">Ver detalle</span>
+                        </Link>
+                      ) : notificacion.leida_en === null ? (
+                        <button
+                          type="button"
+                          onClick={() => leer(notificacion)}
+                          className="action-button action-primary action-icon action-borderless"
+                          title="Marcar como leída"
+                        >
+                          <ActionIcon name="check" />
+                          <span className="sr-only">Marcar como leída</span>
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </ListadoRemoto>
           )}
           {errorMutacion && (
             <p role="alert" className="mt-3 shrink-0 text-sm text-red-800">

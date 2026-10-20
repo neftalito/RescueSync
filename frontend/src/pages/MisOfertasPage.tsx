@@ -1,11 +1,15 @@
-import { type ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 import { Link } from "react-router";
 
+import { ListadoRemoto } from "../components/ListadoProgresivo";
+import { ActionIcon } from "../components/ActionIcon";
 import { ApiError } from "../api/client";
-import { useMisOfertas } from "../hooks/useMisOfertas";
+import { ConsorcioOferta } from "../components/ConsorcioOferta";
+import { useMisOfertasPaginadas } from "../hooks/useMisOfertas";
 import { gravedadLabels } from "../schemas/emergencia";
 import { estadoOfertaLabels, tipoAporteLabels, type Oferta } from "../schemas/oferta";
 import { formatearCantidad } from "../utils/cantidades";
+import { motivoOfertaNoEditable } from "../utils/ofertas";
 
 function formatearFecha(iso: string): string {
   return new Date(iso).toLocaleString("es-AR", {
@@ -14,7 +18,9 @@ function formatearFecha(iso: string): string {
   });
 }
 
-function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
+function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
+  const motivoEdicionId = useId();
+  const motivoEdicion = motivoOfertaNoEditable(oferta);
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
@@ -23,7 +29,7 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
             {gravedadLabels[oferta.emergencia.gravedad]} · {oferta.emergencia.zona}
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Presentada el {formatearFecha(oferta.presentada_en)}
+            {oferta.presentada_en ? `Presentada el ${formatearFecha(oferta.presentada_en)}` : "Propuesta pendiente de confirmación"}
           </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -41,21 +47,39 @@ function TarjetaOferta({ oferta }: { oferta: Oferta }): ReactElement {
             </li>
           ))}
         </ul>
-        {oferta.editable && (
+        {oferta.estado === "ADJUDICADA" && <Link to={`/emergencias/${oferta.emergencia_id}/ejecucion`} className="action-button">Seguimiento y finalización</Link>}
+        {oferta.editable ? (
           <Link
             to={`/ofertas/${oferta.id}/editar`}
-            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+            className="action-button action-primary action-icon mt-4"
+            title="Modificar oferta"
           >
-            Modificar oferta
+            <ActionIcon name="edit" />
+            <span className="sr-only">Modificar oferta</span>
           </Link>
+        ) : (
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled
+              className="action-button action-primary action-icon"
+              title="Modificar oferta"
+              aria-describedby={motivoEdicionId}
+            >
+              <ActionIcon name="edit" />
+              <span className="sr-only">Modificar oferta</span>
+            </button>
+            <p id={motivoEdicionId} className="mt-2 text-sm">{motivoEdicion}</p>
+          </div>
         )}
+        <ConsorcioOferta oferta={oferta} />
       </div>
     </details>
   );
 }
 
 export function MisOfertasPage(): ReactElement {
-  const query = useMisOfertas();
+  const query = useMisOfertasPaginadas();
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -69,9 +93,11 @@ export function MisOfertasPage(): ReactElement {
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
@@ -84,7 +110,7 @@ export function MisOfertasPage(): ReactElement {
           >
             Cargando tus ofertas…
           </section>
-        ) : query.isError ? (
+        ) : query.data === undefined ? (
           <section
             role="alert"
             className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm leading-6 text-red-800 shadow-sm"
@@ -97,9 +123,11 @@ export function MisOfertasPage(): ReactElement {
             <button
               type="button"
               onClick={() => void query.refetch()}
-              className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+              className="action-button action-danger action-icon mt-4"
+              title="Reintentar"
             >
-              Reintentar
+              <ActionIcon name="refresh" />
+              <span className="sr-only">Reintentar</span>
             </button>
           </section>
         ) : query.data.length === 0 ? (
@@ -110,11 +138,13 @@ export function MisOfertasPage(): ReactElement {
             Todavía no presentaste ofertas.
           </p>
         ) : (
-          <div className="space-y-4">
-            {query.data.map((oferta) => (
-              <TarjetaOferta key={oferta.id} oferta={oferta} />
-            ))}
-          </div>
+          <ListadoRemoto query={query} etiqueta="Mis ofertas">
+            <div className="space-y-4">
+              {query.data.map((oferta) => (
+                <TarjetaOferta key={oferta.id} oferta={oferta} />
+              ))}
+            </div>
+          </ListadoRemoto>
         )}
       </div>
     </main>

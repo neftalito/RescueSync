@@ -2,6 +2,7 @@ import {
   emergenciaSchema,
   emergenciasSchema,
   type Emergencia,
+  type EmergenciaEnBandeja,
   type EmergenciaFormData,
 } from "../schemas/emergencia";
 import { apiRequest } from "./client";
@@ -17,7 +18,7 @@ export function registrarEmergencia(
   });
 }
 
-export function listarEmergencias(): Promise<Emergencia[]> {
+export function listarEmergencias(): Promise<EmergenciaEnBandeja[]> {
   return apiRequest("/emergencias", emergenciasSchema);
 }
 

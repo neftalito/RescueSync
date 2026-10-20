@@ -1,4 +1,13 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from uuid import UUID
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.db.models.enums import TipoOrganizacion
 
@@ -6,6 +15,7 @@ from app.db.models.enums import TipoOrganizacion
 class OrganizacionCreate(BaseModel):
     nombre: str = Field(min_length=1, max_length=160)
     tipo: TipoOrganizacion
+    email_contacto: EmailStr | None = None
 
     @field_validator("nombre", mode="before")
     @classmethod
@@ -46,3 +56,4 @@ class OrganizacionResponse(BaseModel):
     nombre: str
     tipo: TipoOrganizacion
     activa: bool
+    ong_nacional_id: UUID | None = None

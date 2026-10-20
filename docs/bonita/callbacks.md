@@ -3,14 +3,15 @@
 Los conectores REST del proceso invocan endpoints internos de FastAPI. El
 frontend no consume estas rutas.
 
-| Tarea de Bonita | Endpoint | Efecto local |
-| --- | --- | --- |
-| `Enviar notificacion a ONGs de convocatoria` | `POST /api/v1/emergencias/{id}/notificar-apertura` | Alinea `convocatoria.cierra_en` con la fecha del timer y notifica a las ONGs. |
-| `Cerrar convocatoria local` | `POST /api/v1/emergencias/{id}/cerrar-convocatoria` | Pasa la convocatoria a `CERRADA`, la emergencia a `EN_EVALUACION` y publica las novedades. |
-| `Solicitar ofertas consolidadas` | `GET /api/v1/emergencias/{id}/ofertas-consolidadas` | Devuelve el indicador `lotesCubiertos`. |
+| Tarea de Bonita                              | Endpoint                                            | Efecto local                                                                               |
+| -------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `Enviar notificacion a ONGs de convocatoria` | `POST /api/v1/emergencias/{id}/notificar-apertura`  | Alinea `convocatoria.cierra_en` con la fecha del timer y notifica a las ONGs.              |
+| `Cerrar convocatoria local`                  | `POST /api/v1/emergencias/{id}/cerrar-convocatoria` | Pasa la convocatoria a `CERRADA`, la emergencia a `EN_EVALUACION` y publica las novedades. |
+| `Solicitar ofertas consolidadas`             | `GET /api/v1/emergencias/{id}/ofertas-consolidadas` | Devuelve el indicador `lotesCubiertos`.                                                    |
 
-`POST /api/v1/emergencias/{id}/resolver` pertenece al cierre del proyecto de la
-Entrega 3 y todavía no está implementado.
+`POST /api/v1/emergencias/{id}/resolver` y las otras diez rutas de T36/T37 ya
+están implementadas. Ver [contratos y precondiciones T36/T37](./contratos-t36-t37.md).
+El BAR 1.5 adaptado ya invoca esos contratos en el camino feliz.
 
 ## Autenticación
 

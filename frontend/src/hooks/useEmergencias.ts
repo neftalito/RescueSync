@@ -1,11 +1,24 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseInfiniteQueryResult, type UseQueryResult } from "@tanstack/react-query";
 
 import { listarEmergencias } from "../api/emergencias";
-import type { Emergencia } from "../schemas/emergencia";
+import type { EmergenciaEnBandeja } from "../schemas/emergencia";
+import { emergenciasSchema, type Estado } from "../schemas/emergencia";
+import { useListadoPaginado } from "./useListadoPaginado";
 
 export const emergenciasQueryKey = ["emergencias"] as const;
 
-export function useEmergencias(): UseQueryResult<Emergencia[], Error> {
+export function useEmergenciasPaginadas(tieneLotes?: boolean, estado?: Estado): UseInfiniteQueryResult<EmergenciaEnBandeja[], Error> {
+  const parametros = new URLSearchParams();
+  if (tieneLotes !== undefined) parametros.set("tiene_lotes", String(tieneLotes));
+  if (estado !== undefined) parametros.set("estado", estado);
+  return useListadoPaginado(
+    [...emergenciasQueryKey, "bandeja", tieneLotes, estado],
+    `/emergencias${parametros.size > 0 ? `?${parametros}` : ""}`,
+    emergenciasSchema,
+  );
+}
+
+export function useEmergencias(): UseQueryResult<EmergenciaEnBandeja[], Error> {
   return useQuery({
     queryKey: emergenciasQueryKey,
     queryFn: listarEmergencias,

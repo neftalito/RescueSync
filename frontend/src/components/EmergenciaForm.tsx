@@ -71,7 +71,7 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
           <button
             type="button"
             onClick={registrarOtra}
-            className="mt-4 w-full rounded-xl border border-green-700 bg-white px-4 py-2.5 text-sm font-semibold text-green-900 transition hover:bg-green-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700 sm:w-auto"
+            className="action-button action-success mt-4 w-full sm:w-auto"
           >
             Registrar otra emergencia
           </button>
@@ -170,7 +170,7 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
           <button
             type="submit"
             disabled={mutation.isPending}
-            className="flex w-full items-center justify-center rounded-xl bg-cyan-700 px-5 py-3.5 text-base font-bold text-white shadow-sm transition hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+            className="action-button action-primary w-full"
           >
             {mutation.isPending ? "Registrando…" : "Registrar emergencia"}
           </button>

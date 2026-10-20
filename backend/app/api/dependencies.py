@@ -21,6 +21,7 @@ from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.integrations.bonita.cliente import ClienteBonita
 from app.integrations.email.cliente import ClienteSMTP
+from app.integrations.nacional.cliente import ClienteNacional
 from app.services.auth import obtener_usuario_vigente
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -137,6 +138,19 @@ UsuarioAdministrador = Annotated[
     Usuario,
     Depends(requerir_operacion(OperacionProtegida.GESTIONAR_USUARIOS)),
 ]
+
+UsuarioInventario = Annotated[
+    Usuario, Depends(requerir_operacion(OperacionProtegida.GESTIONAR_INVENTARIO))
+]
+
+
+def obtener_cliente_nacional(request: Request) -> ClienteNacional:
+    """Entrega el cliente nacional compartido durante el lifespan."""
+
+    return request.app.state.cliente_nacional
+
+
+ClienteNacionalDep = Annotated[ClienteNacional, Depends(obtener_cliente_nacional)]
 
 
 def validar_csrf(

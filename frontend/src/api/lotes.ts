@@ -33,6 +33,8 @@ export function guardarLotes(
     cantidad_requerida: lote.cantidad_requerida.replace(",", "."),
     unidad: lote.unidad,
     descripcion: lote.descripcion === "" ? null : lote.descripcion,
+    ...(lote.capacidad_nacional_id ? { capacidad_nacional_id: lote.capacidad_nacional_id } : {}),
+    ...(lote.riesgo_requerido ? { riesgo_requerido: lote.riesgo_requerido } : {}),
   }));
   return apiRequest(`/emergencias/${emergenciaId}/lotes`, lotesSchema, {
     method: "POST",

@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.config import get_settings
 from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
@@ -25,6 +26,7 @@ from app.db.models import (
     TipoOrganizacion,
     Usuario,
 )
+from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
 from app.services.notificaciones import notificar_convocatoria_publicada
 
@@ -127,6 +129,14 @@ def publicar_convocatoria(
         raise SinLotesValidosError(
             "La emergencia no tiene lotes en borrador para publicar."
         )
+    sistema_origen = get_settings().nacional_sistema_origen
+    if sistema_origen and any(
+        l.capacidad_nacional_id is None or l.codigo_capacidad is None
+        for l in lotes_borrador
+    ):
+        raise SinLotesValidosError(
+            "Completá las capacidades nacionales antes de publicar."
+        )
 
     ahora = datetime.now(UTC)
     convocatoria = Convocatoria(
@@ -135,6 +145,8 @@ def publicar_convocatoria(
         estado=EstadoConvocatoria.ABIERTA,
         publicada_en=ahora,
         cierra_en=ahora + VENTANA_CIERRE_PROVISORIA,
+        sistema_origen_ref=sistema_origen,
+        gravedad_publicada=emergencia.gravedad,
     )
     session.add(convocatoria)
     session.flush()
@@ -146,6 +158,10 @@ def publicar_convocatoria(
                 lote_id=lote.id,
                 cantidad_publicada=lote.cantidad_requerida,
                 unidad_publicada=lote.unidad,
+                capacidad_nacional_id=lote.capacidad_nacional_id,
+                codigo_capacidad_publicada=lote.codigo_capacidad,
+                admite_fracciones_publicada=lote.admite_fracciones,
+                riesgo_requerido_publicado=lote.riesgo_requerido or emergencia.gravedad,
             )
         )
         lote.estado = EstadoLote.PUBLICADO
@@ -156,8 +172,10 @@ def publicar_convocatoria(
         notificar_convocatoria_publicada(
             session,
             convocatoria_id=convocatoria.id,
+            emergencia_id=emergencia.id,
             municipio_id=emergencia.municipio_id,
             zona=emergencia.zona,
+            descripcion=emergencia.descripcion,
         )
         session.commit()
     except IntegrityError as error:
@@ -169,7 +187,10 @@ def publicar_convocatoria(
     return convocatoria
 
 
-def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
+def listar_convocatorias_abiertas(
+    session: Session,
+    paginacion: Paginacion = SIN_PAGINACION,
+) -> list[Convocatoria]:
     """Devuelve las convocatorias abiertas visibles para cualquier ONG activa.
 
     No filtra por organización: una convocatoria abierta es pública por
@@ -188,7 +209,9 @@ def listar_convocatorias_abiertas(session: Session) -> list[Convocatoria]:
                 selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
                 joinedload(Convocatoria.emergencia),
             )
-            .order_by(Convocatoria.publicada_en.desc())
+            .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
+            .offset(paginacion.offset)
+            .limit(paginacion.limit)
         ).all()
     )
 

@@ -1,14 +1,17 @@
 import { type ReactElement } from "react";
 import { Link } from "react-router";
 
+import { ActionIcon } from "./ActionIcon";
 import { ApiError } from "../api/client";
-import { useEmergencias } from "../hooks/useEmergencias";
+import { ListadoRemoto } from "./ListadoProgresivo";
+import { useEmergenciasPaginadas } from "../hooks/useEmergencias";
 import { useReintentarVinculacionBonita } from "../hooks/useReintentarVinculacionBonita";
 import {
   estadoSincronizacionBonitaLabels,
   estadoLabels,
   gravedadLabels,
-  type Emergencia,
+  type EmergenciaEnBandeja,
+  type Estado,
 } from "../schemas/emergencia";
 import type { Role } from "../schemas/auth";
 
@@ -20,16 +23,18 @@ type RolConBandeja = Extract<
 interface BandejaEmergenciasProps {
   rol: RolConBandeja;
   csrfToken?: string;
+  vista?: "pendientes" | "con-lotes";
+  estado?: Estado;
 }
 
-const copyPorRol: Record<RolConBandeja, { titulo: string; vacio: string }> = {
+const copyPorRol: Record<RolConBandeja, { titulo: string; vacio: string; }> = {
   OPERADOR_MUNICIPAL: {
     titulo: "Mis emergencias",
     vacio: "Todavía no registraste emergencias.",
   },
   COORDINADOR_REGIONAL: {
     titulo: "Emergencias pendientes",
-    vacio: "No hay emergencias registradas pendientes.",
+    vacio: "No hay emergencias pendientes sin lotes.",
   },
 };
 
@@ -45,7 +50,7 @@ function TarjetaEmergencia({
   rol,
   csrfToken,
 }: {
-  emergencia: Emergencia;
+  emergencia: EmergenciaEnBandeja;
   rol: RolConBandeja;
   csrfToken?: string;
 }): ReactElement {
@@ -60,7 +65,7 @@ function TarjetaEmergencia({
   return (
     <details className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0 break-words">
           <p className="text-sm font-semibold text-cyan-800">
             {gravedadLabels[emergencia.gravedad]} · {emergencia.zona}
           </p>
@@ -68,7 +73,7 @@ function TarjetaEmergencia({
             Registrada el {formatearFecha(emergencia.creada_en)}
           </p>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+        <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
           {estadoLabels[emergencia.estado]}
         </span>
       </summary>
@@ -96,21 +101,20 @@ function TarjetaEmergencia({
                 onClick={() =>
                   reintento.mutate({ emergenciaId: emergencia.id, csrfToken })
                 }
-                className="mt-3 rounded-xl border border-cyan-700 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-wait disabled:opacity-70"
+                className="action-button action-primary mt-3"
               >
-                {reintento.isPending
-                  ? "Reintentando…"
-                  : "Reintentar vinculación"}
+                {reintento.isPending ? "Vinculando…" : "Vincular con Bonita"}
               </button>
             )}
           </div>
         )}
+        {["EN_EVALUACION", "EN_EJECUCION", "RESUELTA"].includes(emergencia.estado) && <Link to={`/emergencias/${emergencia.id}/ejecucion`} className="action-button mt-4 mr-2">Evaluación y ejecución</Link>}
         {rol === "COORDINADOR_REGIONAL" && (
           <Link
             to={`/emergencias/${emergencia.id}/lotes`}
-            className="mt-4 inline-flex rounded-xl bg-cyan-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700"
+            className="action-button action-primary mt-4"
           >
-            Generar lotes
+            {emergencia.tiene_lotes ? "Ver lotes" : "Generar lotes"}
           </Link>
         )}
       </div>
@@ -121,9 +125,19 @@ function TarjetaEmergencia({
 export function BandejaEmergencias({
   rol,
   csrfToken,
+  vista = "pendientes",
+  estado,
 }: BandejaEmergenciasProps): ReactElement {
-  const query = useEmergencias();
-  const copy = copyPorRol[rol];
+  const query = useEmergenciasPaginadas(rol === "COORDINADOR_REGIONAL" ? vista === "con-lotes" : undefined, estado);
+  const copy =
+    rol === "COORDINADOR_REGIONAL" && vista === "con-lotes"
+      ? {
+        titulo: "Emergencias con lotes",
+        vacio: estado
+          ? "No hay emergencias con lotes en el estado seleccionado."
+          : "Todavía no hay emergencias con lotes creados.",
+      }
+      : copyPorRol[rol];
 
   if (query.isPending) {
     return (
@@ -136,7 +150,7 @@ export function BandejaEmergencias({
     );
   }
 
-  if (query.isError) {
+  if (query.data === undefined) {
     const mensaje =
       query.error instanceof ApiError
         ? query.error.message
@@ -150,31 +164,33 @@ export function BandejaEmergencias({
         <button
           type="button"
           onClick={() => void query.refetch()}
-          className="mt-4 rounded-xl border border-red-700 bg-white px-4 py-2.5 text-sm font-semibold text-red-900 transition hover:bg-red-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700"
+          className="action-button action-danger action-icon mt-4"
+          title="Reintentar"
         >
-          Reintentar
+          <ActionIcon name="refresh" />
+          <span className="sr-only">Reintentar</span>
         </button>
       </section>
     );
   }
 
-  // Al publicar, la mutación actualiza la emergencia en caché a PUBLICADA para
-  // conservar la confirmación en la pantalla de lotes. La bandeja del
-  // coordinador debe aplicar también sobre ese caché el contrato del backend:
-  // únicamente emergencias REGISTRADA pendientes de revisión.
   const emergencias =
     rol === "COORDINADOR_REGIONAL"
-      ? query.data.filter((emergencia) => emergencia.estado === "REGISTRADA")
+      ? query.data.filter(
+        (emergencia) =>
+          emergencia.tiene_lotes === (vista === "con-lotes") &&
+          (estado === undefined || emergencia.estado === estado),
+      )
       : query.data;
 
   return (
     <section aria-labelledby="bandeja-emergencias-titulo">
-      <h3
+      <h2
         id="bandeja-emergencias-titulo"
         className="text-lg font-semibold text-slate-950"
       >
         {copy.titulo}
-      </h3>
+      </h2>
 
       {emergencias.length === 0 ? (
         <p
@@ -184,16 +200,18 @@ export function BandejaEmergencias({
           {copy.vacio}
         </p>
       ) : (
-        <div className="mt-4 space-y-3">
-          {emergencias.map((emergencia) => (
-            <TarjetaEmergencia
-              key={emergencia.id}
-              emergencia={emergencia}
-              rol={rol}
-              csrfToken={csrfToken}
-            />
-          ))}
-        </div>
+        <ListadoRemoto query={query} etiqueta={`Listado de ${copy.titulo.toLowerCase()}`} className="mt-4">
+          <div className="space-y-3">
+            {emergencias.map((emergencia) => (
+              <TarjetaEmergencia
+                key={emergencia.id}
+                emergencia={emergencia}
+                rol={rol}
+                csrfToken={csrfToken}
+              />
+            ))}
+          </div>
+        </ListadoRemoto>
       )}
     </section>
   );

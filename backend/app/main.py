@@ -1,17 +1,21 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.core.cors import AplicacionConCORS
 from app.db.session import SessionLocal
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.integrations.email.cliente import ClienteSMTP, ConfiguracionSMTP
+from app.integrations.nacional.cliente import ClienteNacional
 from app.services.bootstrap import asegurar_admin_inicial
+from app.services.evaluaciones import IntegracionLocalError
+from app.services.monitor_bonita import monitorizar_bonita
 from app.services.tiempo_real import GestorTiempoReal
 
 settings = get_settings()
@@ -29,28 +33,47 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     gestor_tiempo_real.iniciar()
     app.state.gestor_tiempo_real = gestor_tiempo_real
     app.state.cliente_email = ClienteSMTP(ConfiguracionSMTP.desde_settings(settings))
+    cliente_nacional = ClienteNacional(
+        str(settings.nacional_base_url), settings.nacional_timeout_seconds
+    )
+    app.state.cliente_nacional = cliente_nacional
     try:
         with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
             app.state.cliente_bonita = cliente
-            yield
+            detener_monitor = asyncio.Event()
+            monitor = (
+                asyncio.create_task(
+                    monitorizar_bonita(
+                        cliente,
+                        gestor_tiempo_real,
+                        detener_monitor,
+                        settings.bonita_monitor_interval_seconds,
+                    )
+                )
+                if settings.app_env.casefold() != "test"
+                and settings.bonita_monitor_enabled
+                else None
+            )
+            try:
+                yield
+            finally:
+                detener_monitor.set()
+                if monitor is not None:
+                    await monitor
     finally:
+        cliente_nacional.close()
         await gestor_tiempo_real.detener()
 
 
-app = FastAPI(
+app = AplicacionConCORS(
     title=settings.app_name,
     version="0.1.0",
     description="API local para la coordinación de emergencias de RescueSync.",
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.origenes_cors = tuple(settings.cors_origins)
+app.credenciales_cors = True
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
@@ -94,3 +117,10 @@ def root() -> dict[str, str]:
         "docs": "/docs",
         "health": f"{settings.api_v1_prefix}/health",
     }
+
+
+@app.exception_handler(IntegracionLocalError)
+async def responder_error_integracion(
+    _request: Request, error: IntegracionLocalError
+) -> JSONResponse:
+    return JSONResponse(status_code=error.status, content={"detail": str(error)})

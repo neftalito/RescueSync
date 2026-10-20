@@ -34,6 +34,14 @@ ni bloqueo global de recursos. Esos componentes corresponden a la Entrega 3.
 
 ## 2. Principios de diseño
 
+La revisión `20261014_0009` amplía este modelo local para T34: agrega referencias
+de capacidad/riesgo en lotes y sus publicaciones, emisor/gravedad publicados,
+`oferta_version_participante` y `oferta_item_aporte`. Las referencias UUID son
+externas, sin claves foráneas entre bases. La composición operativa se congela
+por versión; `oferta_participante` conserva su estructura histórica anterior.
+El inventario sigue en la base nacional. El contrato, transición y restricciones
+se documentan en [Ofertas consolidadas nacionales](./ofertas-consolidadas-nacionales.md).
+
 1. **PostgreSQL local es la fuente de verdad.** Emergencias, lotes,
    convocatorias, ofertas y sus borradores se almacenan localmente.
 2. **Bonita conserva la orquestación.** La base local guarda la referencia de
@@ -877,3 +885,12 @@ pytest tests/test_database_models.py
 Las pruebas verifican la metadata registrada, las relaciones del flujo básico,
 los timestamps con zona horaria y las restricciones relacionales que requieren
 triggers de PostgreSQL.
+
+## Integración nacional T36/T37
+
+La revisión `20261016_0015` incorpora `evaluacion_local`, `comando_bonita`,
+`decision_evaluacion`, `operacion_nacional_sync`, `adjudicacion_local`,
+`participacion_adjudicada`, `compromiso_nacional_local`, `finalizacion_ong` y
+`solicitud_cierre`. Son agregados locales con FKs, referencias nacionales sin
+FK remota, requests/resultados JSONB tipados y triggers de inmutabilidad. Ver
+[contratos, reglas y estados T36/T37](./bonita/contratos-t36-t37.md).

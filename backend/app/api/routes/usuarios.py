@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import ClienteEmailDep, UsuarioAdministrador, validar_csrf
+from app.api.paginacion import PaginacionDep
 from app.db.models import Usuario
 from app.db.session import get_db
 from app.integrations.email.cliente import EmailNoDisponibleError
@@ -77,10 +78,11 @@ def _traducir_error(error: Exception) -> NoReturn:
     description="Devuelve cuentas activas e inactivas para su administración.",
 )
 def obtener_usuarios(
+    paginacion: PaginacionDep,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
 ) -> list[Usuario]:
-    return listar_usuarios(session)
+    return listar_usuarios(session, paginacion)
 
 
 @router.post(

@@ -27,6 +27,7 @@ from app.db.base import Base
 from app.db.models.enums import EstadoOferta, TipoAporte, TipoParticipacion
 
 if TYPE_CHECKING:
+    from app.db.models.aportes import OfertaItemAporte, OfertaVersionParticipante
     from app.db.models.convocatoria import Convocatoria, ConvocatoriaLote
     from app.db.models.organizacion import Organizacion
     from app.db.models.usuario import Usuario
@@ -142,6 +143,9 @@ class OfertaVersion(Base):
     )
     numero: Mapped[int] = mapped_column(Integer, nullable=False)
     observaciones: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requiere_desglose_nacional: Mapped[bool] = mapped_column(
+        server_default=text("false")
+    )
     presentada_en: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -157,6 +161,10 @@ class OfertaVersion(Base):
         back_populates="versiones_oferta_creadas"
     )
     items: Mapped[list[OfertaItem]] = relationship(back_populates="oferta_version")
+    participantes: Mapped[list[OfertaVersionParticipante]] = relationship(
+        back_populates="version",
+        foreign_keys="OfertaVersionParticipante.oferta_version_id",
+    )
 
 
 class OfertaItem(Base):
@@ -172,6 +180,7 @@ class OfertaItem(Base):
             "lote_id",
             name="uq_oferta_item_version_lote",
         ),
+        UniqueConstraint("id", "oferta_version_id", name="uq_oferta_item_id_version"),
         ForeignKeyConstraint(
             ["convocatoria_id", "lote_id"],
             [
@@ -206,6 +215,7 @@ class OfertaItem(Base):
     convocatoria_lote: Mapped[ConvocatoriaLote] = relationship(
         back_populates="items_oferta"
     )
+    aportes: Mapped[list[OfertaItemAporte]] = relationship(back_populates="item")
 
 
 class OfertaParticipante(Base):

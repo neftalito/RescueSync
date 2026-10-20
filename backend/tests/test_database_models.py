@@ -183,6 +183,11 @@ def _assert_restriccion(
 
 def test_metadata_registra_todo_el_esquema() -> None:
     assert set(Base.metadata.tables) == {
+        "aprovisionamiento_nacional",
+        "oferta_version_participante",
+        "oferta_item_aporte",
+        "conexion_nacional",
+        "acceso_nacional",
         "organizacion",
         "usuario",
         "emergencia",
@@ -194,6 +199,16 @@ def test_metadata_registra_todo_el_esquema() -> None:
         "oferta_item",
         "oferta_participante",
         "notificacion",
+        "hecho_monitoreo",
+        "comando_bonita",
+        "operacion_nacional_sync",
+        "evaluacion_local",
+        "adjudicacion_local",
+        "decision_evaluacion",
+        "participacion_adjudicada",
+        "solicitud_cierre",
+        "compromiso_nacional_local",
+        "finalizacion_ong",
     }
 
 

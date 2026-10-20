@@ -1,9 +1,15 @@
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseInfiniteQueryResult, type UseQueryResult } from "@tanstack/react-query";
 
 import { listarConvocatoriasAbiertas } from "../api/convocatorias";
 import type { Convocatoria } from "../schemas/convocatoria";
+import { convocatoriasSchema } from "../schemas/convocatoria";
+import { useListadoPaginado } from "./useListadoPaginado";
 
 export const convocatoriasAbiertasQueryKey = ["convocatorias-abiertas"] as const;
+
+export function useConvocatoriasPaginadas(): UseInfiniteQueryResult<Convocatoria[], Error> {
+  return useListadoPaginado(convocatoriasAbiertasQueryKey, "/convocatorias", convocatoriasSchema);
+}
 
 export function useConvocatoriasAbiertas(): UseQueryResult<Convocatoria[], Error> {
   return useQuery({

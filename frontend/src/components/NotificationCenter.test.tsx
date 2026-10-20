@@ -9,6 +9,7 @@ import { MemoryRouter } from "react-router";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { NotificationCenter } from "./NotificationCenter";
+import { notificacionesQueryKey } from "../hooks/useNotificaciones";
 
 const API_URL = "http://localhost:8000/api/v1";
 const notificacion = {
@@ -31,7 +32,7 @@ afterEach(() => {
 });
 afterAll(() => server.close());
 
-function renderCenter(): void {
+function renderCenter(): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -42,9 +43,53 @@ function renderCenter(): void {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return queryClient;
 }
 
 describe("NotificationCenter", () => {
+  it.each([3, 120])(
+    "muestra el emblema con las %i notificaciones sin leer sin abrir el panel",
+    async (cantidad) => {
+      server.use(
+        http.get(`${API_URL}/notificaciones`, () =>
+          HttpResponse.json([
+            ...Array.from({ length: cantidad }, (_, indice) => ({
+              ...notificacion,
+              id: indice + 1,
+            })),
+            { ...notificacion, id: cantidad + 1, leida_en: "2026-09-28T18:21:00Z" },
+          ]),
+        ),
+      );
+      renderCenter();
+
+      const boton = screen.getByRole("button", { name: "Notificaciones" });
+      await waitFor(() => expect(boton).toHaveTextContent(String(cantidad)));
+      expect(boton).toHaveAccessibleDescription(`${cantidad} notificaciones sin leer`);
+      expect(boton).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByRole("region", { name: "Notificaciones" })).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([false, true])(
+    "no muestra un emblema si no hay notificaciones pendientes (con historial leído: %s)",
+    async (conHistorial) => {
+      server.use(
+        http.get(`${API_URL}/notificaciones`, () =>
+          HttpResponse.json(conHistorial
+            ? [{ ...notificacion, leida_en: "2026-09-28T18:21:00Z" }]
+            : []),
+        ),
+      );
+      const queryClient = renderCenter();
+
+      const boton = screen.getByRole("button", { name: "Notificaciones" });
+      await waitFor(() => expect(queryClient.getQueryState(notificacionesQueryKey)?.status).toBe("success"));
+      expect(boton).toHaveAccessibleDescription("No hay notificaciones sin leer");
+      expect(boton).toHaveTextContent(/^$/);
+    },
+  );
+
   it.each(["mouse", "touch"])(
     "cierra el panel al pulsar fuera con %s y permite volver a abrirlo",
     async (pointerType) => {
@@ -94,7 +139,7 @@ describe("NotificationCenter", () => {
     expect(boton).toHaveFocus();
   });
 
-  it("muestra el contador y permite leer una novedad", async () => {
+  it("muestra la campana sonando y queda quieta al leer la última novedad", async () => {
     let csrf: string | null = null;
     server.use(
       http.get(`${API_URL}/notificaciones`, () =>
@@ -112,7 +157,14 @@ describe("NotificationCenter", () => {
     renderCenter();
 
     const boton = await screen.findByRole("button", { name: /Notificaciones/ });
-    await waitFor(() => expect(boton).toHaveTextContent("1"));
+    await waitFor(() =>
+      expect(boton).toHaveAccessibleDescription("1 notificación sin leer"),
+    );
+    expect(boton).toHaveTextContent("1");
+    expect(boton.querySelector("svg")).toHaveAttribute(
+      "data-estado",
+      "sonando",
+    );
     await user.click(boton);
     expect(
       await screen.findByText("Nueva convocatoria abierta"),
@@ -120,6 +172,16 @@ describe("NotificationCenter", () => {
 
     await user.click(screen.getByRole("link", { name: "Ver detalle" }));
     await waitFor(() => expect(csrf).toBe("csrf-firmado"));
+    expect(
+      screen.queryByRole("region", { name: "Notificaciones" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(boton).toHaveAccessibleDescription(
+        "No hay notificaciones sin leer",
+      ),
+    );
+    expect(boton.querySelector("svg")).toHaveAttribute("data-estado", "quieta");
+    expect(boton).toHaveTextContent(/^$/);
   });
 
   it("marca todas las novedades como vistas desde el botón de doble tick", async () => {
@@ -149,12 +211,14 @@ describe("NotificationCenter", () => {
       name: "Marcar todas como vistas",
     });
     expect(screen.getByText("2 sin leer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Notificaciones" })).toHaveTextContent("2");
 
     await user.click(marcarTodas);
 
     await waitFor(() => expect(csrf).toBe("csrf-firmado"));
     expect(screen.getByText("0 sin leer")).toBeInTheDocument();
     expect(marcarTodas).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Notificaciones" })).toHaveTextContent(/^$/);
   });
 
   it("contempla los estados vacío y de error", async () => {
@@ -166,7 +230,9 @@ describe("NotificationCenter", () => {
     await user.click(
       await screen.findByRole("button", { name: "Notificaciones" }),
     );
-    expect(await screen.findByText("No hay novedades todavía.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No hay novedades todavía."),
+    ).toBeInTheDocument();
 
     cleanup();
     server.use(

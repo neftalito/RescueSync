@@ -23,7 +23,7 @@ branch_type=${current_branch%%/*}
 branch_description=${current_branch#*/}
 
 case "$branch_type" in
-  feature | fix | hotfix | refactor | test | docs | ci | chore | release)
+  feat | feature | fix | hotfix | refactor | test | docs | ci | chore | release)
     ;;
   *)
     echo "Tipo de rama no permitido en '$current_branch'." >&2
@@ -32,13 +32,16 @@ case "$branch_type" in
     ;;
 esac
 
-case "$branch_description" in
-  "" | -* | *- | *--* | *[!a-z0-9-]*)
-    echo "Descripción de rama inválida en '$current_branch'." >&2
-    echo "Usá minúsculas, números y guiones medios." >&2
-    exit 1
-    ;;
-esac
+# El usuario puede agrupar tickets de grooming en una rama (p. ej. T36-T37).
+if ! printf '%s' "$branch_description" | grep -Eq '^T[0-9]+(-T[0-9]+)*$'; then
+  case "$branch_description" in
+    "" | -* | *- | *--* | *[!a-z0-9-]*)
+      echo "Descripción de rama inválida en '$current_branch'." >&2
+      echo "Usá minúsculas, números y guiones medios, o tickets como T36-T37." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
 backend_changed=false

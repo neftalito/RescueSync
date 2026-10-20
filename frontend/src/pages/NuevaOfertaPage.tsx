@@ -1,6 +1,7 @@
 import { type ReactElement } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 
+import { ActionIcon } from "../components/ActionIcon";
 import { OfertaForm } from "../components/OfertaForm";
 
 interface NuevaOfertaPageProps {
@@ -9,6 +10,16 @@ interface NuevaOfertaPageProps {
 
 export function NuevaOfertaPage({ csrfToken }: NuevaOfertaPageProps): ReactElement {
   const { ofertaId: ofertaIdParam } = useParams();
+  const [searchParams] = useSearchParams();
+  const loteIdParam = searchParams.get("loteId");
+  const loteId = Number(loteIdParam);
+  const loteInicialId =
+    loteIdParam !== null &&
+    /^\d+$/.test(loteIdParam) &&
+    Number.isSafeInteger(loteId) &&
+    loteId > 0
+      ? loteId
+      : undefined;
   const ofertaId =
     ofertaIdParam === undefined ? undefined : Number(ofertaIdParam);
   const editando = ofertaId !== undefined;
@@ -27,14 +38,20 @@ export function NuevaOfertaPage({ csrfToken }: NuevaOfertaPageProps): ReactEleme
           </div>
           <Link
             to="/"
-            className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            className="action-button action-icon"
+            title="Volver al inicio"
           >
-            Volver al inicio
+            <ActionIcon name="home" />
+            <span className="sr-only">Volver al inicio</span>
           </Link>
         </div>
       </header>
       <div className="mx-auto flex max-w-6xl justify-center px-5 py-8 sm:px-6">
-        <OfertaForm csrfToken={csrfToken} ofertaId={ofertaId} />
+        <OfertaForm
+          csrfToken={csrfToken}
+          ofertaId={ofertaId}
+          loteInicialId={loteInicialId}
+        />
       </div>
     </main>
   );

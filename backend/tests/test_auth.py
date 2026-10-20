@@ -47,6 +47,9 @@ ROLES_FUNCIONALES_POR_OPERACION: dict[
 ] = {
     OperacionProtegida.REGISTRAR_EMERGENCIA: frozenset({RolUsuario.OPERADOR_MUNICIPAL}),
     OperacionProtegida.GESTIONAR_LOTES: frozenset({RolUsuario.COORDINADOR_REGIONAL}),
+    OperacionProtegida.GESTIONAR_CATALOGO_NACIONAL: frozenset(
+        {RolUsuario.ADMINISTRADOR}
+    ),
     OperacionProtegida.PRESENTAR_OFERTA: frozenset({RolUsuario.REPRESENTANTE_ONG}),
 }
 
