@@ -15,18 +15,18 @@ export const tipoCapacidadLabels: Record<Capacidad["tipo"], string> = {
   SUMINISTRO: "Suministros",
 };
 
+/** Deriva el identificador del nombre y elimina tildes para el catálogo nacional. */
+export function generarCodigoCapacidad(nombre: string): string {
+  return nombre
+    .trim()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase()
+    .replace(/\s+/gu, "-");
+}
+
 export const capacidadCreateSchema = z
   .object({
-    codigo: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .min(1, "Ingresá un código.")
-      .max(80, "El código no puede superar los 80 caracteres.")
-      .regex(
-        /^[A-Z][A-Z0-9_]*$/,
-        "Usá letras, números y guion bajo, comenzando con una letra.",
-      ),
     nombre: z
       .string()
       .trim()
@@ -43,6 +43,26 @@ export const capacidadCreateSchema = z
       message: "Personal y vehículos requieren cantidades enteras.",
       path: ["admiteFracciones"],
     },
-  );
+  )
+  .superRefine((datos, ctx) => {
+    if (!datos.nombre) return;
+    const codigo = generarCodigoCapacidad(datos.nombre);
+    if (codigo.length > 80) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["nombre"],
+        message: "El código generado no puede superar los 80 caracteres. Abreviá el nombre.",
+      });
+    }
+    if (!/^[A-Z][A-Z0-9_-]*$/.test(codigo)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["nombre"],
+        message: "Usá un nombre que empiece con una letra y contenga letras, números, espacios o guiones.",
+      });
+    }
+  })
+  .transform((datos) => ({ ...datos, codigo: generarCodigoCapacidad(datos.nombre) }));
 
-export type CapacidadCreate = z.infer<typeof capacidadCreateSchema>;
+export type CapacidadForm = z.input<typeof capacidadCreateSchema>;
+export type CapacidadCreate = z.output<typeof capacidadCreateSchema>;

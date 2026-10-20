@@ -55,6 +55,11 @@ function renderPage(): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  queryClient.setQueryData(["session"], {
+    usuario: { id: 7, email: "ong@example.test", rol: "REPRESENTANTE_ONG",
+      organizacion: { id: 4, nombre: "Mi ONG", tipo: "ONG" }, requiere_cambio_password: false },
+    csrf_token: "csrf-local",
+  });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
@@ -134,5 +139,40 @@ describe("MisOfertasPage", () => {
 
     expect(await screen.findByText("Alta · Ribera norte")).toBeInTheDocument();
     expect(intentos).toBe(2);
+  });
+
+  it("muestra la oferta conjunta deshabilitada cuando faltan recursos nacionales", async () => {
+    server.use(http.get(`${API_URL}/ofertas`, () => HttpResponse.json([oferta])));
+    renderPage();
+    await userEvent.setup().click(await screen.findByText("Alta · Ribera norte"));
+    expect(screen.getByRole("heading", { name: "Oferta conjunta" })).toBeVisible();
+    const invitar = screen.getByRole("button", { name: "Invitar ONGs" });
+    expect(invitar).toBeDisabled();
+    expect(invitar).toHaveAccessibleDescription(/recursos del inventario nacional/i);
+  });
+
+  it("mantiene modificar oferta deshabilitado y explica el plazo al finalizar la convocatoria", async () => {
+    server.use(http.get(`${API_URL}/ofertas`, () => HttpResponse.json([{ ...oferta, editable: false }])));
+    renderPage();
+    await userEvent.setup().click(await screen.findByText("Alta · Ribera norte"));
+    expect(screen.queryByRole("link", { name: "Modificar oferta" })).not.toBeInTheDocument();
+    const modificar = screen.getByRole("button", { name: "Modificar oferta" });
+    expect(modificar).toBeDisabled();
+    expect(modificar).toHaveAccessibleDescription(/convocatoria.*abierta/i);
+  });
+
+  it("explica que hay que desarmar el consorcio antes de editar aportes", async () => {
+    server.use(http.get(`${API_URL}/ofertas`, () => HttpResponse.json([{
+      ...oferta, editable: false, consorcio_editable: true, requiere_desglose_nacional: true,
+      participantes: [
+        { ong_id: 4, nombre: "Mi ONG", rol: "LIDER", confirmada: true },
+        { ong_id: 5, nombre: "Otra ONG", rol: "MIEMBRO", confirmada: true },
+      ],
+    }])));
+    renderPage();
+    await userEvent.setup().click(await screen.findByText("Alta · Ribera norte"));
+    const modificar = screen.getByRole("button", { name: "Modificar oferta" });
+    expect(modificar).toBeDisabled();
+    expect(modificar).toHaveAccessibleDescription(/desarmá el consorcio/i);
   });
 });

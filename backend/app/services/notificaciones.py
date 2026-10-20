@@ -94,8 +94,10 @@ def notificar_convocatoria_publicada(
     session: Session,
     *,
     convocatoria_id: int,
+    emergencia_id: int,
     municipio_id: int,
     zona: str,
+    descripcion: str,
 ) -> None:
     """Avisa a las ONGs de la apertura y al municipio del cambio de estado."""
 
@@ -116,8 +118,11 @@ def notificar_convocatoria_publicada(
         clave_evento=clave,
         tipo=TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
         titulo="Emergencia publicada",
-        mensaje="El centro coordinador publicó la convocatoria de la emergencia.",
-        ruta="/",
+        mensaje=(
+            "El centro coordinador publicó la convocatoria de la emergencia en "
+            f"{zona}: {descripcion}"
+        ),
+        ruta=f"/emergencias/{emergencia_id}/ejecucion",
     )
 
 
@@ -125,8 +130,10 @@ def notificar_convocatoria_cerrada(
     session: Session,
     *,
     convocatoria_id: int,
+    emergencia_id: int,
     municipio_id: int,
     zona: str,
+    descripcion: str,
 ) -> None:
     """Comunica el cierre a ONGs y el paso a evaluación al municipio."""
 
@@ -147,8 +154,11 @@ def notificar_convocatoria_cerrada(
         clave_evento=clave,
         tipo=TipoNotificacion.EMERGENCIA_ESTADO_ACTUALIZADO,
         titulo="Emergencia en evaluación",
-        mensaje="Cerró la convocatoria y las ofertas están siendo evaluadas.",
-        ruta="/",
+        mensaje=(
+            "Cerró la convocatoria y las ofertas están siendo evaluadas. "
+            f"Emergencia en {zona}: {descripcion}"
+        ),
+        ruta=f"/emergencias/{emergencia_id}/ejecucion",
     )
 
 

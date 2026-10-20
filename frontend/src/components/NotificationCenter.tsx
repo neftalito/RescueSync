@@ -169,7 +169,7 @@ export function NotificationCenter({
         aria-expanded={abierto}
         aria-controls="panel-notificaciones"
         onClick={() => setAbierto((valor) => !valor)}
-        className={`inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white outline-2 outline-offset-2 outline-transparent transition-colors hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700 hover:outline-yellow-500 focus-visible:outline-yellow-600 active:border-yellow-700 active:bg-yellow-100 active:text-yellow-900 active:outline-yellow-700 ${noLeidas > 0 ? "text-yellow-600" : "text-slate-600"}`}
+        className={`relative inline-flex size-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white outline-2 outline-offset-2 outline-transparent transition-colors hover:border-yellow-500 hover:bg-yellow-50 hover:text-yellow-700 hover:outline-yellow-500 focus-visible:outline-yellow-600 active:border-yellow-700 active:bg-yellow-100 active:text-yellow-900 active:outline-yellow-700 ${noLeidas > 0 ? "text-yellow-600" : "text-slate-600"}`}
       >
         <svg
           aria-hidden="true"
@@ -189,6 +189,14 @@ export function NotificationCenter({
             <path d="M2 8a10 10 0 0 1 2-5m18 5a10 10 0 0 0-2-5" />
           )}
         </svg>
+        {noLeidas > 0 && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] leading-none font-bold text-white tabular-nums ring-2 ring-white"
+          >
+            {noLeidas}
+          </span>
+        )}
       </button>
       <span id="estado-notificaciones" className="sr-only" aria-live="polite">
         {noLeidas > 0
@@ -279,7 +287,10 @@ export function NotificationCenter({
                       {notificacion.ruta ? (
                         <Link
                           to={notificacion.ruta}
-                          onClick={() => leer(notificacion)}
+                          onClick={() => {
+                            leer(notificacion);
+                            setAbierto(false);
+                          }}
                           className="action-button action-primary action-icon"
                           title="Ver detalle"
                         >

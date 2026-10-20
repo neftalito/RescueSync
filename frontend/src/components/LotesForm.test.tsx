@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -113,6 +113,31 @@ async function completarLote(
 }
 
 describe("LotesForm", () => {
+  it("muestra Cargando... en el selector hasta que se obtienen las capacidades", async () => {
+    let liberarRespuesta: () => void = () => undefined;
+    const respuestaPendiente = new Promise<void>((resolve) => {
+      liberarRespuesta = resolve;
+    });
+    server.use(http.get(URL_CATALOGO, async () => {
+      await respuestaPendiente;
+      return HttpResponse.json(capacidades);
+    }));
+    await renderForm([], false, false);
+    const selector = screen.getByRole("combobox", { name: "Capacidad" });
+
+    try {
+      expect(selector).toBeDisabled();
+      expect(within(selector).getByRole("option", { selected: true })).toHaveTextContent("Cargando...");
+    } finally {
+      liberarRespuesta();
+    }
+
+    await waitFor(() => expect(selector).toBeEnabled());
+    expect(within(selector).getByRole("option", { selected: true })).toHaveTextContent("Elegí una capacidad");
+    expect(within(selector).queryByRole("option", { name: "Cargando..." })).not.toBeInTheDocument();
+    expect(within(selector).getByRole("option", { name: "Agua potable" })).toBeInTheDocument();
+  });
+
   it("reemplaza el tipo manual por la capacidad y guarda su nombre, unidad y riesgo", async () => {
     const capacidadId = "00000000-0000-4000-8000-000000000101";
     let cuerpo: unknown;

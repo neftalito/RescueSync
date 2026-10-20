@@ -363,7 +363,9 @@ export function LotesForm({
                               },
                             })}
                           >
-                            <option value="">Elegí una capacidad</option>
+                            <option value="">
+                              {catalogo.isFetching ? "Cargando..." : "Elegí una capacidad"}
+                            </option>
                             {capacidadId && !capacidadSeleccionada && (
                               <option value={capacidadId} disabled>
                                 {field.tipo_necesidad} (no disponible)

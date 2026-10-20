@@ -25,6 +25,15 @@ La API Nacional con JWT corresponde a la Entrega 3.
 La captura de referencias nacionales y el GET ampliado para Bonita se describen
 en [Ofertas consolidadas nacionales](./docs/ofertas-consolidadas-nacionales.md).
 
+En **Mis ofertas**, desplegar una oferta permite ver **Oferta conjunta** e invitar
+hasta diez ONGs a una misma propuesta mediante selección múltiple. Las acciones de
+edición y consorcio permanecen visibles y deshabilitadas cuando no se pueden usar,
+con una explicación de los recursos requeridos, el plazo o el estado de la oferta.
+En **Lotes publicados**, **Crear oferta** queda deshabilitado cuando la ONG ya
+ofertó ese lote en la convocatoria vigente. Para sumar otros lotes de esa misma
+convocatoria se debe editar la oferta existente desde **Mis ofertas**. Las ofertas
+de rondas anteriores no bloquean una convocatoria nueva.
+
 El formulario de lotes usa un selector de capacidades nacionales y determina
 automáticamente el nombre y la unidad de cada necesidad. El coordinador completa
 la cantidad y una descripción opcional. Para cargar el catálogo se requieren
@@ -36,6 +45,8 @@ guía de ofertas consolidadas enlazada arriba.
 El administrador dispone de **Gestionar capacidades** para ampliar el catálogo
 nacional usando unidades predefinidas, cargadas por migraciones en todos los
 entornos. Crear capacidades exige una cuenta nacional `ADMIN_NACIONAL`.
+El código se genera a partir del nombre en mayúsculas, sin tildes y con guiones
+en lugar de espacios; el formulario verifica los códigos existentes antes del alta.
 Ver [Administración del catálogo nacional](docs/catalogo-nacional.md).
 
 ## Actualizaciones y notificaciones en tiempo real
@@ -47,9 +58,18 @@ después del commit se envía al usuario conectado. Si estuvo desconectado, pued
 recuperarla mediante `GET /api/v1/notificaciones` y marcarla como leída con
 `PATCH /api/v1/notificaciones/{id}/leida`.
 
+Las notificaciones municipales **Emergencia publicada** y **Emergencia en
+evaluación** identifican la zona y la descripción de la emergencia. Su botón
+**Ver detalle** abre directamente la evaluación y ejecución de esa emergencia.
+La migración también actualiza estos avisos existentes, conservando sus fechas
+y su estado de lectura.
+
 El botón **Notificaciones** abre un panel adaptable a móviles y escritorio, con
 desplazamiento interno para listas largas. Se cierra al hacer clic o tocar fuera
 del panel, volver a pulsar el botón o presionar `Escape`.
+La campana muestra un emblema con la cantidad de notificaciones sin leer, que se
+actualiza al recibir novedades y al marcarlas como vistas. El emblema desaparece
+cuando no quedan notificaciones pendientes.
 
 El engranaje del encabezado abre **Opciones** (`/opciones`), donde la sección
 **Cambiar contraseña** permite actualizar la clave de la cuenta. Las cuentas con

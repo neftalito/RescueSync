@@ -13,7 +13,7 @@ class UnidadResponse(ContratoNacional):
 
 
 class CapacidadCreate(ContratoNacional):
-    codigo: str = Field(min_length=1, max_length=80, pattern=r"^[A-Z][A-Z0-9_]*$")
+    codigo: str = Field(min_length=1, max_length=80, pattern=r"^[A-Z][A-Z0-9_-]*$")
     nombre: Nombre
     tipo: Literal["PERSONAL", "VEHICULO", "EQUIPAMIENTO", "SUMINISTRO"]
     unidad: str = Field(min_length=1, max_length=40)

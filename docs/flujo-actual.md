@@ -200,7 +200,11 @@ ejecuta una única transacción local:
 6. cambia la emergencia a `PUBLICADA`.
 
 La misma transacción crea la novedad de convocatoria para las ONGs y el cambio
-de estado para los operadores del municipio dueño.
+de estado para los operadores del municipio dueño. Los avisos municipales de
+publicación y paso a evaluación incluyen la zona y la descripción de la
+emergencia; **Ver detalle** lleva a `/emergencias/{id}/ejecucion`. La migración
+`20261020_0016` corrige también esos avisos existentes sin cambiar sus fechas ni
+marcarlos como leídos.
 
 Inicialmente `cierra_en` recibe una fecha provisoria de dos horas. Bonita la
 reemplaza luego por la fecha real de su timer.

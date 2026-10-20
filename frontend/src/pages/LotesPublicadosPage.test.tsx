@@ -27,7 +27,40 @@ const lotePublicado = {
   actualizado_en: "2026-09-19T18:20:39.102766Z",
 };
 
-const server = setupServer();
+const convocatoria = {
+  id: 8,
+  emergencia_id: 31,
+  numero: 1,
+  estado: "ABIERTA",
+  publicada_en: "2026-09-19T18:20:39.102766Z",
+  cierra_en: "2026-09-20T18:20:39.102766Z",
+  emergencia: { zona: "Ribera norte", gravedad: "ALTA", descripcion: "Inundación" },
+  lotes: [{ lote_id: 12, tipo_necesidad: "Agua potable", descripcion: null,
+    cantidad_publicada: "1000.000", unidad_publicada: "litros" }],
+};
+
+const ofertaExistente = {
+  id: 92,
+  convocatoria_id: 8,
+  emergencia_id: 31,
+  ong_creadora_id: 5,
+  creada_por_usuario_id: 7,
+  estado: "PRESENTADA",
+  version_actual: 1,
+  version_bloqueo: 1,
+  editable: true,
+  observaciones: null,
+  presentada_en: "2026-09-19T18:20:39.102766Z",
+  creada_en: "2026-09-19T18:20:39.102766Z",
+  items: [{ id: 111, lote_id: 12, tipo: "RECURSO", descripcion: "Agua potable",
+    cantidad_ofrecida: "250", unidad: "litros" }],
+  emergencia: convocatoria.emergencia,
+};
+
+const server = setupServer(
+  http.get(`${API_URL}/ofertas`, () => HttpResponse.json([])),
+  http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([convocatoria])),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -207,5 +240,115 @@ describe("LotesPublicadosPage", () => {
     expect(
       screen.getByText("El identificador de emergencia no es válido."),
     ).toBeInTheDocument();
+  });
+
+  it("mantiene crear oferta deshabilitado y explica que la ONG ya ofertó el lote", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([ofertaExistente])),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    const crear = await screen.findByRole("button", { name: "Crear oferta para Agua potable" });
+    await waitFor(() => expect(crear).toHaveAccessibleDescription(/ya.*oferta para este lote/i));
+    expect(crear).toBeDisabled();
+    expect(screen.queryByRole("link", { name: "Crear oferta para Agua potable" })).not.toBeInTheDocument();
+    await userEvent.setup().click(crear);
+    expect(screen.getByRole("heading", { name: "Lotes publicados" })).toBeInTheDocument();
+  });
+
+  it("explica que para sumar otro lote de la misma convocatoria hay que editar la oferta existente", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([{
+        ...ofertaExistente, items: [{ ...ofertaExistente.items[0], lote_id: 13 }],
+      }])),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    const crear = await screen.findByRole("button", { name: "Crear oferta para Agua potable" });
+    await waitFor(() => expect(crear).toHaveAccessibleDescription(/agregar este lote.*modificá/i));
+    expect(crear).toBeDisabled();
+  });
+
+  it("no bloquea una convocatoria nueva por una oferta del mismo lote en una ronda anterior", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([{
+        ...ofertaExistente, convocatoria_id: 7, editable: false,
+      }])),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    expect(await screen.findByRole("link", { name: "Crear oferta para Agua potable" }))
+      .toHaveAttribute("href", "/ofertas/nueva?loteId=12");
+  });
+
+  it("reconoce la oferta conjunta de la ONG aunque otra participante la haya creado", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([{
+        ...ofertaExistente, ong_creadora_id: 6, editable: false, consorcio_editable: true,
+        participantes: [
+          { ong_id: 6, nombre: "Otra ONG", rol: "LIDER", confirmada: true },
+          { ong_id: 5, nombre: "Mi ONG", rol: "MIEMBRO", confirmada: true },
+        ],
+      }])),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    const crear = await screen.findByRole("button", { name: "Crear oferta para Agua potable" });
+    await waitFor(() => expect(crear).toHaveAccessibleDescription(/ya.*oferta para este lote/i));
+    expect(crear).toBeDisabled();
+  });
+
+  it("espera a verificar las ofertas antes de habilitar crear oferta", async () => {
+    let resolver: ((respuesta: Response) => void) | undefined;
+    const pendiente = new Promise<Response>((resolve) => { resolver = resolve; });
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/ofertas`, () => pendiente),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    const crear = await screen.findByRole("button", { name: "Crear oferta para Agua potable" });
+    expect(crear).toBeDisabled();
+    expect(crear).toHaveAccessibleDescription(/verificando/i);
+    resolver?.(HttpResponse.json([]));
+    expect(await screen.findByRole("link", { name: "Crear oferta para Agua potable" })).toBeInTheDocument();
+  });
+
+  it("mantiene crear deshabilitado si falla la verificación de ofertas y permite reintentar", async () => {
+    let intentos = 0;
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/ofertas`, () => {
+        intentos += 1;
+        return intentos === 1
+          ? HttpResponse.json({ detail: "Falla temporal." }, { status: 500 })
+          : HttpResponse.json([ofertaExistente]);
+      }),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/No pudimos verificar/i);
+    const crear = screen.getByRole("button", { name: "Crear oferta para Agua potable" });
+    expect(crear).toBeDisabled();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar verificación" }));
+    await waitFor(() => expect(crear).toHaveAccessibleDescription(/ya.*oferta para este lote/i));
+    expect(crear).toBeDisabled();
+    expect(intentos).toBe(2);
+  });
+
+  it("deshabilita crear si el lote ya no pertenece a una convocatoria abierta", async () => {
+    server.use(
+      http.get(`${API_URL}/emergencias/31/lotes`, () => HttpResponse.json([lotePublicado])),
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([])),
+    );
+    renderPage("/emergencias/31/lotes");
+
+    const crear = await screen.findByRole("button", { name: "Crear oferta para Agua potable" });
+    await waitFor(() => expect(crear).toHaveAccessibleDescription(/convocatoria abierta/i));
+    expect(crear).toBeDisabled();
   });
 });

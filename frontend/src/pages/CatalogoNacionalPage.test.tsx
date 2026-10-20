@@ -65,7 +65,6 @@ function renderPage(): QueryClient {
 async function completar(): Promise<ReturnType<typeof userEvent.setup>> {
   const user = userEvent.setup();
   await screen.findByRole("option", { name: "Kilogramos" });
-  await user.type(screen.getByLabelText("Código"), "alimentos");
   await user.type(screen.getByLabelText("Nombre de la capacidad"), "Alimentos");
   await user.selectOptions(screen.getByLabelText("Unidad"), "kg");
   await user.click(screen.getByLabelText("Permitir cantidades fraccionadas"));
@@ -140,7 +139,6 @@ describe("CatalogoNacionalPage", () => {
     await user.click(
       screen.getByRole("button", { name: "Crear capacidad" }),
     );
-    expect(await screen.findByText("Ingresá un código.")).toBeInTheDocument();
     expect(
       screen.getByText("Ingresá el nombre de la capacidad."),
     ).toBeInTheDocument();
@@ -180,6 +178,84 @@ describe("CatalogoNacionalPage", () => {
         admiteFracciones: false,
       }),
     );
+  });
+
+  it.each([
+    ["Alimentos sin gluten", "ALIMENTOS-SIN-GLUTEN"],
+    ["  Atención   médica  ", "ATENCION-MEDICA"],
+  ])("genera un código no editable a partir del nombre %s", async (nombre, codigo) => {
+    let cuerpo: unknown;
+    server.use(http.post(`${API}/capacidades`, async ({ request }) => {
+      cuerpo = await request.json();
+      return HttpResponse.json({ ...capacidad, nombre: nombre.trim(), codigo }, { status: 201 });
+    }));
+    renderPage();
+    const user = await completar();
+    const campoNombre = screen.getByLabelText("Nombre de la capacidad");
+    await user.clear(campoNombre);
+    await user.type(campoNombre, nombre);
+
+    const campoCodigo = screen.getByLabelText("Código");
+    expect(campoCodigo).toHaveValue(codigo);
+    expect(campoCodigo).toHaveAttribute("readonly");
+    await user.type(campoCodigo, "OTRO-CODIGO");
+    expect(campoCodigo).toHaveValue(codigo);
+    await user.click(screen.getByRole("button", { name: "Crear capacidad" }));
+
+    await waitFor(() => expect(cuerpo).toMatchObject({ nombre: nombre.trim(), codigo }));
+    await waitFor(() => expect(campoCodigo).toHaveValue(""));
+  });
+
+  it("actualiza el código al cambiar el nombre y bloquea un código ya registrado sin enviar el alta", async () => {
+    let altas = 0;
+    server.use(
+      http.get(`${API}/capacidades`, () => HttpResponse.json([capacidad])),
+      http.post(`${API}/capacidades`, () => {
+        altas += 1;
+        return HttpResponse.json(capacidad, { status: 201 });
+      }),
+    );
+    renderPage();
+    const user = await completar();
+    const crear = screen.getByRole("button", { name: "Crear capacidad" });
+    expect(crear).toBeDisabled();
+    expect(screen.getByLabelText("Código")).toHaveAccessibleDescription(/ya existe.*ALIMENTOS/i);
+    await user.click(crear);
+    await user.click(screen.getByLabelText("Nombre de la capacidad"));
+    await user.keyboard("{Enter}");
+    expect(altas).toBe(0);
+
+    await user.type(screen.getByLabelText("Nombre de la capacidad"), " sin gluten");
+    expect(screen.getByLabelText("Código")).toHaveValue("ALIMENTOS-SIN-GLUTEN");
+    expect(crear).toBeEnabled();
+  });
+
+  it("rechaza un nombre cuyo código supera los 80 caracteres sin truncarlo", async () => {
+    renderPage();
+    const user = await completar();
+    await user.clear(screen.getByLabelText("Nombre de la capacidad"));
+    await user.type(screen.getByLabelText("Nombre de la capacidad"), "A".repeat(81));
+    await user.click(screen.getByRole("button", { name: "Crear capacidad" }));
+
+    expect(await screen.findByText(/El código generado no puede superar los 80 caracteres/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Código")).toHaveValue("A".repeat(81));
+  });
+
+  it("espera la comprobación del catálogo y permite reintentar si falla", async () => {
+    let consultas = 0;
+    server.use(http.get(`${API}/capacidades`, () => {
+      consultas += 1;
+      return consultas === 1
+        ? HttpResponse.json({ detail: "No se pudo consultar el catálogo." }, { status: 503 })
+        : HttpResponse.json([]);
+    }));
+    renderPage();
+    const user = await completar();
+    const crear = screen.getByRole("button", { name: "Crear capacidad" });
+    expect(crear).toBeDisabled();
+    expect(screen.getByText(/No pudimos verificar si el código ya existe/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Actualizar catálogo" }));
+    await waitFor(() => expect(crear).toBeEnabled());
   });
 
   it("conserva el formulario cuando el código ya existe", async () => {
