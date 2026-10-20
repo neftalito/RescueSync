@@ -56,7 +56,10 @@ administración adicional. En ambos casos se respeta la contraseña vigente.
 
 ## Datos de desarrollo
 
-Para crear un escenario completo:
+Para crear un escenario completo, configurar primero la clave Fernet y la cuenta
+de integración del [alta nacional automática](./acceso-nacional-automatico.md).
+La API de `NACIONAL_BASE_URL` debe estar disponible: el seed registra allí las dos
+ONG y sus cuentas técnicas, sin cargar inventario ni requerir el seed nacional.
 
 ```bash
 docker compose run --rm backend python -m app.scripts.seed
