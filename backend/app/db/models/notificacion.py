@@ -58,6 +58,10 @@ class Notificacion(Base):
     titulo: Mapped[str] = mapped_column(String(140), nullable=False)
     mensaje: Mapped[str] = mapped_column(Text, nullable=False)
     ruta: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    emergencia_id: Mapped[int | None] = mapped_column(
+        ForeignKey("emergencia.id", ondelete="SET NULL"), nullable=True
+    )
+    tarea_bonita_nombre: Mapped[str | None] = mapped_column(String(160), nullable=True)
     leida_en: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

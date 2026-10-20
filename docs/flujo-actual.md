@@ -350,6 +350,7 @@ Estas etapas no deben interpretarse como funcionalidad completa. Actualmente:
 | Cierre BPM | `POST /emergencias/{id}/cerrar-convocatoria` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Consolidación BPM | `GET /emergencias/{id}/ofertas-consolidadas` | `backend/app/api/routes/bonita.py` | `services/callbacks_bonita.py` | No aplica |
 | Buzón | `GET /notificaciones`, `PATCH /notificaciones/{id}/leida` y `PATCH /notificaciones/leidas` | `backend/app/api/routes/notificaciones.py` | `services/notificaciones.py` | `NotificationCenter.tsx` |
+| Detalle del aviso | `GET /notificaciones/{id}/detalle` | `backend/app/api/routes/notificaciones.py` | `services/detalle_notificaciones.py` | `NotificacionDetallePage.tsx` |
 | Tiempo real | `WS /notificaciones/ws` | `backend/app/api/routes/notificaciones.py` | `services/tiempo_real.py` | `useNotificacionesTiempoReal.ts` |
 
 El prefijo se configura en `backend/app/main.py`, el montaje de routers en
