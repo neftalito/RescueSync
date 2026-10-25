@@ -49,12 +49,25 @@ la semana de la Entrega 4. La Etapa 5 queda fuera del gráfico y del resumen.
 
 Se conserva la semana sugerida de cada actividad y se ordenan las tareas por
 su ID dentro de ella. La distribución diaria es aleatoria, respetando el mínimo
-y máximo configurados, incluidos ambos extremos, y ocho horas totales por
-jornada. Por defecto se usan de una a tres tareas activas por día con trabajo.
-Una actividad de más de ocho horas continúa en la siguiente jornada y cuenta
-como activa en ambas: E3-T37 conserva sus 8,5 horas. Las jornadas no utilizadas
-pueden quedar libres; el mínimo se aplica a los días con actividad. No se
-fuerza una carga de ocho horas ni se infieren dependencias que el Excel no registra.
+y máximo configurados, incluidos ambos extremos, dentro de la franja de
+08:00 a 23:00, con hasta quince horas totales por jornada. Por defecto se usan
+de una a tres tareas activas por día con trabajo. Una actividad que excede el
+tiempo disponible continúa en la siguiente jornada elegible y cuenta como
+activa en ambas. Las jornadas no utilizadas pueden quedar libres; el mínimo
+se aplica a los días con actividad. No se fuerza a completar la franja ni
+se infieren dependencias que el Excel no registra.
+
+Cada columna diaria mide 192 px y representa las 24 horas, de 00:00 a 24:00,
+con divisiones por hora, marcas cada cuatro horas y sombreado fuera de la
+franja de trabajo. Cada tramo muestra su hora de inicio y fin en formato
+`HH:MM`; el ancho de la barra conserva las horas efectivas del grooming.
+Las constantes `DAY_WIDTH`, `WORK_START_HOUR` y `WORK_END_HOUR` permiten ajustar
+la escala y la franja. El PNG se exporta a escala CSS para conservar esta
+anchura sin duplicar el tamaño de una imagen que abarca once semanas.
+
+Con la aleatoriedad habilitada, las tareas de cada día se desplazan juntas
+dentro de la franja en intervalos de quince minutos, conservando el orden y
+sin superponerse. Sin aleatoriedad, la primera tarea de cada día empieza a las 08:00.
 
 E4 tiene 21 tareas en dos semanas: 11 están sugeridas para la segunda semana.
 A un máximo de tres tareas diarias caben de lunes a viernes. Para usar un máximo
@@ -100,7 +113,7 @@ Los parámetros de distribución tienen valores predeterminados en las constante
 | `--min-tasks-per-day` | `1` | Mínimo de tareas activas en un día con trabajo. |
 | `--max-tasks-per-day` | `3` | Máximo de tareas activas en una jornada. |
 | `--randomize` / `--no-randomize` | Aleatoriedad habilitada | Activa o desactiva el sorteo de la distribución. |
-| `--seed` | `2026` | Misma semilla, entradas y opciones producen el mismo cronograma; otra semilla permite otra distribución. |
+| `--seed` | `2026` | Misma semilla, entradas y opciones producen los mismos días y horarios; otra semilla permite otra distribución. |
 | `--weekend-days` | `none` | `none`: lunes a viernes; `saturday`: lunes a sábado; `saturday-sunday`: lunes a domingo. |
 
 Ejemplos:

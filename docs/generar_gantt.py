@@ -12,7 +12,7 @@ import subprocess
 import sys
 import unicodedata
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import StrEnum
 from functools import cache
@@ -25,10 +25,13 @@ DEFAULT_MIN_TASKS_PER_DAY = 1
 DEFAULT_MAX_TASKS_PER_DAY = 3
 DEFAULT_RANDOMIZE = True
 DEFAULT_SEED = 2026
-DAY_WIDTH = 32
+DAY_HOURS = 24
+DAY_WIDTH = 192
 LABEL_WIDTH = 660
 ROW_HEIGHT = 62
-WORKDAY_HOURS = 8
+WORK_START_HOUR = 8
+WORK_END_HOUR = 23
+WORKDAY_HOURS = WORK_END_HOUR - WORK_START_HOUR
 SPREADSHEET_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 NAMESPACE = {"x": SPREADSHEET_NAMESPACE}
 
@@ -135,7 +138,7 @@ class GroomingTask:
 
 @dataclass(frozen=True, slots=True)
 class WorkSegment:
-    """Representa las horas de una tarea que se realizan en una sola jornada."""
+    """Representa un tramo diario con inicio en horas del reloj de 00:00 a 24:00."""
 
     day: date
     start_hour: float
@@ -402,17 +405,17 @@ def _split_hours(
     start: int,
     days: tuple[date, ...],
 ) -> tuple[WorkSegment, ...] | None:
-    """Divide centésimas de hora entre jornadas sin superar ocho horas diarias."""
+    """Divide centésimas de hora entre jornadas dentro de la franja 08:00–23:00."""
 
     segments: list[WorkSegment] = []
     while hours:
         if day_index >= len(days):
             return None
-        used = min(hours, WORKDAY_HOURS * 100 - start)
+        used = min(hours, WORK_END_HOUR * 100 - start)
         segments.append(WorkSegment(days[day_index], start / 100, used / 100))
         hours -= used
         day_index += 1
-        start = 0
+        start = WORK_START_HOUR * 100
     return tuple(segments)
 
 
@@ -467,7 +470,10 @@ def _schedule_week(
         )
         for day_index in candidates:
             segments = _split_hours(
-                durations[index], day_index, start if day_index == cursor else 0, days
+                durations[index],
+                day_index,
+                start if day_index == cursor else WORK_START_HOUR * 100,
+                days,
             )
             if segments is None:
                 continue
@@ -479,15 +485,36 @@ def _schedule_week(
             last = segments[-1]
             next_cursor = days.index(last.day)
             next_start = round((last.start_hour + last.hours) * 100)
-            if next_start == WORKDAY_HOURS * 100:
+            if next_start == WORK_END_HOUR * 100:
                 next_cursor += 1
-                next_start = 0
+                next_start = WORK_START_HOUR * 100
             remaining = place(index + 1, next_cursor, next_start, tuple(next_counts))
             if remaining is not None:
                 return (segments, *remaining)
         return None
 
-    return place(0, 0, 0, (0,) * len(days))
+    placement = place(0, 0, WORK_START_HOUR * 100, (0,) * len(days))
+    if placement is None or not options.randomize:
+        return placement
+    day_ends: dict[date, float] = {}
+    for segments in placement:
+        for segment in segments:
+            day_ends[segment.day] = max(
+                day_ends.get(segment.day, WORK_START_HOUR),
+                segment.start_hour + segment.hours,
+            )
+    # Un desplazamiento común conserva el orden y evita solapar tareas del día.
+    shifts = {
+        day: rng.randrange(round((WORK_END_HOUR - end) * 100) // 25 + 1) / 4
+        for day, end in day_ends.items()
+    }
+    return tuple(
+        tuple(
+            replace(segment, start_hour=segment.start_hour + shifts[segment.day])
+            for segment in segments
+        )
+        for segments in placement
+    )
 
 
 def build_schedule(
@@ -533,7 +560,8 @@ def build_schedule(
             if placement is None:
                 raise ValueError(
                     f"Etapa {stage.number}, semana {week}: las tareas no caben "
-                    f"con {options.min_tasks_per_day}–{options.max_tasks_per_day} tareas por jornada de 8 h "
+                    f"con {options.min_tasks_per_day}–{options.max_tasks_per_day} tareas entre "
+                    f"{WORK_START_HOUR:02d}:00 y {WORK_END_HOUR:02d}:00 "
                     f"y días elegibles de {options.weekend_days.description}. "
                     "Revisá los límites diarios o --weekend-days."
                 )
@@ -560,6 +588,13 @@ def format_variance(hours: float) -> str:
 
 def _date_label(day: date) -> str:
     return f"{day.day:02d}/{day.month:02d}"
+
+
+def _time_label(hour: float) -> str:
+    """Convierte una hora decimal en la hora y minuto del reloj."""
+
+    hours, minutes = divmod(round(hour * 60), 60)
+    return f"{hours:02d}:{minutes:02d}"
 
 
 def build_html(
@@ -593,9 +628,11 @@ def build_html(
                 f"S{week} · {_date_label(monday)}–{_date_label(monday + timedelta(days=6))}</div>"
             )
     weekdays = ("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+    hour_labels = "".join(f"<span>{hour:02d}</span>" for hour in range(0, DAY_HOURS, 4))
     headers = "".join(
         f'<div class="day-header {"extra-day" if day.weekday() >= 5 else ""}">'
-        f"{weekdays[day.weekday()]}<b>{day.day:02d}</b></div>"
+        f"{weekdays[day.weekday()]}<b>{day.day:02d}</b>"
+        f'<div class="hour-labels">{hour_labels}<small>24</small></div></div>'
         for day in days
     )
     grid_cells = "".join(
@@ -635,15 +672,17 @@ def build_html(
             bars: list[str] = []
             for segment in task.segments:
                 left = (
-                    day_indices[segment.day] + segment.start_hour / WORKDAY_HOURS
+                    day_indices[segment.day] + segment.start_hour / DAY_HOURS
                 ) * DAY_WIDTH
-                width = segment.hours / WORKDAY_HOURS * DAY_WIDTH
+                width = segment.hours / DAY_HOURS * DAY_WIDTH
+                time_range = f"{_time_label(segment.start_hour)}–{_time_label(segment.start_hour + segment.hours)}"
                 tooltip = html.escape(
-                    f"{item.key}: {item.title} · {_date_label(segment.day)} · "
+                    f"{item.key}: {item.title} · {_date_label(segment.day)} · {time_range} · "
                     f"{format_estimate(segment.hours)} de {format_estimate(item.actual_hours)} efectivas",
                     quote=True,
                 )
                 bars.append(
+                    f'<span class="bar-time" style="left:{left:.2f}px">{time_range}</span>'
                     f'<div class="bar stage-{item.stage}" style="left:{left:.2f}px;width:{width:.2f}px" '
                     f'title="{tooltip}" aria-label="{tooltip}"></div>'
                 )
@@ -681,9 +720,13 @@ def build_html(
     .stage-header {{ padding: 12px 4px; text-align: center; color: white; font-size: 12px; font-weight: 700; }}
     .week-header {{ padding: 9px 0; text-align: center; background: #e9eef7;
       border-right: 2px solid #aebbd0; font-size: 10px; }}
-    .day-header {{ width: {DAY_WIDTH}px; padding: 7px 0; text-align: center;
-      background: #f3f6fb; border-right: 1px solid #dbe2ee; color: #475467; font-size: 9px; }}
-    .day-header b {{ display: block; margin-top: 2px; }}
+    .day-header {{ flex: 0 0 {DAY_WIDTH}px; padding: 7px 0 0; text-align: center;
+      background: #f3f6fb; border-right: 1px solid #dbe2ee; color: #475467; font-size: 12px; }}
+    .day-header b {{ margin-left: 5px; }}
+    .hour-labels {{ position: relative; display: grid; grid-template-columns: repeat(6, 1fr);
+      height: 21px; margin-top: 7px; text-align: left; font-size: 9px; }}
+    .hour-labels span {{ padding-left: 2px; border-left: 1px solid #aebbd0; }}
+    .hour-labels small {{ position: absolute; right: 2px; top: 0; font-size: 9px; }}
     .gantt-body {{ position: relative; }}
     .section-row {{ position: relative; z-index: 2; display: flex; align-items: center;
       gap: 24px; height: 42px; padding: 0 16px; color: white; font-size: 14px; }}
@@ -701,10 +744,18 @@ def build_html(
     .timeline {{ position: relative; }}
     .day-grid {{ position: absolute; inset: 0; display: grid;
       grid-template-columns: repeat({len(days)}, {DAY_WIDTH}px); }}
-    .day-cell {{ border-right: 1px solid #e3e8f0; }}
+    .day-cell {{ border-right: 1px solid #aebbd0; background-color: #fff;
+      background-image:
+        repeating-linear-gradient(to right, #cfd8e6 0, #cfd8e6 1px,
+          transparent 1px, transparent {DAY_WIDTH / DAY_HOURS:g}px),
+        linear-gradient(to right, #e9edf4 0%, #e9edf4 {WORK_START_HOUR / DAY_HOURS * 100:g}%,
+          transparent {WORK_START_HOUR / DAY_HOURS * 100:g}%, transparent {WORK_END_HOUR / DAY_HOURS * 100:g}%,
+          #e9edf4 {WORK_END_HOUR / DAY_HOURS * 100:g}%, #e9edf4 100%); }}
     .week-start {{ border-left: 2px solid #aebbd0; }}
-    .extra-day {{ background: #fff2d6; }}
-    .bar {{ position: absolute; top: 20px; height: 22px; min-width: 2px; z-index: 2;
+    .extra-day {{ background-color: #fff2d6; }}
+    .bar-time {{ position: absolute; top: 6px; color: #344054; font-size: 10px;
+      white-space: nowrap; z-index: 2; }}
+    .bar {{ position: absolute; top: 25px; height: 22px; min-width: 2px; z-index: 2;
       border-radius: 3px; box-shadow: 0 1px 3px rgb(16 24 40 / 20%); }}
     .stage-1 {{ background: #2563eb; }} .stage-2 {{ background: #7c3aed; }}
     .stage-3 {{ background: #087f8c; }} .stage-4 {{ background: #b45309; }}
@@ -730,7 +781,8 @@ def build_html(
       <span>{format_estimate(total_estimate)} estimadas</span>
       <span>Desvío de esfuerzo: {format_variance(total_actual - total_estimate)}</span></div>
     <p class="note">
-      El ancho de cada barra representa horas efectivas; una jornada equivale a 8 h.</p>
+      El ancho de cada barra representa horas efectivas. Escala diaria de 00:00 a 24:00;
+      tareas entre las {WORK_START_HOUR:02d}:00 y las {WORK_END_HOUR:02d}:00.</p>
     <section class="gantt" aria-label="Gantt consolidado por etapas y semanas">
       <div class="calendar"><div class="calendar-label"><b>Actividades por etapa</b>
         <small>ID de etapa + ID del grooming · estimación, horas efectivas y desvío</small></div>
@@ -775,7 +827,7 @@ const browser = await chromium.launch({{ headless: true }});
 try {{
   const page = await browser.newPage({{
     viewport: {{ width, height: 1000 }},
-    deviceScaleFactor: 2,
+    deviceScaleFactor: 1,
   }});
   await page.goto(htmlUrl, {{ waitUntil: "load" }});
   await page.screenshot({{ path: pngPath, fullPage: true }});
