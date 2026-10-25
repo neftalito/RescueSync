@@ -1,149 +1,168 @@
-"""Genera un Gantt en PNG y PDF desde un proyecto de GitHub."""
+"""Genera el Gantt de todas las etapas desde los groomings locales en XLSX."""
 
 from __future__ import annotations
 
 import argparse
 import html
 import json
-import shutil
+import math
+import random
+import re
 import subprocess
 import sys
-import tempfile
+import unicodedata
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, timedelta
+from enum import StrEnum
+from functools import cache
 from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
-DEFAULT_OWNER = "neftalito"
-DEFAULT_PROJECT_NUMBER = 6
-DEFAULT_TITLE = "RescueSync — Entrega 2"
-DAY_WIDTH = 112
-LABEL_WIDTH = 600
-ROW_HEIGHT = 54
-WORKDAY_HOURS = 8.0
+DEFAULT_TITLE = "RescueSync — Seguimiento de todas las etapas"
+DEFAULT_MIN_TASKS_PER_DAY = 1
+DEFAULT_MAX_TASKS_PER_DAY = 3
+DEFAULT_RANDOMIZE = True
+DEFAULT_SEED = 2026
+DAY_WIDTH = 32
+LABEL_WIDTH = 660
+ROW_HEIGHT = 62
+WORKDAY_HOURS = 8
 SPREADSHEET_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+NAMESPACE = {"x": SPREADSHEET_NAMESPACE}
+
+
+class WeekendDays(StrEnum):
+    """Determina qué días del fin de semana son elegibles para trabajar."""
+
+    NONE = "none"
+    SATURDAY = "saturday"
+    SATURDAY_SUNDAY = "saturday-sunday"
+
+    @property
+    def days_per_week(self) -> int:
+        return {self.NONE: 5, self.SATURDAY: 6, self.SATURDAY_SUNDAY: 7}[self]
+
+    @property
+    def description(self) -> str:
+        return {
+            self.NONE: "lunes a viernes",
+            self.SATURDAY: "lunes a sábado",
+            self.SATURDAY_SUNDAY: "lunes a domingo",
+        }[self]
+
+
+DEFAULT_WEEKEND_DAYS = WeekendDays.NONE
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectItem:
-    """Representa los datos de planificación necesarios para una barra."""
+class ScheduleOptions:
+    """Configura los límites diarios y una distribución aleatoria reproducible."""
+
+    min_tasks_per_day: int = DEFAULT_MIN_TASKS_PER_DAY
+    max_tasks_per_day: int = DEFAULT_MAX_TASKS_PER_DAY
+    randomize: bool = DEFAULT_RANDOMIZE
+    seed: int = DEFAULT_SEED
+    weekend_days: WeekendDays = DEFAULT_WEEKEND_DAYS
+
+    def __post_init__(self) -> None:
+        if (
+            self.min_tasks_per_day < 1
+            or self.max_tasks_per_day < self.min_tasks_per_day
+        ):
+            raise ValueError("Los límites diarios deben cumplir 1 <= mínimo <= máximo.")
+
+
+DEFAULT_SCHEDULE_OPTIONS = ScheduleOptions()
+
+
+@dataclass(frozen=True, slots=True)
+class StageWindow:
+    """Delimita las semanas de trabajo y el hito indicado en la consigna."""
 
     number: int
-    title: str
-    url: str
-    status: str
-    estimate: float
-    actual_hours: float
     start: date
-    target: date
-    labels: tuple[str, ...]
+    delivery: date
+
+    @property
+    def weeks(self) -> int:
+        return (self.delivery - self.start).days // 7 + 1
+
+    @property
+    def end(self) -> date:
+        """Devuelve el domingo que completa visualmente la semana de entrega."""
+
+        return self.delivery + timedelta(days=6 - self.delivery.weekday())
+
+
+# Hitos: Trabajo integrador 2026.pdf, páginas 4–5. La primera etapa se
+# reconstruye con las tres semanas sugeridas en su grooming. Las siguientes
+# comienzan el lunes posterior a la semana de la entrega precedente.
+STAGES = (
+    StageWindow(1, date(2026, 8, 24), date(2026, 9, 10)),
+    StageWindow(2, date(2026, 9, 14), date(2026, 10, 1)),
+    StageWindow(3, date(2026, 10, 5), date(2026, 10, 22)),
+    StageWindow(4, date(2026, 10, 26), date(2026, 11, 5)),
+)
 
 
 @dataclass(frozen=True, slots=True)
-class TaskPlan:
-    """Ubica una tarea en la jornada y declara sus predecesoras."""
+class ExcelCell:
+    """Conserva el formato necesario para distinguir horas de duraciones Excel."""
 
-    day_index: int
+    value: str
+    style: int
+
+
+@dataclass(frozen=True, slots=True)
+class GroomingTask:
+    """Identifica una actividad por etapa y conserva los datos de su grooming."""
+
+    stage: int
+    number: int
+    epic: str
+    title: str
+    estimate: float
+    actual_hours: float
+    suggested_week: int
+    source: str
+
+    @property
+    def key(self) -> str:
+        return f"E{self.stage}-T{self.number}"
+
+
+@dataclass(frozen=True, slots=True)
+class WorkSegment:
+    """Representa las horas de una tarea que se realizan en una sola jornada."""
+
+    day: date
     start_hour: float
-    dependencies: tuple[int, ...] = ()
+    hours: float
 
 
 @dataclass(frozen=True, slots=True)
 class ScheduledTask:
-    """Combina una tarea con su posición validada en el Gantt."""
+    """Asocia la actividad con sus tramos diarios de ejecución reconstruida."""
 
-    item: ProjectItem
-    plan: TaskPlan
-    row_index: int
-
-    @property
-    def start_units(self) -> float:
-        """Devuelve el inicio en horas laborables desde el comienzo del plan."""
-
-        return self.plan.day_index * WORKDAY_HOURS + self.plan.start_hour
-
-    @property
-    def end_units(self) -> float:
-        """Devuelve el fin en horas laborables desde el comienzo del plan."""
-
-        return self.start_units + self.item.actual_hours
-
-
-# Reconstrucción basada en las restricciones de T1-T21. Cada jornada inicia una
-# o dos tareas; las horas del Excel determinan exclusivamente el ancho real.
-TASK_PLAN: dict[int, TaskPlan] = {
-    2: TaskPlan(0, 0.0),
-    15: TaskPlan(0, 3.0, (2,)),
-    1: TaskPlan(1, 0.0, (2,)),
-    17: TaskPlan(1, 4.0, (15,)),
-    3: TaskPlan(2, 0.0, (1,)),
-    7: TaskPlan(2, 1.5, (2,)),
-    8: TaskPlan(3, 0.0, (7,)),
-    4: TaskPlan(3, 2.0, (3, 8)),
-    5: TaskPlan(4, 0.0, (3, 8)),
-    16: TaskPlan(4, 3.5, (4, 17)),
-    9: TaskPlan(5, 0.0, (4,)),
-    10: TaskPlan(5, 1.5, (4, 8)),
-    11: TaskPlan(6, 0.0, (5, 10)),
-    6: TaskPlan(6, 2.5, (5, 8)),
-    12: TaskPlan(7, 0.0, (11,)),
-    14: TaskPlan(8, 0.0, (6, 12)),
-    13: TaskPlan(9, 0.0, (14,)),
-    18: TaskPlan(10, 0.0, (9, 10, 12, 13, 16)),
-    19: TaskPlan(11, 0.0, (18,)),
-    20: TaskPlan(12, 0.0, (19,)),
-    21: TaskPlan(13, 0.0, (20,)),
-}
-
-TASK_GROUPS: dict[int, str] = {
-    1: "foundation",
-    2: "foundation",
-    3: "foundation",
-    4: "municipality",
-    5: "lots",
-    6: "offers",
-    7: "security",
-    8: "security",
-    9: "municipality",
-    10: "municipality",
-    11: "lots",
-    12: "lots",
-    13: "offers",
-    14: "offers",
-    15: "bonita",
-    16: "bonita",
-    17: "bonita",
-    18: "qa",
-    19: "qa",
-    20: "delivery",
-    21: "delivery",
-}
+    item: GroomingTask
+    segments: tuple[WorkSegment, ...]
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """Interpreta las opciones de consulta y de salida."""
+    """Interpreta las rutas de entrada y salida sin requerir acceso a GitHub."""
 
     repository_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
-        description=(
-            "Genera docs/generated/gantt-entrega-2.png y .pdf desde GitHub Projects."
-        )
-    )
-    parser.add_argument("--owner", default=DEFAULT_OWNER, help="Dueño del Project.")
-    parser.add_argument(
-        "--project-number",
-        type=int,
-        default=DEFAULT_PROJECT_NUMBER,
-        help="Número del Project de GitHub.",
+        description="Genera el Gantt de todos los XLSX de docs/groomings en HTML, PNG y PDF."
     )
     parser.add_argument("--title", default=DEFAULT_TITLE, help="Título del Gantt.")
     parser.add_argument(
-        "--actual-hours-xlsx",
+        "--groomings-dir",
         type=Path,
-        default=repository_root / "docs" / "Grooming Etapa Actual.xlsx",
-        help="Excel con las horas efectivas de T1-T21.",
+        default=repository_root / "docs" / "groomings",
+        help="Carpeta con los archivos Grooming Etapa N.xlsx.",
     )
     parser.add_argument(
         "--output-dir",
@@ -152,464 +171,491 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Directorio para los archivos generados.",
     )
     parser.add_argument(
-        "--input-json",
-        type=Path,
-        help="JSON de gh project item-list; evita consultar GitHub.",
+        "--html-only",
+        action="store_true",
+        help="Genera solo el HTML; no requiere Node ni Playwright.",
+    )
+    parser.add_argument(
+        "--min-tasks-per-day",
+        type=int,
+        default=DEFAULT_MIN_TASKS_PER_DAY,
+        help="Mínimo de tareas activas en una jornada con trabajo (por defecto: 1).",
+    )
+    parser.add_argument(
+        "--max-tasks-per-day",
+        type=int,
+        default=DEFAULT_MAX_TASKS_PER_DAY,
+        help="Máximo de tareas activas por jornada (por defecto: 3).",
+    )
+    parser.add_argument(
+        "--randomize",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_RANDOMIZE,
+        help="Distribuye aleatoriamente las tareas dentro de sus límites y semanas.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_SEED,
+        help="Semilla de la distribución aleatoria (por defecto: 2026).",
+    )
+    parser.add_argument(
+        "--weekend-days",
+        type=WeekendDays,
+        choices=list(WeekendDays),
+        default=DEFAULT_WEEKEND_DAYS,
+        help="Días adicionales elegibles: ninguno, sábado o sábado y domingo (por defecto: none).",
     )
     return parser.parse_args(argv)
 
 
-def require_mapping(value: object, context: str) -> dict[str, object]:
-    """Valida un objeto JSON y normaliza sus claves como texto."""
-
-    if not isinstance(value, dict):
-        raise TypeError(f"{context} debe ser un objeto JSON.")
-    return {str(key): child for key, child in value.items()}
-
-
-def require_list(value: object, context: str) -> list[object]:
-    """Valida que un valor JSON sea una lista."""
-
-    if not isinstance(value, list):
-        raise TypeError(f"{context} debe ser una lista JSON.")
-    return list(value)
-
-
-def require_string(value: object, context: str) -> str:
-    """Obtiene un texto obligatorio y no vacío desde JSON."""
-
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"{context} debe ser un texto no vacío.")
-    return value.strip()
-
-
-def require_number(value: object, context: str) -> float:
-    """Obtiene una estimación numérica positiva desde JSON."""
-
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise TypeError(f"{context} debe ser un número.")
-    number = float(value)
-    if number <= 0:
-        raise ValueError(f"{context} debe ser mayor que cero.")
-    return number
-
-
-def require_integer(value: object, context: str) -> int:
-    """Obtiene un entero desde JSON sin aceptar booleanos."""
-
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{context} debe ser un entero.")
-    return value
-
-
-def parse_iso_date(value: object, context: str) -> date:
-    """Valida una fecha de GitHub en formato ISO."""
-
-    raw_date = require_string(value, context)
-    try:
-        return date.fromisoformat(raw_date)
-    except ValueError as error:
-        raise ValueError(f"{context} no contiene una fecha ISO válida.") from error
-
-
 def _shared_strings(archive: ZipFile) -> list[str]:
-    """Lee la tabla de textos compartidos de un archivo XLSX."""
+    """Lee los textos compartidos, opcionales en los archivos XLSX."""
 
+    if "xl/sharedStrings.xml" not in archive.namelist():
+        return []
     root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
-    namespace = {"x": SPREADSHEET_NAMESPACE}
-    return ["".join(node.itertext()) for node in root.findall("x:si", namespace)]
+    return ["".join(node.itertext()) for node in root.findall("x:si", NAMESPACE)]
 
 
 def _cell_value(cell: ElementTree.Element, shared_strings: Sequence[str]) -> str:
-    """Obtiene el valor almacenado o calculado de una celda."""
+    """Obtiene el texto o valor calculado almacenado en una celda."""
 
-    namespace = {"x": SPREADSHEET_NAMESPACE}
-    value_node = cell.find("x:v", namespace)
-    raw_value = "" if value_node is None else value_node.text or ""
+    raw_value = cell.findtext("x:v", "", NAMESPACE)
     if cell.attrib.get("t") == "s" and raw_value:
         try:
-            return shared_strings[int(raw_value)]
+            index = int(raw_value)
+            if index < 0:
+                raise ValueError("Índice negativo")
+            return shared_strings[index]
         except (IndexError, ValueError) as error:
             raise ValueError(
                 "El XLSX contiene un texto compartido inválido."
             ) from error
-    inline = cell.find("x:is", namespace)
-    if inline is not None:
-        return "".join(inline.itertext())
-    return raw_value
+    inline = cell.find("x:is", NAMESPACE)
+    return "".join(inline.itertext()) if inline is not None else raw_value
 
 
-def _column_name(cell_reference: str) -> str:
-    """Separa la columna alfabética de una referencia como F13."""
+def _duration_styles(archive: ZipFile) -> set[int]:
+    """Reconoce formatos de tiempo para convertir días Excel en horas."""
 
-    return "".join(character for character in cell_reference if character.isalpha())
+    root = ElementTree.fromstring(archive.read("xl/styles.xml"))
+    custom_formats = {
+        int(node.attrib["numFmtId"]): node.attrib["formatCode"]
+        for node in root.findall("x:numFmts/x:numFmt", NAMESPACE)
+    }
+    styles: set[int] = set()
+    for index, node in enumerate(root.findall("x:cellXfs/x:xf", NAMESPACE)):
+        format_id = int(node.attrib.get("numFmtId", "0"))
+        code = re.sub(r'"[^"]*"|\\.', "", custom_formats.get(format_id, "")).lower()
+        if format_id in {18, 19, 20, 21, 22, 45, 46, 47} or re.search(
+            r"\[h+\]|h+:?m", code
+        ):
+            styles.add(index)
+    return styles
 
 
-def read_actual_hours(path: Path) -> dict[int, float]:
-    """Lee las horas efectivas del grooming sin dependencias adicionales."""
+def _normalize_header(text: str) -> str:
+    """Tolera diferencias de mayúsculas y acentuación en los encabezados."""
 
-    namespace = {"x": SPREADSHEET_NAMESPACE}
+    return " ".join(
+        "".join(
+            character
+            for character in unicodedata.normalize("NFD", text.casefold())
+            if not unicodedata.combining(character)
+        ).split()
+    )
+
+
+def _hours(cell: ExcelCell, duration_styles: set[int], context: str) -> float:
+    """Valida y homogeneiza una duración a horas con dos decimales."""
+
+    try:
+        value = float(cell.value)
+    except ValueError as error:
+        raise ValueError(f"{context} debe contener horas positivas válidas.") from error
+    hours = round(value * (24 if cell.style in duration_styles else 1), 2)
+    if not math.isfinite(hours) or hours <= 0:
+        raise ValueError(f"{context} debe contener horas positivas finitas.")
+    return hours
+
+
+def read_grooming(path: Path, stage: int) -> list[GroomingTask]:
+    """Lee tareas y semanas de la primera hoja sin instalar librerías de Excel."""
+
     try:
         with ZipFile(path) as archive:
             shared_strings = _shared_strings(archive)
+            duration_styles = _duration_styles(archive)
             sheet = ElementTree.fromstring(archive.read("xl/worksheets/sheet1.xml"))
     except (OSError, BadZipFile, KeyError, ElementTree.ParseError) as error:
         raise RuntimeError(f"No se pudo leer el XLSX {path}: {error}") from error
 
-    rows: list[dict[str, str]] = []
-    for row in sheet.findall(".//x:sheetData/x:row", namespace):
-        values: dict[str, str] = {}
-        for cell in row.findall("x:c", namespace):
-            reference = cell.attrib.get("r", "")
-            values[_column_name(reference)] = _cell_value(cell, shared_strings)
-        rows.append(values)
-
-    header_index = next(
-        (
-            index
-            for index, values in enumerate(rows)
-            if values.get("A") == "ID" and values.get("F") == "Horas efectivas"
-        ),
-        None,
+    required = (
+        "id",
+        "epica",
+        "tarea",
+        "estimacion (hs)",
+        "horas efectivas",
+        "semana sugerida",
     )
-    if header_index is None:
-        raise ValueError(
-            "El XLSX debe contener las columnas ID y Horas efectivas en A y F."
-        )
-
-    actual_hours: dict[int, float] = {}
-    for values in rows[header_index + 1 :]:
-        task_id = values.get("A", "").strip()
-        if not task_id.startswith("T") or not task_id[1:].isdigit():
+    columns: dict[str, str] = {}
+    tasks: list[GroomingTask] = []
+    seen: set[int] = set()
+    for row in sheet.findall("x:sheetData/x:row", NAMESPACE):
+        values = {
+            "".join(c for c in cell.attrib.get("r", "") if c.isalpha()): ExcelCell(
+                _cell_value(cell, shared_strings).strip(),
+                int(cell.attrib.get("s", "0")),
+            )
+            for cell in row.findall("x:c", NAMESPACE)
+        }
+        if not columns:
+            headers = {
+                _normalize_header(cell.value): column for column, cell in values.items()
+            }
+            if all(header in headers for header in required):
+                columns = {header: headers[header] for header in required}
             continue
-        task_number = int(task_id[1:])
-        raw_duration = values.get("F", "").strip()
+        task_id = values.get(columns["id"], ExcelCell("", 0)).value
+        match = re.fullmatch(r"T([1-9][0-9]*)", task_id)
+        if match is None:
+            continue
+        number = int(match[1])
+        key = f"E{stage}-T{number}"
+        if number in seen:
+            raise ValueError(f"{key} está repetida en {path.name}.")
+        seen.add(number)
+        fields = {
+            header: values.get(column, ExcelCell("", 0))
+            for header, column in columns.items()
+        }
+        for header in ("epica", "tarea"):
+            if not fields[header].value:
+                raise ValueError(f"{key}: falta {header} en {path.name}.")
         try:
-            hours = round(float(raw_duration) * 24, 2)
+            raw_week = float(fields["semana sugerida"].value)
+            if not math.isfinite(raw_week) or not raw_week.is_integer():
+                raise ValueError("La semana debe ser un entero")
+            week = int(raw_week)
         except ValueError as error:
             raise ValueError(
-                f"{task_id} no contiene horas efectivas válidas."
+                f"{key}: semana sugerida inválida en {path.name}."
             ) from error
-        if hours <= 0:
-            raise ValueError(f"{task_id} debe tener horas efectivas mayores que cero.")
-        if task_number in actual_hours:
-            raise ValueError(f"{task_id} está repetida en el XLSX.")
-        actual_hours[task_number] = hours
-
-    if not actual_hours:
-        raise ValueError("El XLSX no contiene horas efectivas para ninguna tarea.")
-    return actual_hours
-
-
-def parse_project_items(
-    payload: object, included_numbers: set[int] | None = None
-) -> list[ProjectItem]:
-    """Convierte la respuesta de GitHub en tareas tipadas del grooming."""
-
-    root = require_mapping(payload, "La respuesta del Project")
-    raw_items = require_list(root.get("items"), "items")
-    items: list[ProjectItem] = []
-
-    for index, raw_item in enumerate(raw_items, start=1):
-        item = require_mapping(raw_item, f"items[{index}]")
-        content_value = item.get("content")
-        if not isinstance(content_value, dict):
-            continue
-        content = {str(key): child for key, child in content_value.items()}
-        raw_number = content.get("number")
-        if isinstance(raw_number, bool) or not isinstance(raw_number, int):
-            continue
-        number = require_integer(raw_number, f"items[{index}].number")
-        if included_numbers is not None and number not in included_numbers:
-            continue
-        start = parse_iso_date(item.get("start date"), f"issue #{number} Start date")
-        target = parse_iso_date(item.get("target date"), f"issue #{number} Target date")
-        if target < start:
-            raise ValueError(f"El issue #{number} termina antes de su fecha de inicio.")
-
-        raw_labels = require_list(item.get("labels", []), f"issue #{number} labels")
-        labels = tuple(
-            require_string(label, f"issue #{number} label") for label in raw_labels
-        )
-        items.append(
-            ProjectItem(
-                number=number,
-                title=require_string(content.get("title"), f"issue #{number} title"),
-                url=require_string(content.get("url"), f"issue #{number} url"),
-                status=require_string(item.get("status"), f"issue #{number} status"),
-                estimate=require_number(
-                    item.get("estimate"), f"issue #{number} Estimate"
+        tasks.append(
+            GroomingTask(
+                stage,
+                number,
+                fields["epica"].value,
+                fields["tarea"].value,
+                _hours(
+                    fields["estimacion (hs)"], duration_styles, f"{key}: estimación"
                 ),
-                actual_hours=require_number(
-                    item.get("estimate"), f"issue #{number} Estimate"
+                _hours(
+                    fields["horas efectivas"],
+                    duration_styles,
+                    f"{key}: horas efectivas",
                 ),
-                start=start,
-                target=target,
-                labels=labels,
+                week,
+                path.name,
             )
         )
-
-    if not items:
-        raise ValueError("El Project no contiene items para generar el Gantt.")
-    if included_numbers is not None:
-        found_numbers = {item.number for item in items}
-        missing_numbers = sorted(included_numbers - found_numbers)
-        if missing_numbers:
-            formatted = ", ".join(f"T{number}" for number in missing_numbers)
-            raise ValueError(f"Faltan tareas del grooming en el Project: {formatted}.")
-    return sorted(items, key=lambda project_item: project_item.number)
+    if not columns:
+        raise ValueError(
+            f"{path.name} no contiene los encabezados requeridos: {', '.join(required)}."
+        )
+    if not tasks:
+        raise ValueError(f"{path.name} no contiene tareas con horas efectivas.")
+    return tasks
 
 
-def apply_actual_hours(
-    items: Sequence[ProjectItem], actual_hours: dict[int, float]
-) -> list[ProjectItem]:
-    """Incorpora a cada issue la duración efectiva informada en el Excel."""
+def read_groomings(directory: Path) -> list[GroomingTask]:
+    """Descubre todos los groomings y conserva los IDs dentro de cada etapa."""
 
-    missing_numbers = sorted({item.number for item in items} - actual_hours.keys())
-    if missing_numbers:
-        formatted = ", ".join(f"T{number}" for number in missing_numbers)
-        raise ValueError(f"Faltan horas efectivas en el XLSX para: {formatted}.")
-    return [replace(item, actual_hours=actual_hours[item.number]) for item in items]
-
-
-def load_project_payload(
-    owner: str, project_number: int, input_json: Path | None
-) -> object:
-    """Carga datos desde un archivo o consulta GitHub mediante gh."""
-
-    if input_json is not None:
-        try:
-            return json.loads(input_json.read_text(encoding="utf-8"))
-        except OSError as error:
-            raise RuntimeError(f"No se pudo leer {input_json}: {error}") from error
-        except json.JSONDecodeError as error:
-            raise RuntimeError(
-                f"{input_json} no contiene JSON válido: {error}"
-            ) from error
-
-    if shutil.which("gh") is None:
-        raise RuntimeError("No se encontró gh. Instalá GitHub CLI antes de continuar.")
-
-    command = [
-        "gh",
-        "project",
-        "item-list",
-        str(project_number),
-        "--owner",
-        owner,
-        "--limit",
-        "200",
-        "--format",
-        "json",
-    ]
-    result = subprocess.run(command, check=False, capture_output=True, text=True)
-    if result.returncode != 0:
-        detail = result.stderr.strip() or result.stdout.strip()
-        raise RuntimeError(f"gh no pudo consultar el Project: {detail}")
-    try:
-        return json.loads(result.stdout)
-    except json.JSONDecodeError as error:
-        raise RuntimeError("gh devolvió una respuesta JSON inválida.") from error
+    paths = sorted(
+        path for path in directory.glob("*.xlsx") if not path.name.startswith("~$")
+    )
+    if not paths:
+        raise ValueError(f"No se encontraron groomings XLSX en {directory}.")
+    stages = {stage.number for stage in STAGES}
+    tasks: list[GroomingTask] = []
+    for path in paths:
+        match = re.fullmatch(
+            r"Grooming Etapa ([1-9][0-9]*)\.xlsx", path.name, re.IGNORECASE
+        )
+        if match is None:
+            raise ValueError(
+                f"El nombre {path.name} debe respetar Grooming Etapa N.xlsx."
+            )
+        stage = int(match[1])
+        if stage not in stages:
+            raise ValueError(
+                f"La etapa {stage} no tiene semanas definidas en la consigna."
+            )
+        tasks.extend(read_grooming(path, stage))
+    return sorted(tasks, key=lambda task: (task.stage, task.number))
 
 
-def business_days(first_day: date, last_day: date) -> list[date]:
-    """Devuelve los días laborables del intervalo, incluidos sus extremos."""
+def _split_hours(
+    hours: int,
+    day_index: int,
+    start: int,
+    days: tuple[date, ...],
+) -> tuple[WorkSegment, ...] | None:
+    """Divide centésimas de hora entre jornadas sin superar ocho horas diarias."""
 
-    total_days = (last_day - first_day).days + 1
-    return [
-        first_day + timedelta(days=offset)
-        for offset in range(total_days)
-        if (first_day + timedelta(days=offset)).weekday() < 5
-    ]
+    segments: list[WorkSegment] = []
+    while hours:
+        if day_index >= len(days):
+            return None
+        used = min(hours, WORKDAY_HOURS * 100 - start)
+        segments.append(WorkSegment(days[day_index], start / 100, used / 100))
+        hours -= used
+        day_index += 1
+        start = 0
+    return tuple(segments)
+
+
+def _schedule_week(
+    tasks: Sequence[GroomingTask],
+    days: tuple[date, ...],
+    options: ScheduleOptions,
+    rng: random.Random,
+) -> tuple[tuple[WorkSegment, ...], ...] | None:
+    """Busca una distribución secuencial dentro de los límites diarios elegidos."""
+
+    durations = tuple(round(task.actual_hours * 100) for task in tasks)
+    maximum = options.max_tasks_per_day
+    if (
+        len(tasks) > len(days) * maximum
+        or sum(durations) > len(days) * WORKDAY_HOURS * 100
+    ):
+        return None
+    priorities = (
+        tuple(rng.sample(range(len(days)), len(days)) for _task in tasks)
+        if options.randomize
+        else ()
+    )
+
+    @cache
+    def place(
+        index: int,
+        cursor: int,
+        start: int,
+        counts: tuple[int, ...],
+    ) -> tuple[tuple[WorkSegment, ...], ...] | None:
+        """Prueba días elegibles y retrocede cuando una opción impide terminar."""
+
+        if index == len(tasks):
+            return (
+                ()
+                if all(
+                    count == 0 or count >= options.min_tasks_per_day for count in counts
+                )
+                else None
+            )
+        if len(tasks) - index > sum(maximum - count for count in counts):
+            return None
+        preferred = index * (len(days) - 1) // max(1, len(tasks) - 1)
+        candidates = sorted(
+            range(cursor, len(days)),
+            key=lambda day: (
+                priorities[index].index(day)
+                if options.randomize
+                else abs(day - preferred)
+            ),
+        )
+        for day_index in candidates:
+            segments = _split_hours(
+                durations[index], day_index, start if day_index == cursor else 0, days
+            )
+            if segments is None:
+                continue
+            next_counts = list(counts)
+            for segment in segments:
+                next_counts[days.index(segment.day)] += 1
+            if max(next_counts) > maximum:
+                continue
+            last = segments[-1]
+            next_cursor = days.index(last.day)
+            next_start = round((last.start_hour + last.hours) * 100)
+            if next_start == WORKDAY_HOURS * 100:
+                next_cursor += 1
+                next_start = 0
+            remaining = place(index + 1, next_cursor, next_start, tuple(next_counts))
+            if remaining is not None:
+                return (segments, *remaining)
+        return None
+
+    return place(0, 0, 0, (0,) * len(days))
 
 
 def build_schedule(
-    items: Sequence[ProjectItem],
+    items: Sequence[GroomingTask],
+    options: ScheduleOptions = DEFAULT_SCHEDULE_OPTIONS,
 ) -> tuple[list[ScheduledTask], list[date]]:
-    """Ordena el árbol y valida período, jornadas y precedencias."""
+    """Planifica en días habilitados y devuelve semanas completas para la grilla."""
 
-    items_by_number = {item.number: item for item in items}
-    expected_numbers = set(TASK_PLAN)
-    if set(items_by_number) != expected_numbers:
-        missing = sorted(expected_numbers - items_by_number.keys())
-        extra = sorted(items_by_number.keys() - expected_numbers)
-        details: list[str] = []
-        if missing:
-            details.append("faltan " + ", ".join(f"T{number}" for number in missing))
-        if extra:
-            details.append("sobran " + ", ".join(f"T{number}" for number in extra))
-        raise ValueError("El cronograma no coincide con T1-T21: " + "; ".join(details))
+    windows = {stage.number: stage for stage in STAGES}
+    seen: set[str] = set()
+    for item in items:
+        if item.key in seen:
+            raise ValueError(f"{item.key} está repetida en los groomings.")
+        seen.add(item.key)
+        window = windows.get(item.stage)
+        if window is None or not 1 <= item.suggested_week <= window.weeks:
+            raise ValueError(f"{item.key}: semana sugerida fuera de su etapa.")
+        if not math.isfinite(item.actual_hours) or item.actual_hours <= 0:
+            raise ValueError(f"{item.key}: horas efectivas inválidas.")
+    if not items:
+        raise ValueError("No hay tareas para generar el cronograma.")
 
-    days = business_days(
-        min(item.start for item in items), max(item.target for item in items)
-    )
-    ordered_numbers = sorted(
-        TASK_PLAN,
-        key=lambda number: (
-            TASK_PLAN[number].day_index,
-            TASK_PLAN[number].start_hour,
-            number,
-        ),
-    )
-    scheduled = [
-        ScheduledTask(items_by_number[number], TASK_PLAN[number], row_index)
-        for row_index, number in enumerate(ordered_numbers)
-    ]
-    scheduled_by_number = {task.item.number: task for task in scheduled}
-    for task in scheduled:
-        if task.plan.day_index >= len(days):
-            raise ValueError(f"T{task.item.number} queda fuera de las tres semanas.")
-        day_end = (task.plan.day_index + 1) * WORKDAY_HOURS
-        if task.plan.start_hour < 0 or task.end_units > day_end:
-            raise ValueError(
-                f"T{task.item.number} no cabe en la jornada con "
-                f"{format_estimate(task.item.actual_hours)} reales."
+    scheduled: list[ScheduledTask] = []
+    rng = random.Random(options.seed)
+    for stage in STAGES:
+        for week in range(1, stage.weeks + 1):
+            tasks = sorted(
+                (
+                    task
+                    for task in items
+                    if task.stage == stage.number and task.suggested_week == week
+                ),
+                key=lambda task: task.number,
             )
-        for dependency in task.plan.dependencies:
-            predecessor = scheduled_by_number.get(dependency)
-            if predecessor is None:
+            if not tasks:
+                continue
+            monday = stage.start + timedelta(weeks=week - 1)
+            days = tuple(
+                monday + timedelta(days=index)
+                for index in range(options.weekend_days.days_per_week)
+            )
+            placement = _schedule_week(tasks, days, options, rng)
+            if placement is None:
                 raise ValueError(
-                    f"T{task.item.number} depende de T{dependency}, que no existe."
+                    f"Etapa {stage.number}, semana {week}: las tareas no caben "
+                    f"con {options.min_tasks_per_day}–{options.max_tasks_per_day} tareas por jornada de 8 h "
+                    f"y días elegibles de {options.weekend_days.description}. "
+                    "Revisá los límites diarios o --weekend-days."
                 )
-            if predecessor.end_units > task.start_units:
-                raise ValueError(
-                    f"T{task.item.number} comienza antes de terminar T{dependency}."
-                )
+            scheduled.extend(
+                ScheduledTask(task, segments)
+                for task, segments in zip(tasks, placement, strict=True)
+            )
+    horizon = (STAGES[-1].end - STAGES[0].start).days + 1
+    days = [STAGES[0].start + timedelta(days=offset) for offset in range(horizon)]
     return scheduled, days
 
 
-def status_class(status: str) -> str:
-    """Asigna una clase visual estable a los estados conocidos."""
-
-    normalized = status.casefold().replace(" ", "-")
-    return {
-        "backlog": "backlog",
-        "ready": "ready",
-        "in-progress": "in-progress",
-        "in-review": "in-review",
-        "done": "done",
-    }.get(normalized, "other")
-
-
-def format_estimate(estimate: float) -> str:
+def format_estimate(hours: float) -> str:
     """Presenta horas con coma decimal y sin ceros innecesarios."""
 
-    return f"{estimate:g}".replace(".", ",") + " h"
+    return f"{hours:g}".replace(".", ",") + " h"
 
 
 def format_variance(hours: float) -> str:
-    """Presenta el desvío con signo explícito."""
+    """Expresa el desvío de esfuerzo con signo, sin inferir demoras de calendario."""
 
-    sign = "+" if hours >= 0 else "−"
-    return sign + format_estimate(abs(hours))
+    return ("+" if hours >= 0 else "−") + format_estimate(abs(hours))
 
 
-def task_geometry(task: ScheduledTask) -> tuple[float, float]:
-    """Calcula inicio y ancho de una barra en píxeles."""
-
-    left = (
-        task.plan.day_index * DAY_WIDTH
-        + task.plan.start_hour / WORKDAY_HOURS * DAY_WIDTH
-    )
-    width = task.item.actual_hours / WORKDAY_HOURS * DAY_WIDTH
-    return left, width
+def _date_label(day: date) -> str:
+    return f"{day.day:02d}/{day.month:02d}"
 
 
 def build_html(
-    items: Sequence[ProjectItem], title: str, project_number: int
+    items: Sequence[GroomingTask],
+    title: str,
+    options: ScheduleOptions = DEFAULT_SCHEDULE_OPTIONS,
 ) -> tuple[str, int]:
-    """Construye un documento HTML autocontenido para el renderizado."""
+    """Construye el Gantt semanal, los hitos y los desvíos de esfuerzo."""
 
-    scheduled, days = build_schedule(items)
-    first_day = days[0]
-    last_day = days[-1]
+    scheduled, days = build_schedule(items, options)
+    day_indices = {day: index for index, day in enumerate(days)}
     timeline_width = len(days) * DAY_WIDTH
     page_width = LABEL_WIDTH + timeline_width + 64
     total_estimate = sum(item.estimate for item in items)
     total_actual = sum(item.actual_hours for item in items)
-    weekday_names = ("Lun", "Mar", "Mié", "Jue", "Vie")
-    month_names = (
-        "enero",
-        "febrero",
-        "marzo",
-        "abril",
-        "mayo",
-        "junio",
-        "julio",
-        "agosto",
-        "septiembre",
-        "octubre",
-        "noviembre",
-        "diciembre",
-    )
-
-    header_cells = "".join(
-        (
-            '<div class="day-header">'
-            f"<strong>{weekday_names[day.weekday()]}</strong>"
-            f"<span>{day.day:02d}/{day.month:02d}</span>"
-            "<small>8 h</small>"
-            "</div>"
+    stage_headers: list[str] = []
+    week_headers: list[str] = []
+    for stage in STAGES:
+        stage_days = [day for day in days if stage.start <= day <= stage.end]
+        stage_headers.append(
+            f'<div class="stage-header stage-{stage.number}" style="width:{len(stage_days) * DAY_WIDTH}px">'
+            f"Etapa {stage.number} · semana del {_date_label(stage.delivery)}</div>"
         )
+        for week in range(1, stage.weeks + 1):
+            monday = stage.start + timedelta(weeks=week - 1)
+            week_days = [
+                day for day in stage_days if monday <= day < monday + timedelta(weeks=1)
+            ]
+            week_headers.append(
+                f'<div class="week-header" style="width:{len(week_days) * DAY_WIDTH}px">'
+                f"S{week} · {_date_label(monday)}–{_date_label(monday + timedelta(days=6))}</div>"
+            )
+    weekdays = ("Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom")
+    headers = "".join(
+        f'<div class="day-header {"extra-day" if day.weekday() >= 5 else ""}">'
+        f"{weekdays[day.weekday()]}<b>{day.day:02d}</b></div>"
         for day in days
     )
-    rows: list[str] = []
-    for task in scheduled:
-        item = task.item
-        left, width = task_geometry(task)
-        grid_cells = "".join('<div class="day-cell"></div>' for _day in days)
-        visible_title = item.title
-        expected_prefix = f"[T{item.number}] "
-        if visible_title.startswith(expected_prefix):
-            visible_title = visible_title.removeprefix(expected_prefix)
-        escaped_url = html.escape(item.url, quote=True)
-        escaped_title = html.escape(visible_title)
-        escaped_status = html.escape(item.status)
-        dependencies = (
-            "dep. " + ", ".join(f"T{number}" for number in task.plan.dependencies)
-            if task.plan.dependencies
-            else "inicio"
-        )
-        group = TASK_GROUPS[item.number]
-        bar_label = format_estimate(item.actual_hours) if width >= 40 else ""
-        rows.append(
-            "".join(
-                (
-                    '<div class="task-row">',
-                    '<div class="task-label">',
-                    '<div class="task-copy">',
-                    (
-                        f'<a href="{escaped_url}"><strong>T{item.number}</strong> '
-                        f"{escaped_title}</a>"
-                    ),
-                    '<div class="task-meta">',
-                    f'<span class="group-dot {group}"></span>',
-                    f"<b>{format_estimate(item.actual_hours)} reales</b>",
-                    f"<span>estimado {format_estimate(item.estimate)}</span>",
-                    f"<span>{dependencies}</span>",
-                    f'<span class="sr-only">Estado {escaped_status}</span>',
-                    "</div></div></div>",
-                    f'<div class="timeline" style="width:{timeline_width}px">',
-                    f'<div class="day-grid">{grid_cells}</div>',
-                    (
-                        f'<a class="bar {group}" href="{escaped_url}" '
-                        f'style="left:{left:.2f}px;width:{width:.2f}px" '
-                        f'title="T{item.number}: '
-                        f"{html.escape(item.title, quote=True)} · "
-                        f'{format_estimate(item.actual_hours)} reales">'
-                    ),
-                    f"<span>{bar_label}</span></a>",
-                    "</div></div>",
-                )
-            )
-        )
-
-    period = (
-        f"{first_day.day} de {month_names[first_day.month - 1]} de {first_day.year}"
-        f" — {last_day.day} de {month_names[last_day.month - 1]} de {last_day.year}"
+    grid_cells = "".join(
+        f'<div class="day-cell {"week-start" if day.weekday() == 0 else ""} '
+        f'{"extra-day" if day.weekday() >= 5 else ""}"></div>'
+        for day in days
     )
-    body_height = len(scheduled) * ROW_HEIGHT
-    milestone_left = LABEL_WIDTH + (len(days) - 0.5) * DAY_WIDTH
+    milestones = "".join(
+        f'<div class="milestone" style="left:{day_indices[stage.delivery] * DAY_WIDTH}px">'
+        f"<span>E{stage.number} · {_date_label(stage.delivery)}</span></div>"
+        for stage in STAGES
+    )
+    rows: list[str] = []
+    summaries: list[str] = []
+    for stage in STAGES:
+        stage_tasks = [task for task in scheduled if task.item.stage == stage.number]
+        estimate = sum(task.item.estimate for task in stage_tasks)
+        actual = sum(task.item.actual_hours for task in stage_tasks)
+        summaries.append(
+            f"<tr><th>Etapa {stage.number}</th><td>Semana del {_date_label(stage.delivery)}</td>"
+            f"<td>{len(stage_tasks) if stage_tasks else 'Pendiente de grooming'}</td>"
+            f"<td>{format_estimate(estimate) if stage_tasks else '—'}</td>"
+            f"<td>{format_estimate(actual) if stage_tasks else '—'}</td>"
+            f"<td>{format_variance(actual - estimate) if stage_tasks else '—'}</td></tr>"
+        )
+        rows.append(
+            f'<div class="section-row stage-{stage.number}"><strong>Etapa {stage.number}</strong>'
+            f"<span>Semana de entrega: {_date_label(stage.delivery)} · {stage.weeks} semanas</span></div>"
+        )
+        if not stage_tasks:
+            rows.append(
+                '<div class="pending-row"><b>Sin grooming de tareas</b> · '
+                "Hito de la consigna; actividades pendientes de desglosar y estimar.</div>"
+            )
+        for task in stage_tasks:
+            item = task.item
+            bars: list[str] = []
+            for segment in task.segments:
+                left = (
+                    day_indices[segment.day] + segment.start_hour / WORKDAY_HOURS
+                ) * DAY_WIDTH
+                width = segment.hours / WORKDAY_HOURS * DAY_WIDTH
+                tooltip = html.escape(
+                    f"{item.key}: {item.title} · {_date_label(segment.day)} · "
+                    f"{format_estimate(segment.hours)} de {format_estimate(item.actual_hours)} efectivas",
+                    quote=True,
+                )
+                bars.append(
+                    f'<div class="bar stage-{item.stage}" style="left:{left:.2f}px;width:{width:.2f}px" '
+                    f'title="{tooltip}" aria-label="{tooltip}"></div>'
+                )
+            variance = item.actual_hours - item.estimate
+            rows.append(
+                f'<div class="task-row"><div class="task-label">'
+                f'<div class="task-title"><strong>{item.key}</strong> {html.escape(item.title)}</div>'
+                f'<div class="task-meta"><span>{html.escape(item.epic)} · S{item.suggested_week}</span>'
+                f"<b>{format_estimate(item.actual_hours)} efectivas</b> · est. {format_estimate(item.estimate)} · "
+                f'<em class="{"over" if variance > 0 else "under"}">Δ {format_variance(variance)}</em></div></div>'
+                f'<div class="timeline"><div class="day-grid">{grid_cells}</div>{"".join(bars)}</div></div>'
+            )
     document = f"""<!doctype html>
 <html lang="es">
 <head>
@@ -618,129 +664,88 @@ def build_html(
   <title>{html.escape(title)}</title>
   <style>
     * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0;
-      color: #172033;
-      background: #f3f6fb;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-        "Segoe UI", sans-serif;
-    }}
-    main {{ width: {page_width}px; padding: 32px; background: #f3f6fb; }}
-    .heading {{
-      display: flex; align-items: flex-end; justify-content: space-between;
-      gap: 24px; margin-bottom: 22px;
-    }}
-    h1 {{ margin: 0 0 6px; color: #121a2a; font-size: 28px; }}
-    .subtitle {{ margin: 0; color: #667085; font-size: 14px; }}
-    .summary {{
-      display: flex; gap: 14px; padding: 10px 14px;
-      border: 1px solid #cfd8e6; border-radius: 10px;
-      background: #fff; color: #344054; font-size: 14px; font-weight: 700;
-    }}
-    .summary .variance {{ color: #b42318; }}
-    .gantt {{ overflow: hidden; border: 1px solid #cfd8e6; border-radius: 12px;
-      background: #fff; box-shadow: 0 5px 18px rgb(16 24 40 / 8%); }}
+    body {{ margin: 0; color: #172033; background: #f3f6fb;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    main {{ width: {page_width}px; padding: 32px; }}
+    h1 {{ margin: 0 0 8px; font-size: 30px; }}
+    .subtitle, .note {{ color: #475467; font-size: 14px; line-height: 1.5; }}
+    .summary {{ display: flex; gap: 28px; margin: 18px 0; padding: 14px 18px;
+      background: white; border: 1px solid #cfd8e6; border-radius: 8px; font-weight: 700; }}
+    .gantt {{ overflow: hidden; border: 1px solid #cfd8e6; border-radius: 8px; background: white; }}
     .calendar, .task-row {{ display: grid; grid-template-columns: {LABEL_WIDTH}px {timeline_width}px; }}
-    .calendar {{ min-height: 62px; border-bottom: 2px solid #aebbd0; }}
-    .calendar-label {{ display: flex; flex-direction: column; justify-content: center;
-      padding: 0 18px; color: #344054; background: #e9eef7;
-      border-right: 1px solid #cfd8e6; }}
-    .calendar-label strong {{ font-size: 13px; text-transform: uppercase;
-      letter-spacing: .05em; }}
-    .calendar-label span {{ margin-top: 4px; color: #667085; font-size: 10px; }}
-    .calendar-days, .day-grid {{ display: grid; grid-template-columns: repeat({len(days)}, {DAY_WIDTH}px); }}
-    .day-header {{ display: flex; align-items: center;
-      justify-content: center; gap: 5px; color: #344054; background: #eef3fa;
-      border-right: 1px solid #dbe2ee; font-size: 11px; }}
-    .day-header span {{ color: #667085; }}
-    .day-header small {{ color: #98a2b3; font-size: 9px; }}
-    .gantt-body {{ position: relative; height: {body_height}px; }}
+    .calendar {{ position: sticky; top: 0; z-index: 5; border-bottom: 2px solid #aebbd0; }}
+    .calendar-label {{ display: flex; flex-direction: column; justify-content: center; gap: 8px;
+      padding: 18px; background: #e9eef7; border-right: 1px solid #cfd8e6; font-size: 16px; }}
+    .calendar-label small {{ color: #475467; font-size: 12px; }}
+    .stage-headers, .week-headers, .calendar-days {{ display: flex; }}
+    .stage-header {{ padding: 12px 4px; text-align: center; color: white; font-size: 12px; font-weight: 700; }}
+    .week-header {{ padding: 9px 0; text-align: center; background: #e9eef7;
+      border-right: 2px solid #aebbd0; font-size: 10px; }}
+    .day-header {{ width: {DAY_WIDTH}px; padding: 7px 0; text-align: center;
+      background: #f3f6fb; border-right: 1px solid #dbe2ee; color: #475467; font-size: 9px; }}
+    .day-header b {{ display: block; margin-top: 2px; }}
+    .gantt-body {{ position: relative; }}
+    .section-row {{ position: relative; z-index: 2; display: flex; align-items: center;
+      gap: 24px; height: 42px; padding: 0 16px; color: white; font-size: 14px; }}
+    .section-row span {{ font-size: 12px; }}
     .task-row {{ height: {ROW_HEIGHT}px; border-bottom: 1px solid #e3e8f0; }}
-    .task-label {{ position: relative; z-index: 4; display: flex; align-items: center;
-      min-width: 0; padding: 7px 14px; background: #fff;
-      border-right: 1px solid #cfd8e6; }}
-    .task-copy {{ min-width: 0; width: 100%; }}
-    .task-copy > a {{ display: block; overflow: hidden; color: #27364d; font-size: 12px;
-      text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }}
-    .task-copy strong {{ color: #175cd3; }}
-    .task-meta {{ display: flex; align-items: center; gap: 8px; margin-top: 3px;
-      color: #667085; font-size: 10px; }}
-    .task-meta b {{ color: #344054; }}
-    .group-dot {{ width: 8px; height: 8px; border-radius: 50%; }}
-    .timeline {{ position: relative; min-height: {ROW_HEIGHT}px; }}
-    .day-grid {{ position: absolute; inset: 0; z-index: 0; }}
-    .day-cell {{ border-right: 1px solid #e3e8f0;
-      background: linear-gradient(to right, transparent 49.5%, #f1f3f7 50%,
-        transparent 50.5%); }}
-    .day-cell:nth-child(5n+1) {{ box-shadow: inset 2px 0 #cbd5e3; }}
-    .bar {{ position: absolute; z-index: 3; top: 10px; height: 34px; display: flex;
-      align-items: center; justify-content: center; min-width: 8px; overflow: hidden;
-      border: 2px solid rgb(255 255 255 / 90%); border-radius: 7px; color: #fff;
-      font-size: 10px; font-weight: 800; text-decoration: none;
-      box-shadow: 0 2px 5px rgb(16 24 40 / 25%); }}
-    .foundation {{ background: #2563eb; }}
-    .security {{ background: #7c3aed; }}
-    .bonita {{ background: #d97706; }}
-    .municipality {{ background: #0891b2; }}
-    .lots {{ background: #059669; }}
-    .offers {{ background: #db2777; }}
-    .qa {{ background: #dc2626; }}
-    .delivery {{ background: #475467; }}
-    .milestone {{ position: absolute; z-index: 2; top: 0; bottom: 0;
-      left: {milestone_left}px; border-left: 2px dashed #b42318; }}
-    .milestone span {{ position: absolute; top: 7px; left: 6px; padding: 3px 6px;
-      border-radius: 5px; color: #fff; background: #b42318; font-size: 9px;
-      font-weight: 800; text-transform: uppercase; }}
-    .legend {{ display: flex; align-items: center; gap: 14px; margin-top: 13px;
-      color: #475467; font-size: 10px; }}
-    .legend span {{ display: inline-flex; align-items: center; gap: 5px; }}
-    .legend i {{ width: 9px; height: 9px; border-radius: 3px; }}
-    .sr-only {{ position: absolute; width: 1px; height: 1px; padding: 0;
-      margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0);
-      white-space: nowrap; border: 0; }}
-    footer {{ display: flex; justify-content: space-between; margin-top: 14px;
-      color: #667085; font-size: 11px; }}
+    .task-label {{ position: relative; z-index: 2; padding: 8px 14px; background: white;
+      border-right: 1px solid #cfd8e6; min-width: 0; }}
+    .task-title {{ font-size: 12px; line-height: 1.35; }}
+    .task-title strong {{ color: #175cd3; margin-right: 6px; }}
+    .task-meta {{ display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+      margin-top: 4px; font-size: 10px; color: #475467; }}
+    .task-meta > span {{ max-width: 275px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .task-meta em {{ font-style: normal; font-weight: 700; }}
+    .over {{ color: #b42318; }} .under {{ color: #027a48; }}
+    .timeline {{ position: relative; }}
+    .day-grid {{ position: absolute; inset: 0; display: grid;
+      grid-template-columns: repeat({len(days)}, {DAY_WIDTH}px); }}
+    .day-cell {{ border-right: 1px solid #e3e8f0; }}
+    .week-start {{ border-left: 2px solid #aebbd0; }}
+    .extra-day {{ background: #fff2d6; }}
+    .bar {{ position: absolute; top: 20px; height: 22px; min-width: 2px; z-index: 2;
+      border-radius: 3px; box-shadow: 0 1px 3px rgb(16 24 40 / 20%); }}
+    .stage-1 {{ background: #2563eb; }} .stage-2 {{ background: #7c3aed; }}
+    .stage-3 {{ background: #087f8c; }} .stage-4 {{ background: #b45309; }}
+    .milestones {{ position: absolute; left: {LABEL_WIDTH}px; top: 0; bottom: 0; pointer-events: none; }}
+    .milestone {{ position: absolute; top: 0; bottom: 0; border-left: 1px dashed #b42318; }}
+    .milestone span {{ position: absolute; top: 46px; left: 3px; padding: 3px;
+      background: #b42318; color: white; white-space: nowrap; font-size: 9px; }}
+    .pending-row {{ position: relative; z-index: 2; padding: 18px; color: #475467;
+      background: #f8fafc; font-size: 13px; }}
+    table {{ width: 1100px; border-collapse: collapse; background: white; margin: 20px 0; font-size: 13px; }}
+    th, td {{ padding: 10px 14px; text-align: left; border-bottom: 1px solid #dbe2ee; }}
+    thead {{ background: #e9eef7; }}
+    tfoot {{ background: #e9eef7; font-weight: 700; border-top: 2px solid #aebbd0; }}
+    @media print {{ .calendar {{ position: static; }} }}
   </style>
 </head>
 <body>
   <main>
-    <div class="heading">
-      <div><h1>{html.escape(title)} · ejecución real</h1>
-        <p class="subtitle">{period} · 15 días hábiles · precedencias de T1–T21</p>
-      </div>
-      <div class="summary">
-        <span>{len(items)} tareas</span>
-        <span>{format_estimate(total_actual)} reales</span>
-        <span>estimado {format_estimate(total_estimate)}</span>
-        <span class="variance">desvío {format_variance(total_actual - total_estimate)}</span>
-      </div>
-    </div>
-    <section class="gantt" aria-label="Diagrama de Gantt de horas reales">
-      <div class="calendar">
-        <div class="calendar-label"><strong>Ruta de ejecución y dependencias</strong>
-          <span>El ancho de cada barra representa sus horas efectivas</span>
-        </div>
-        <div class="calendar-days">{header_cells}</div>
-      </div>
-      <div class="gantt-body">
-        {"".join(rows)}
-        <div class="milestone"><span>Entrega</span></div>
-      </div>
+    <h1>{html.escape(title)}</h1>
+    <p class="subtitle">{_date_label(days[0])}–{_date_label(days[-1])}/2026</p>
+    <div class="summary"><span>{len(items)} tareas</span>
+      <span>{format_estimate(total_actual)} efectivas</span>
+      <span>{format_estimate(total_estimate)} estimadas</span>
+      <span>Desvío de esfuerzo: {format_variance(total_actual - total_estimate)}</span></div>
+    <p class="note">
+      El ancho de cada barra representa horas efectivas; una jornada equivale a 8 h.</p>
+    <section class="gantt" aria-label="Gantt consolidado por etapas y semanas">
+      <div class="calendar"><div class="calendar-label"><b>Actividades por etapa</b>
+        <small>ID de etapa + ID del grooming · estimación, horas efectivas y desvío</small></div>
+        <div><div class="stage-headers">{"".join(stage_headers)}</div>
+          <div class="week-headers">{"".join(week_headers)}</div>
+          <div class="calendar-days">{headers}</div></div></div>
+      <div class="gantt-body">{"".join(rows)}<div class="milestones">{milestones}</div></div>
     </section>
-    <div class="legend">
-      <b>Ramas:</b>
-      <span><i class="foundation"></i>Fundación</span>
-      <span><i class="security"></i>Seguridad</span>
-      <span><i class="bonita"></i>Bonita</span>
-      <span><i class="municipality"></i>Emergencias</span>
-      <span><i class="lots"></i>Lotes</span>
-      <span><i class="offers"></i>Ofertas</span>
-      <span><i class="qa"></i>QA</span>
-      <span><i class="delivery"></i>Entrega</span>
-    </div>
-    <footer><span>Escala: 1 jornada = 8 h; sólo días hábiles.</span>
-      <span>Fuente: Grooming Etapa Actual.xlsx y GitHub Project #{project_number}.</span>
-    </footer>
+    <table aria-label="Horas y desvíos por etapa"><thead><tr><th>Etapa</th><th>Hito de la consigna</th>
+      <th>Tareas</th><th>Estimación</th><th>Horas efectivas</th><th>Desvío</th></tr></thead>
+      <tbody>{"".join(summaries)}</tbody>
+      <tfoot><tr><th scope="row" colspan="2">Totales</th>
+        <td>{len(items)}</td><td>{format_estimate(total_estimate)}</td>
+        <td>{format_estimate(total_actual)}</td>
+        <td>{format_variance(total_actual - total_estimate)}</td></tr></tfoot></table>
   </main>
 </body>
 </html>
@@ -810,29 +815,33 @@ try {{
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Valida el Project y el Excel, y produce ambos formatos."""
+    """Consolida los groomings y genera el Gantt sin consultar servicios externos."""
 
     args = parse_args(argv)
     try:
-        actual_hours = read_actual_hours(args.actual_hours_xlsx)
-        payload = load_project_payload(args.owner, args.project_number, args.input_json)
-        items = parse_project_items(payload, set(actual_hours))
-        items = apply_actual_hours(items, actual_hours)
-        document, page_width = build_html(items, args.title, args.project_number)
+        options = ScheduleOptions(
+            args.min_tasks_per_day,
+            args.max_tasks_per_day,
+            args.randomize,
+            args.seed,
+            args.weekend_days,
+        )
+        items = read_groomings(args.groomings_dir)
+        document, page_width = build_html(items, args.title, options)
         output_dir = args.output_dir.resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
-        png_path = output_dir / "gantt-entrega-2.png"
-        pdf_path = output_dir / "gantt-entrega-2.pdf"
-        with tempfile.TemporaryDirectory(prefix="rescuesync-gantt-") as temp_dir:
-            html_path = Path(temp_dir) / "gantt.html"
-            html_path.write_text(document, encoding="utf-8")
+        html_path = output_dir / "gantt-todas-las-etapas.html"
+        html_path.write_text(document, encoding="utf-8")
+        print(f"HTML generado: {html_path}")
+        if not args.html_only:
+            png_path = output_dir / "gantt-todas-las-etapas.png"
+            pdf_path = output_dir / "gantt-todas-las-etapas.pdf"
             render_with_playwright(html_path, png_path, pdf_path, page_width)
-    except (RuntimeError, TypeError, ValueError) as error:
+            print(f"PNG generado: {png_path}")
+            print(f"PDF generado: {pdf_path}")
+    except (OSError, RuntimeError, TypeError, ValueError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
-
-    print(f"PNG generado: {png_path}")
-    print(f"PDF generado: {pdf_path}")
     return 0
 
 
