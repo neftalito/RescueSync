@@ -62,11 +62,12 @@ class GanttTests(unittest.TestCase):
                 self.assertLessEqual(first_day, segment.day.toordinal())
                 self.assertLess(segment.day.toordinal(), first_day + 7)
                 self.assertIn(segment.day, days)
-                self.assertLessEqual(segment.start_hour + segment.hours, 8)
+                self.assertGreaterEqual(segment.start_hour, 8)
+                self.assertLessEqual(segment.start_hour + segment.hours, 23)
                 used_hours[segment.day] += segment.hours
         self.assertEqual(len(scheduled), 82)
         self.assertLessEqual(max(counts.values()), 2)
-        self.assertLessEqual(max(used_hours.values()), 8)
+        self.assertLessEqual(max(used_hours.values()), 15)
         self.assertIn(date(2026, 11, 7), counts)
 
     def test_minimo_y_maximo_se_respetan_en_jornadas_con_trabajo(self) -> None:
@@ -87,6 +88,16 @@ class GanttTests(unittest.TestCase):
         counts = Counter(segment.day for task in first for segment in task.segments)
         self.assertTrue(all(1 <= count <= 3 for count in counts.values()))
         self.assertGreater(len(set(counts.values())), 1)
+        self.assertTrue(
+            any(segment.start_hour > 8 for task in first for segment in task.segments)
+        )
+        self.assertTrue(
+            any(
+                segment.start_hour + segment.hours > 16
+                for task in first
+                for segment in task.segments
+            )
+        )
 
     def test_sin_aleatoriedad_la_semilla_no_cambia_el_resultado(self) -> None:
         options = GANTT["ScheduleOptions"](randomize=False, seed=42)
@@ -168,11 +179,39 @@ class GanttTests(unittest.TestCase):
             self.assertNotIn("semilla", document)
             self.assertEqual(len(list(Path(directory).iterdir())), 1)
 
-    def test_jornada_larga_se_distribuye_sin_perder_horas(self) -> None:
+    def test_tarea_de_ocho_horas_y_media_conserva_su_duracion(self) -> None:
         scheduled, _days = GANTT["build_schedule"](self.tasks)
         task = next(task for task in scheduled if task.item.key == "E3-T37")
-        self.assertEqual(len(task.segments), 2)
         self.assertEqual(sum(segment.hours for segment in task.segments), 8.5)
+
+    def test_tarea_que_excede_la_franja_continua_al_dia_siguiente(self) -> None:
+        options = GANTT["ScheduleOptions"](randomize=False)
+        scheduled, _days = GANTT["build_schedule"](
+            [replace(self.tasks[0], actual_hours=26)], options
+        )
+        segments = scheduled[0].segments
+        self.assertEqual(len(segments), 2)
+        self.assertEqual((segments[0].start_hour, segments[0].hours), (8, 15))
+        self.assertEqual((segments[1].start_hour, segments[1].hours), (8, 11))
+        self.assertEqual((segments[1].day - segments[0].day).days, 1)
+
+    def test_escala_de_24_horas_ubica_barras_y_muestra_inicio_y_fin(self) -> None:
+        options = GANTT["ScheduleOptions"](randomize=False)
+        document, _width = GANTT["build_html"](
+            [replace(self.tasks[0], actual_hours=2)], "RescueSync", options
+        )
+        bar = re.search(
+            r'<div class="bar stage-1" style="left:([\d.]+)px;width:([\d.]+)px"',
+            document,
+        )
+        self.assertIsNotNone(bar)
+        self.assertAlmostEqual(float(bar[1]) / GANTT["DAY_WIDTH"], 8 / 24)
+        self.assertAlmostEqual(float(bar[2]) / GANTT["DAY_WIDTH"], 2 / 24)
+        self.assertIn("08:00–10:00", document)
+        self.assertIn(
+            '<div class="hour-labels"><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span><small>24</small></div>',
+            document,
+        )
 
     def test_los_tramos_no_se_superponen_en_una_jornada(self) -> None:
         scheduled, days = GANTT["build_schedule"](self.tasks)
@@ -185,6 +224,51 @@ class GanttTests(unittest.TestCase):
                 self.assertLessEqual(
                     previous.start_hour + previous.hours, current.start_hour
                 )
+
+    def test_modo_simplificado_conserva_planificacion_y_usa_columnas_de_32_px(
+        self,
+    ) -> None:
+        options = GANTT["ScheduleOptions"](randomize=False)
+        simplified = replace(options, extended_hours=False)
+        self.assertEqual(
+            GANTT["build_schedule"](self.tasks, options),
+            GANTT["build_schedule"](self.tasks, simplified),
+        )
+        extended_html, extended_width = GANTT["build_html"](
+            self.tasks, "RescueSync", options
+        )
+        simplified_html, simplified_width = GANTT["build_html"](
+            self.tasks, "RescueSync", simplified
+        )
+        self.assertEqual(extended_width - simplified_width, 77 * (192 - 32))
+        self.assertIn('<body class="simplified">', simplified_html)
+        self.assertIn("flex: 0 0 32px", simplified_html)
+        self.assertNotIn('<div class="hour-labels">', simplified_html)
+        self.assertNotIn('<span class="bar-time"', simplified_html)
+        for document in (extended_html, simplified_html):
+            self.assertEqual(document.count('class="task-row"'), 82)
+            self.assertIn("188,9 h", document)
+            self.assertIn("−71,1 h", document)
+
+    def test_cli_permite_cambiar_a_modo_simplificado(self) -> None:
+        with TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPOSITORY_ROOT / "docs" / "generar_gantt.py"),
+                    "--html-only",
+                    "--output-dir",
+                    directory,
+                    "--no-extended-hours",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            document = (Path(directory) / "gantt-todas-las-etapas.html").read_text()
+            self.assertIn('<body class="simplified">', document)
+            self.assertNotIn('<div class="hour-labels">', document)
 
     def test_hitos_de_las_cuatro_etapas_sin_etapa_5(self) -> None:
         self.assertEqual(
@@ -247,7 +331,7 @@ class GanttTests(unittest.TestCase):
             ),
             ([*self.tasks, self.tasks[0]], "E1-T1.*repetida"),
             (
-                [replace(self.tasks[0], actual_hours=49), *self.tasks[1:]],
+                [replace(self.tasks[0], actual_hours=106), *self.tasks[1:]],
                 "Etapa 1.*semana 1",
             ),
         ]
