@@ -57,13 +57,21 @@ activa en ambas. Las jornadas no utilizadas pueden quedar libres; el mínimo
 se aplica a los días con actividad. No se fuerza a completar la franja ni
 se infieren dependencias que el Excel no registra.
 
-Cada columna diaria mide 192 px y representa las 24 horas, de 00:00 a 24:00,
+En el modo extendido, cada columna diaria mide 192 px y representa las 24 horas, de 00:00 a 24:00,
 con divisiones por hora, marcas cada cuatro horas y sombreado fuera de la
 franja de trabajo. Cada tramo muestra su hora de inicio y fin en formato
 `HH:MM`; el ancho de la barra conserva las horas efectivas del grooming.
 Las constantes `DAY_WIDTH`, `WORK_START_HOUR` y `WORK_END_HOUR` permiten ajustar
 la escala y la franja. El PNG se exporta a escala CSS para conservar esta
 anchura sin duplicar el tamaño de una imagen que abarca once semanas.
+
+`--no-extended-hours` activa el modo simplificado: recupera las columnas de
+32 px, sin escala horaria ni etiquetas junto a las barras. Cada día comprime
+la franja de trabajo completa y el horario sigue disponible al pasar el cursor
+sobre una barra. `--extended-hours` vuelve al modo extendido, que se usa por
+defecto. El switch cambia la presentación; las tareas, días, horarios y totales
+son idénticos en ambos modos. Su valor predeterminado se configura con
+`DEFAULT_EXTENDED_HOURS`, y `SIMPLIFIED_DAY_WIDTH` permite ajustar el ancho compacto.
 
 Con la aleatoriedad habilitada, las tareas de cada día se desplazan juntas
 dentro de la franja en intervalos de quince minutos, conservando el orden y
@@ -115,6 +123,7 @@ Los parámetros de distribución tienen valores predeterminados en las constante
 | `--randomize` / `--no-randomize` | Aleatoriedad habilitada | Activa o desactiva el sorteo de la distribución. |
 | `--seed` | `2026` | Misma semilla, entradas y opciones producen los mismos días y horarios; otra semilla permite otra distribución. |
 | `--weekend-days` | `none` | `none`: lunes a viernes; `saturday`: lunes a sábado; `saturday-sunday`: lunes a domingo. |
+| `--extended-hours` / `--no-extended-hours` | Extendido habilitado | Alterna columnas de 192 px con escala de 24 h y columnas simplificadas de 32 px. |
 
 Ejemplos:
 
@@ -123,6 +132,8 @@ python docs/generar_gantt.py --min-tasks-per-day 1 --max-tasks-per-day 3 --seed 
 python docs/generar_gantt.py --max-tasks-per-day 2 --weekend-days saturday
 python docs/generar_gantt.py --weekend-days saturday-sunday --seed 17
 python docs/generar_gantt.py --no-randomize
+python docs/generar_gantt.py --no-extended-hours
+python docs/generar_gantt.py --extended-hours
 ```
 
 Siempre debe cumplirse `1 <= mínimo <= máximo`. Desactivar la aleatoriedad

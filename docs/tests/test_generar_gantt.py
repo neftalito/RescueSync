@@ -225,6 +225,51 @@ class GanttTests(unittest.TestCase):
                     previous.start_hour + previous.hours, current.start_hour
                 )
 
+    def test_modo_simplificado_conserva_planificacion_y_usa_columnas_de_32_px(
+        self,
+    ) -> None:
+        options = GANTT["ScheduleOptions"](randomize=False)
+        simplified = replace(options, extended_hours=False)
+        self.assertEqual(
+            GANTT["build_schedule"](self.tasks, options),
+            GANTT["build_schedule"](self.tasks, simplified),
+        )
+        extended_html, extended_width = GANTT["build_html"](
+            self.tasks, "RescueSync", options
+        )
+        simplified_html, simplified_width = GANTT["build_html"](
+            self.tasks, "RescueSync", simplified
+        )
+        self.assertEqual(extended_width - simplified_width, 77 * (192 - 32))
+        self.assertIn('<body class="simplified">', simplified_html)
+        self.assertIn("flex: 0 0 32px", simplified_html)
+        self.assertNotIn('<div class="hour-labels">', simplified_html)
+        self.assertNotIn('<span class="bar-time"', simplified_html)
+        for document in (extended_html, simplified_html):
+            self.assertEqual(document.count('class="task-row"'), 82)
+            self.assertIn("188,9 h", document)
+            self.assertIn("−71,1 h", document)
+
+    def test_cli_permite_cambiar_a_modo_simplificado(self) -> None:
+        with TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPOSITORY_ROOT / "docs" / "generar_gantt.py"),
+                    "--html-only",
+                    "--output-dir",
+                    directory,
+                    "--no-extended-hours",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            document = (Path(directory) / "gantt-todas-las-etapas.html").read_text()
+            self.assertIn('<body class="simplified">', document)
+            self.assertNotIn('<div class="hour-labels">', document)
+
     def test_hitos_de_las_cuatro_etapas_sin_etapa_5(self) -> None:
         self.assertEqual(
             [stage.delivery for stage in GANTT["STAGES"]],

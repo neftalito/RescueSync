@@ -248,6 +248,7 @@ def test_cambio_password_renueva_sesion_e_invalida_la_anterior(
     login = _iniciar_sesion(client)
     csrf = login.json()["csrf_token"]
     cookie_anterior = client.cookies.get("rescuesync_session")
+    assert cookie_anterior is not None
 
     response = client.post(
         "/api/v1/auth/password",
@@ -261,8 +262,11 @@ def test_cambio_password_renueva_sesion_e_invalida_la_anterior(
     assert response.status_code == 200
     assert response.json()["usuario"]["requiere_cambio_password"] is False
     assert usuario_municipal.version_sesion == 2
+    assert client.cookies.get("rescuesync_session") != cookie_anterior
     assert client.get("/api/v1/auth/me").status_code == 200
 
+    # Reemplaza la cookie del servidor sin dejar otra vigente con distinto dominio.
+    client.cookies.clear()
     client.cookies.set(
         "rescuesync_session",
         cookie_anterior,
