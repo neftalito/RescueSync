@@ -21,6 +21,7 @@ const emergenciaBase = {
   creada_por_usuario_id: 1,
   gravedad: "ALTA",
   zona: "Ribera norte",
+  prioridad: null,
   descripcion: "Inundación con familias evacuadas y acceso restringido.",
   estado: "REGISTRADA",
   tiene_lotes: false,

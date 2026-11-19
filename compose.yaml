@@ -1,6 +1,10 @@
 name: rescuesync
 
 services:
+  prioridad:
+    build: ./prioridad-emergencias
+    restart: unless-stopped
+
   mailpit:
     image: axllent/mailpit:v1.31.3
     ports:
@@ -39,6 +43,7 @@ services:
     environment: &backend-environment
       APP_ENV: ${APP_ENV:-development}
       SESSION_SECRET: ${SESSION_SECRET:-}
+      PRIORIDAD_BASE_URL: ${PRIORIDAD_BASE_URL:-http://prioridad:8000}
       NACIONAL_BASE_URL: ${NACIONAL_BASE_URL:-http://host.docker.internal:8001/api/v1}
       NACIONAL_TIMEOUT_SECONDS: ${NACIONAL_TIMEOUT_SECONDS:-10}
       NACIONAL_ENCRYPTION_KEY: ${NACIONAL_ENCRYPTION_KEY:-}
@@ -109,6 +114,8 @@ services:
         condition: service_completed_successfully
       mailpit:
         condition: service_healthy
+      prioridad:
+        condition: service_started
     healthcheck:
       test:
         - CMD

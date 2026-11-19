@@ -18,7 +18,8 @@ const emergenciaCreada = {
   centro_coordinador_id: null,
   creada_por_usuario_id: 1,
   gravedad: "ALTA",
-  zona: "Ribera norte",
+  zona: "NORTE",
+  prioridad: 5,
   descripcion: "Inundación con familias evacuadas",
   estado: "REGISTRADA",
   bonita_sync: "PENDIENTE",
@@ -27,7 +28,11 @@ const emergenciaCreada = {
   actualizada_en: "2026-09-19T18:20:39.102766Z",
 };
 
-const server = setupServer();
+const server = setupServer(
+  http.post(`${API_URL}/emergencias/prioridad`, () =>
+    HttpResponse.json({ prioridad: 5, comprobante: "comprobante-firmado" }),
+  ),
+);
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
@@ -47,6 +52,11 @@ function renderForm(): void {
   );
 }
 
+async function consultar(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole("button", { name: "Consultar prioridad" }));
+  expect(await screen.findByText("Prioridad 5 de 10")).toBeInTheDocument();
+}
+
 describe("EmergenciaForm", () => {
   it("presenta labels accesibles y valida sin duplicar estado", async () => {
     const user = userEvent.setup();
@@ -56,16 +66,9 @@ describe("EmergenciaForm", () => {
     expect(screen.getByLabelText("Zona afectada")).toBeInTheDocument();
     expect(screen.getByLabelText("Descripción inicial")).toBeInTheDocument();
 
-    await user.clear(screen.getByLabelText("Zona afectada"));
-    await user.clear(screen.getByLabelText("Descripción inicial"));
-    await user.click(
-      screen.getByRole("button", { name: "Registrar emergencia" }),
-    );
-
-    expect(await screen.findByText("Ingresá la zona afectada.")).toBeInTheDocument();
-    expect(
-      screen.getByText("Ingresá una descripción inicial."),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registrar emergencia" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Consultar prioridad" }));
+    expect(await screen.findByText("Elegí la zona afectada.")).toBeInTheDocument();
     expect(screen.getByLabelText("Zona afectada")).toHaveAttribute(
       "aria-invalid",
       "true",
@@ -76,7 +79,12 @@ describe("EmergenciaForm", () => {
     let requestCredentials: RequestCredentials | undefined;
     let csrfHeader: string | null = null;
     let cuerpo: unknown;
+    let cuerpoConsulta: unknown;
     server.use(
+      http.post(`${API_URL}/emergencias/prioridad`, async ({ request }) => {
+        cuerpoConsulta = await request.json();
+        return HttpResponse.json({ prioridad: 5, comprobante: "comprobante-firmado" });
+      }),
       http.post(`${API_URL}/emergencias`, async ({ request }) => {
         requestCredentials = request.credentials;
         csrfHeader = request.headers.get("X-CSRF-Token");
@@ -88,7 +96,8 @@ describe("EmergenciaForm", () => {
     renderForm();
 
     await user.selectOptions(screen.getByLabelText("Gravedad"), "ALTA");
-    await user.type(screen.getByLabelText("Zona afectada"), "Ribera norte");
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await consultar(user);
     await user.type(
       screen.getByLabelText("Descripción inicial"),
       "Inundación con familias evacuadas",
@@ -97,15 +106,17 @@ describe("EmergenciaForm", () => {
       screen.getByRole("button", { name: "Registrar emergencia" }),
     );
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    expect(await screen.findByText(
       "Emergencia 31 registrada en estado REGISTRADA.",
-    );
+    )).toBeInTheDocument();
     expect(requestCredentials).toBe("include");
     expect(csrfHeader).toBe(CSRF_TOKEN);
+    expect(cuerpoConsulta).toEqual({ gravedad: "ALTA", zona: "NORTE" });
     expect(cuerpo).toEqual({
       gravedad: "ALTA",
-      zona: "Ribera norte",
+      zona: "NORTE",
       descripcion: "Inundación con familias evacuadas",
+      comprobante_prioridad: "comprobante-firmado",
     });
   });
 
@@ -122,7 +133,8 @@ describe("EmergenciaForm", () => {
     renderForm();
 
     await user.selectOptions(screen.getByLabelText("Gravedad"), "MEDIA");
-    await user.type(screen.getByLabelText("Zona afectada"), "Ribera norte");
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await consultar(user);
     await user.type(
       screen.getByLabelText("Descripción inicial"),
       "Desborde preventivo",
@@ -146,7 +158,8 @@ describe("EmergenciaForm", () => {
     renderForm();
 
     await user.selectOptions(screen.getByLabelText("Gravedad"), "BAJA");
-    await user.type(screen.getByLabelText("Zona afectada"), "Arroyo Sur");
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "SUR");
+    await consultar(user);
     await user.type(
       screen.getByLabelText("Descripción inicial"),
       "Monitoreo preventivo",
@@ -167,7 +180,7 @@ describe("EmergenciaForm", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("status")).toBeInTheDocument();
+      expect(screen.getByText(/Emergencia 32 registrada/)).toBeInTheDocument();
     });
   });
 
@@ -181,7 +194,8 @@ describe("EmergenciaForm", () => {
     renderForm();
 
     await user.selectOptions(screen.getByLabelText("Gravedad"), "ALTA");
-    await user.type(screen.getByLabelText("Zona afectada"), "Ribera norte");
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await consultar(user);
     await user.type(
       screen.getByLabelText("Descripción inicial"),
       "Inundación con familias evacuadas",
@@ -189,7 +203,7 @@ describe("EmergenciaForm", () => {
     await user.click(
       screen.getByRole("button", { name: "Registrar emergencia" }),
     );
-    await screen.findByRole("status");
+    await screen.findByText(/Emergencia 31 registrada/);
 
     await user.click(
       screen.getByRole("button", { name: "Registrar otra emergencia" }),
@@ -198,6 +212,63 @@ describe("EmergenciaForm", () => {
     expect(screen.getByLabelText("Zona afectada")).toHaveValue("");
     expect(
       screen.getByRole("button", { name: "Registrar emergencia" }),
-    ).toBeInTheDocument();
+    ).toBeDisabled();
+  });
+
+  it.each([
+    ["Gravedad", "ALTA"],
+    ["Zona afectada", "SUR"],
+  ])("exige una nueva consulta al cambiar %s", async (campo, valor) => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await consultar(user);
+    expect(screen.getByRole("button", { name: "Registrar emergencia" })).toBeEnabled();
+
+    await user.selectOptions(screen.getByLabelText(campo), valor);
+    expect(screen.queryByText("Prioridad 5 de 10")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Registrar emergencia" })).toBeDisabled();
+  });
+
+  it("permite reintentar cuando el servicio de prioridad está caído", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post(`${API_URL}/emergencias/prioridad`, () =>
+        HttpResponse.json({ detail: "El servicio está temporalmente caído." }, {
+          status: 503,
+        }),
+      ),
+    );
+    renderForm();
+
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await user.click(screen.getByRole("button", { name: "Consultar prioridad" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("temporalmente caído");
+    expect(screen.getByRole("button", { name: "Registrar emergencia" })).toBeDisabled();
+
+    server.resetHandlers();
+    await consultar(user);
+  });
+
+  it("vuelve a pedir la prioridad cuando el comprobante vence", async () => {
+    const user = userEvent.setup();
+    const mensaje = "Consultá la prioridad para esta gravedad y zona antes de registrar.";
+    server.use(
+      http.post(`${API_URL}/emergencias`, () =>
+        HttpResponse.json({ detail: mensaje }, { status: 409 }),
+      ),
+    );
+    renderForm();
+
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "CENTRO");
+    await consultar(user);
+    await user.type(screen.getByLabelText("Descripción inicial"), "Inundación");
+    await user.click(screen.getByRole("button", { name: "Registrar emergencia" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(mensaje);
+    expect(screen.getByRole("button", { name: "Registrar emergencia" })).toBeDisabled();
+    expect(screen.getByLabelText("Descripción inicial")).toHaveValue("Inundación");
+    await consultar(user);
   });
 });

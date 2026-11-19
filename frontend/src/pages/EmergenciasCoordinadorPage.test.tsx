@@ -31,6 +31,7 @@ const emergencia: EmergenciaEnBandeja = {
   creada_por_usuario_id: 1,
   gravedad: "ALTA",
   zona: "Sin lotes",
+  prioridad: null,
   descripcion: "Familias evacuadas por la inundación.",
   estado: "REGISTRADA",
   tiene_lotes: false,

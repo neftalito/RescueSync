@@ -877,7 +877,8 @@ describe("emergencias del municipio", () => {
       centro_coordinador_id: null,
       creada_por_usuario_id: 7,
       gravedad: "ALTA",
-      zona: "Ribera norte",
+      zona: "NORTE",
+      prioridad: 5,
       descripcion: "Inundación con familias evacuadas",
       estado: "REGISTRADA",
       tiene_lotes: false,
@@ -889,12 +890,16 @@ describe("emergencias del municipio", () => {
     server.use(
       http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)),
       http.get(`${API_URL}/emergencias`, () => HttpResponse.json(emergencias)),
+      http.post(`${API_URL}/emergencias/prioridad`, () =>
+        HttpResponse.json({ prioridad: 5, comprobante: "comprobante-firmado" }),
+      ),
       http.post(`${API_URL}/emergencias`, async ({ request }) => {
         expect(request.headers.get("X-CSRF-Token")).toBe(session.csrf_token);
         expect(await request.json()).toEqual({
           gravedad: "ALTA",
-          zona: "Ribera norte",
+          zona: "NORTE",
           descripcion: "Inundación con familias evacuadas",
+          comprobante_prioridad: "comprobante-firmado",
         });
         emergencias = [emergencia];
         return HttpResponse.json(emergencia, { status: 201 });
@@ -920,7 +925,9 @@ describe("emergencias del municipio", () => {
       screen.queryByRole("heading", { name: "Mis emergencias" }),
     ).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Gravedad"), "ALTA");
-    await user.type(screen.getByLabelText("Zona afectada"), "Ribera norte");
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await user.click(screen.getByRole("button", { name: "Consultar prioridad" }));
+    await screen.findByText("Prioridad 5 de 10");
     await user.type(
       screen.getByLabelText("Descripción inicial"),
       "Inundación con familias evacuadas",
@@ -931,11 +938,11 @@ describe("emergencias del municipio", () => {
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Ver mis emergencias" }));
-    expect(await screen.findByText("Alta · Ribera norte")).toBeInTheDocument();
+    expect(await screen.findByText("Alta · NORTE")).toBeInTheDocument();
     expect(
       screen.queryByText("Todavía no registraste emergencias."),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByText("Alta · Ribera norte"));
+    await user.click(screen.getByText("Alta · NORTE"));
     expect(
       screen.getByRole("button", { name: "Vincular con Bonita" }),
     ).toBeInTheDocument();

@@ -1,14 +1,18 @@
+import json
 from collections.abc import Iterator
 from decimal import Decimal
 from types import SimpleNamespace
 
+import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import obtener_cliente_bonita
+from app.core.config import get_settings
 from app.core.security import (
     crear_token_csrf,
     crear_valor_sesion,
@@ -39,7 +43,7 @@ from app.services import emergencias as servicio_emergencias
 PASSWORD = "Una-clave-segura-2026"
 PAYLOAD_VALIDO = {
     "gravedad": "ALTA",
-    "zona": "Ribera norte",
+    "zona": "NORTE",
     "descripcion": "Inundación con familias evacuadas",
 }
 CASO_BONITA_PRUEBA = 4242
@@ -176,6 +180,15 @@ def doble_bonita() -> ClienteBonitaParaPruebas:
 
 
 @pytest.fixture
+def prioridad_remota() -> Iterator[respx.Route]:
+    base_url = str(get_settings().prioridad_base_url).rstrip("/")
+    with respx.mock(assert_all_called=False) as router:
+        yield router.post(f"{base_url}/prioridades").mock(
+            return_value=httpx.Response(200, json={"prioridad": 5})
+        )
+
+
+@pytest.fixture
 def client(
     db_session: Session, doble_bonita: ClienteBonitaParaPruebas
 ) -> Iterator[TestClient]:
@@ -200,6 +213,14 @@ def _autenticar(client: TestClient, usuario: Usuario) -> str:
 
 def _contar_emergencias(db_session: Session) -> int:
     return db_session.scalar(select(func.count()).select_from(Emergencia)) or 0
+
+
+def _consultar_prioridad(client: TestClient, csrf: str) -> httpx.Response:
+    return client.post(
+        "/api/v1/emergencias/prioridad",
+        json={"gravedad": PAYLOAD_VALIDO["gravedad"], "zona": PAYLOAD_VALIDO["zona"]},
+        headers={"X-CSRF-Token": csrf},
+    )
 
 
 def _crear_emergencia(
@@ -231,20 +252,34 @@ def test_registra_emergencia_valida_con_municipio_y_estado_inicial(
     usuario_municipal: Usuario,
     municipio: Organizacion,
     doble_bonita: ClienteBonitaParaPruebas,
+    prioridad_remota: respx.Route,
 ) -> None:
     csrf = _autenticar(client, usuario_municipal)
     iniciales = _contar_emergencias(db_session)
+    consulta = _consultar_prioridad(client, csrf)
+    assert consulta.status_code == 200
+    assert consulta.json()["prioridad"] == 5
+    assert json.loads(prioridad_remota.calls.last.request.content) == {
+        "gravedad": "ALTA",
+        "zona": "NORTE",
+    }
+    assert _contar_emergencias(db_session) == iniciales
 
     response = client.post(
         "/api/v1/emergencias",
-        json=PAYLOAD_VALIDO,
+        json={
+            **PAYLOAD_VALIDO,
+            "comprobante_prioridad": consulta.json()["comprobante"],
+            "prioridad": 10,
+        },
         headers={"X-CSRF-Token": csrf},
     )
 
     assert response.status_code == 201
     payload = response.json()
     assert payload["gravedad"] == "ALTA"
-    assert payload["zona"] == "Ribera norte"
+    assert payload["zona"] == "NORTE"
+    assert payload["prioridad"] == 5
     assert payload["descripcion"] == "Inundación con familias evacuadas"
     assert payload["estado"] == EstadoEmergencia.REGISTRADA.value
     assert payload["bonita_sync"] == EstadoSincronizacionBonita.VINCULADA.value
@@ -258,6 +293,7 @@ def test_registra_emergencia_valida_con_municipio_y_estado_inicial(
     db_session.expire_all()
     emergencia = db_session.get(Emergencia, payload["id"])
     assert emergencia is not None
+    assert emergencia.prioridad == 5
     assert emergencia.estado is EstadoEmergencia.REGISTRADA
     assert emergencia.bonita_sync is EstadoSincronizacionBonita.VINCULADA
     assert emergencia.bonita_process_instance_id == CASO_BONITA_PRUEBA
@@ -265,17 +301,68 @@ def test_registra_emergencia_valida_con_municipio_y_estado_inicial(
     assert emergencia.creada_por_usuario_id == usuario_municipal.id
 
 
+def test_alta_exige_comprobante_para_la_misma_gravedad_y_zona(
+    client: TestClient,
+    db_session: Session,
+    usuario_municipal: Usuario,
+    doble_bonita: ClienteBonitaParaPruebas,
+    prioridad_remota: respx.Route,
+) -> None:
+    csrf = _autenticar(client, usuario_municipal)
+    iniciales = _contar_emergencias(db_session)
+    consulta = _consultar_prioridad(client, csrf)
+    comprobante = consulta.json()["comprobante"]
+    assert prioridad_remota.call_count == 1
+    for cambios in (
+        {},
+        {"comprobante_prioridad": "adulterado"},
+        {"comprobante_prioridad": comprobante, "gravedad": "MEDIA"},
+        {"comprobante_prioridad": comprobante, "zona": "SUR"},
+    ):
+        response = client.post(
+            "/api/v1/emergencias",
+            json={**PAYLOAD_VALIDO, **cambios},
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert response.status_code == 409
+    assert _contar_emergencias(db_session) == iniciales
+    assert doble_bonita.inicios == 0
+    assert prioridad_remota.call_count == 1
+
+
+@pytest.mark.parametrize(
+    ("respuesta_remota", "codigo"),
+    [
+        (httpx.Response(503), 503),
+        (httpx.Response(200, json={"prioridad": True}), 502),
+        (httpx.Response(200, json={"prioridad": 11}), 502),
+    ],
+)
+def test_consulta_rechaza_fallos_del_priorizador(
+    client: TestClient,
+    usuario_municipal: Usuario,
+    prioridad_remota: respx.Route,
+    respuesta_remota: httpx.Response,
+    codigo: int,
+) -> None:
+    csrf = _autenticar(client, usuario_municipal)
+    prioridad_remota.mock(return_value=respuesta_remota)
+    response = _consultar_prioridad(client, csrf)
+    assert response.status_code == codigo
+    assert "comprobante" not in response.json()
+
+
 @pytest.mark.parametrize(
     "payload",
     [
-        {"zona": "Ribera norte", "descripcion": "Falta la gravedad"},
+        {"zona": "NORTE", "descripcion": "Falta la gravedad"},
         {"gravedad": "ALTA", "descripcion": "Falta la zona"},
-        {"gravedad": "ALTA", "zona": "Ribera norte"},
-        {"gravedad": "EXTREMA", "zona": "Ribera", "descripcion": "Gravedad inválida"},
+        {"gravedad": "ALTA", "zona": "NORTE"},
+        {"gravedad": "EXTREMA", "zona": "NORTE", "descripcion": "Gravedad inválida"},
         {"gravedad": "ALTA", "zona": "", "descripcion": "Zona vacía"},
         {"gravedad": "ALTA", "zona": "   ", "descripcion": "Zona en blancos"},
-        {"gravedad": "ALTA", "zona": "Ribera", "descripcion": ""},
-        {"gravedad": "ALTA", "zona": "Ribera", "descripcion": "   "},
+        {"gravedad": "ALTA", "zona": "NORTE", "descripcion": ""},
+        {"gravedad": "ALTA", "zona": "NORTE", "descripcion": "   "},
         {"gravedad": "ALTA", "zona": "x" * 256, "descripcion": "Zona muy larga"},
     ],
 )
@@ -393,9 +480,11 @@ def test_registra_emergencia_hace_rollback_ante_fallo_de_persistencia(
     db_session: Session,
     usuario_municipal: Usuario,
     monkeypatch: pytest.MonkeyPatch,
+    prioridad_remota: respx.Route,
 ) -> None:
     csrf = _autenticar(client, usuario_municipal)
     iniciales = _contar_emergencias(db_session)
+    consulta = _consultar_prioridad(client, csrf)
 
     def commit_fallido() -> None:
         raise IntegrityError("INSERT", {}, Exception("restricción simulada"))
@@ -404,9 +493,13 @@ def test_registra_emergencia_hace_rollback_ante_fallo_de_persistencia(
 
     response = client.post(
         "/api/v1/emergencias",
-        json=PAYLOAD_VALIDO,
+        json={
+            **PAYLOAD_VALIDO,
+            "comprobante_prioridad": consulta.json()["comprobante"],
+        },
         headers={"X-CSRF-Token": csrf},
     )
+    assert prioridad_remota.call_count == 1
 
     assert response.status_code == 422
     assert response.json() == {"detail": "Los datos de la emergencia no son válidos."}
