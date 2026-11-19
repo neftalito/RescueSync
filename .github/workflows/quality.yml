@@ -68,6 +68,13 @@ jobs:
       - name: Verificar lint
         run: ruff check .
 
+      - name: Verificar generador del Gantt
+        working-directory: .
+        run: |
+          ruff check docs/generar_gantt.py docs/tests
+          ruff format --check docs/generar_gantt.py docs/tests
+          python -m unittest discover --start-directory docs/tests --verbose
+
       - name: Verificar formato
         run: ruff format --check .
 
