@@ -464,8 +464,10 @@ habilitado, pero no prueba su autenticación nacional.
 Antes del alta, el operador municipal consulta la prioridad por gravedad y zona.
 Compose inicia el servicio `prioridad`. Para apuntar a Kubernetes, configurá
 `PRIORIDAD_BASE_URL` con la URL que puede alcanzar el backend. La
-[guía de despliegue](docs/despliegue-prioridad-kubernetes.md) incluye la
-publicación de la imagen, los manifiestos y la prueba de escalado.
+[guía de despliegue de Kubernetes en PDF](docs/despliegue-prioridad-kubernetes.pdf)
+describe el despliegue de la [imagen publicada en Docker Hub](https://hub.docker.com/r/neftalito/rescuesync-prioridad/tags)
+y la prueba de escalado.
+También está disponible en [Markdown](docs/despliegue-prioridad-kubernetes.md).
 
 ## Cliente reutilizable de Bonita
 

@@ -1,36 +1,37 @@
 # Despliegue del servicio de prioridad de RescueSync
 
-**Requisitos.** Docker en ejecución, cuenta de Docker Hub, Minikube, kubectl y
-curl. Para la prueba de carga, instalá [hey](https://github.com/rakyll/hey).
+**Requisitos.** Docker en ejecución, Minikube, kubectl y curl. La imagen de
+la entrega es `neftalito/rescuesync-prioridad:1.0.0` para Linux amd64.
+Para la prueba de carga, instalá [hey](https://github.com/rakyll/hey).
 Ejecutá los comandos desde la raíz de RescueSync.
 
 ## 1. Imagen y despliegue
 
-Creá un repositorio público `rescuesync-prioridad` en Docker Hub, reemplazá
-`tu-usuario` por tu usuario y publicá la versión de la entrega.
+Creá el clúster y aplicá el manifiesto. El Deployment obtiene la
+[imagen de Docker Hub](https://hub.docker.com/r/neftalito/rescuesync-prioridad/tags).
+El Service dirige las peticiones a los pods listos y Metrics Server aporta
+las métricas de CPU que usa el HPA.
 
 ```bash
-IMAGEN=tu-usuario/rescuesync-prioridad:1.0.0
+minikube start --driver=docker
+minikube addons enable metrics-server
+kubectl apply -f prioridad-emergencias/k8s.yaml
+kubectl rollout status deployment/prioridad
+minikube service prioridad --url
+```
+
+Mantené abierta la terminal de `minikube service` si queda ejecutando un
+túnel. Para publicar otra versión, elegí una etiqueta y usá una cuenta con
+permiso de escritura en el repositorio de Docker Hub.
+
+```bash
+IMAGEN=neftalito/rescuesync-prioridad:1.0.1
 docker login
 docker build -t "$IMAGEN" prioridad-emergencias
 docker push "$IMAGEN"
 ```
 
-Creá el clúster y aplicá los recursos. Metrics Server aporta la CPU que usa el
-HPA. El Deployment ejecuta la imagen y el Service reúne a los pods disponibles.
-
-```bash
-minikube start --driver=docker
-minikube addons enable metrics-server
-sed "s|tu-usuario/rescuesync-prioridad:1.0.0|$IMAGEN|g" prioridad-emergencias/k8s.yaml |
-  kubectl apply -f -
-kubectl rollout status deployment/prioridad
-minikube service prioridad --url
-```
-
-Para ensayar antes de publicar, después de crear el clúster cargá la imagen con
-`minikube image load "$IMAGEN"` y aplicá el mismo manifiesto. Mantené abierta la
-terminal de `minikube service` si queda ejecutando un túnel.
+Para desplegar esa versión, actualizá `image` en el manifiesto y volvé a aplicarlo.
 
 ## 2. Verificación y escalado
 
