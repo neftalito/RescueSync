@@ -459,6 +459,14 @@ deploy. Revisar [el procedimiento de transición a Render](docs/bonita/despliegu
 antes de cambiar un entorno con casos. El health de Bonita comprueba el proceso
 habilitado, pero no prueba su autenticación nacional.
 
+## Prioridad de emergencias
+
+Antes del alta, el operador municipal consulta la prioridad por gravedad y zona.
+Compose inicia el servicio `prioridad`. Para apuntar a Kubernetes, configurá
+`PRIORIDAD_BASE_URL` con la URL que puede alcanzar el backend. La
+[guía de despliegue](docs/despliegue-prioridad-kubernetes.md) incluye la
+publicación de la imagen, los manifiestos y la prueba de escalado.
+
 ## Cliente reutilizable de Bonita
 
 [`docs/RescueSync-1.5.bar`](docs/RescueSync-1.5.bar) es la fuente de verdad del

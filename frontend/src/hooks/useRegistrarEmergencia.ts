@@ -11,6 +11,7 @@ import type { Emergencia, EmergenciaFormData } from "../schemas/emergencia";
 
 interface RegistrarEmergenciaVariables extends EmergenciaFormData {
   csrfToken: string;
+  comprobante_prioridad: string;
 }
 
 export function useRegistrarEmergencia(): UseMutationResult<

@@ -11,20 +11,34 @@ export const gravedadLabels: Record<Gravedad, string> = {
   CRITICA: "Crítica",
 };
 
+export const zonasPrioridad = [
+  { codigo: "NORTE", etiqueta: "Norte" },
+  { codigo: "CENTRO", etiqueta: "Centro" },
+  { codigo: "SUR", etiqueta: "Sur" },
+] as const;
+
 export const emergenciaFormSchema = z.object({
   gravedad: z.enum(gravedades, {
     message: "Elegí la gravedad de la emergencia.",
   }),
   zona: z
     .string()
-    .trim()
-    .min(1, "Ingresá la zona afectada.")
-    .max(255, "La zona no puede superar los 255 caracteres."),
+    .refine(
+      (zona) => zonasPrioridad.some(({ codigo }) => zona === codigo),
+      "Elegí la zona afectada.",
+    ),
   descripcion: z
     .string()
     .trim()
     .min(1, "Ingresá una descripción inicial.")
     .max(2000, "La descripción no puede superar los 2000 caracteres."),
+});
+
+const prioridadSchema = z.number().int().min(1).max(10);
+
+export const prioridadEmergenciaSchema = z.object({
+  prioridad: prioridadSchema,
+  comprobante: z.string().min(1),
 });
 
 export const estados = [
@@ -76,6 +90,7 @@ export const emergenciaSchema = z.object({
   creada_por_usuario_id: z.number().int().positive(),
   gravedad: z.enum(gravedades),
   zona: z.string(),
+  prioridad: prioridadSchema.nullable().default(null),
   descripcion: z.string(),
   estado: z.enum(estados),
   bonita_sync: z.enum(estadosSincronizacionBonita),
@@ -93,5 +108,7 @@ export const emergenciaEnBandejaSchema = emergenciaSchema.extend({
 export const emergenciasSchema = z.array(emergenciaEnBandejaSchema);
 
 export type EmergenciaFormData = z.infer<typeof emergenciaFormSchema>;
+export type SolicitudPrioridad = Pick<EmergenciaFormData, "gravedad" | "zona">;
+export type PrioridadEmergencia = z.infer<typeof prioridadEmergenciaSchema>;
 export type Emergencia = z.infer<typeof emergenciaSchema>;
 export type EmergenciaEnBandeja = z.infer<typeof emergenciaEnBandejaSchema>;

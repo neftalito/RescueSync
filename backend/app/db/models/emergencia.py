@@ -41,6 +41,7 @@ class Emergencia(Base):
         CheckConstraint("btrim(zona) <> ''", name="zona_no_vacia"),
         CheckConstraint("btrim(descripcion) <> ''", name="descripcion_no_vacia"),
         CheckConstraint("version > 0", name="version_positiva"),
+        CheckConstraint("prioridad BETWEEN 1 AND 10", name="prioridad_rango"),
         CheckConstraint(
             "bonita_process_definition_id IS NULL OR bonita_process_definition_id > 0",
             name="bonita_definition_id_positivo",
@@ -84,6 +85,7 @@ class Emergencia(Base):
         nullable=False,
     )
     zona: Mapped[str] = mapped_column(String(255), nullable=False)
+    prioridad: Mapped[int | None] = mapped_column(Integer, nullable=True)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     estado: Mapped[EstadoEmergencia] = mapped_column(
         Enum(EstadoEmergencia, name="estado_emergencia"),

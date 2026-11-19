@@ -208,6 +208,7 @@ Conserva el alta municipal, su estado local y la correlación con Bonita.
 | `creada_por_usuario_id` | `bigint`, FK, no nulo | Operador que registró la emergencia. |
 | `gravedad` | `gravedad_emergencia`, no nulo | Severidad declarada. |
 | `zona` | `varchar(255)`, no nulo | Área afectada; no puede quedar vacía. |
+| `prioridad` | `integer`, nullable | Puntuación de 1 a 10 del alta municipal. Los registros anteriores a la migración conservan `NULL`. |
 | `descripcion` | `text`, no nulo | Descripción inicial; no puede quedar vacía. |
 | `estado` | `estado_emergencia`, no nulo, default `REGISTRADA` | Estado funcional local. |
 | `bonita_process_definition_id` | `bigint`, nullable | Definición habilitada usada al iniciar el caso. |
