@@ -51,6 +51,30 @@ def test_descarta_muestras_invalidas_e_ignora_tareas_sin_completar() -> None:
     assert duraciones_tareas(historial, ZoneInfo("UTC")) == ([], 3)
 
 
+def test_gateways_sin_fecha_no_descartan_el_historial_del_caso() -> None:
+    """Bonita 10.4 archiva gateways sin `reached_state_date`."""
+    gateway = TransicionTareaArchivada.model_validate(
+        {
+            "type": "EXCLUSIVE_GATEWAY",
+            "sourceObjectId": "3",
+            "rootCaseId": "99",
+            "name": "Lotes cubiertos?",
+            "state": "completed",
+        }
+    )
+    sin_fecha = fila(4, "completed", "").model_copy(update={"reached_state_date": None})
+    historial = [
+        fila(1, "ready", "2026-10-15 09:00:00"),
+        fila(1, "completed", "2026-10-15 10:00:00"),
+        gateway,
+        fila(4, "ready", "2026-10-15 09:00:00"),
+        sin_fecha,
+    ]
+    muestras, descartadas = duraciones_tareas(historial, ZoneInfo("UTC"))
+    assert muestras == [("Generar lotes", 3600)]
+    assert descartadas == 1
+
+
 def test_normaliza_offsets_y_zona_del_runtime() -> None:
     historial = [
         fila(1, "ready", "2026-10-15T09:00:00-03:00"),
