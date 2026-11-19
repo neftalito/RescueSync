@@ -99,6 +99,7 @@ persistencia del buzón no depende de ese bus.
 - Docker Engine con Docker Compose v2, o Docker Desktop.
 - En WSL 2, integración de Docker Desktop con la distribución donde está clonado
   el repositorio.
+- Minikube y kubectl para el [despliegue con Kubernetes](#despliegue-con-kubernetes).
 - Bonita Studio 2025.2 solamente si se dispone externamente del proyecto fuente
   y se necesita generar otra versión del `.bar`.
 
@@ -189,6 +190,9 @@ BONITA_BIZ_DB_PASS=bpm
 
 # URL de FastAPI accesible desde el navegador
 VITE_API_URL=http://localhost:8000/api/v1
+
+# Servicio de prioridad en la red de Compose
+PRIORIDAD_BASE_URL=http://prioridad:8000
 
 # Adaptador nacional del backend local
 NACIONAL_BASE_URL=http://host.docker.internal:8001/api/v1
@@ -323,6 +327,12 @@ para una instalación existente.
    ```bash
    docker compose up --build
    ```
+
+   Compose levanta también el servicio `prioridad`, que el backend usa para la
+   consulta previa al alta municipal. El valor predeterminado es
+   `PRIORIDAD_BASE_URL=http://prioridad:8000`. Para la demo de escalado o para
+   servir la prioridad desde un clúster, seguí el
+   [despliegue con Kubernetes](#despliegue-con-kubernetes).
 
 3. Opcionalmente, cargar el escenario demo de desarrollo. Configurar antes
    `NACIONAL_ENCRYPTION_KEY` y la cuenta de integración del
@@ -462,12 +472,37 @@ habilitado, pero no prueba su autenticación nacional.
 ## Prioridad de emergencias
 
 Antes del alta, el operador municipal consulta la prioridad por gravedad y zona.
-Compose inicia el servicio `prioridad`. Para apuntar a Kubernetes, configurá
-`PRIORIDAD_BASE_URL` con la URL que puede alcanzar el backend. La
-[guía de despliegue de Kubernetes en PDF](docs/despliegue-prioridad-kubernetes.pdf)
-describe el despliegue de la [imagen publicada en Docker Hub](https://hub.docker.com/r/neftalito/rescuesync-prioridad/tags)
-y la prueba de escalado.
-También está disponible en [Markdown](docs/despliegue-prioridad-kubernetes.md).
+
+### Despliegue con Kubernetes
+
+Para usar el priorizador en Kubernetes, ejecutá estos comandos desde la raíz
+de RescueSync. El manifiesto usa la
+[imagen publicada en Docker Hub](https://hub.docker.com/r/neftalito/rescuesync-prioridad/tags).
+
+```bash
+minikube start --driver=docker
+minikube addons enable metrics-server
+kubectl --context minikube apply -f prioridad-emergencias/k8s.yaml
+kubectl --context minikube rollout status deployment/prioridad
+```
+
+Si querés que **el alta municipal use el priorizador del clúster**, levantá
+primero RescueSync con Compose. Desde otra terminal, con el driver Docker y el
+perfil predeterminado de Minikube, recreá el backend con la URL del Service y
+conectalo a la red Docker del clúster.
+
+```bash
+IP_MINIKUBE=$(minikube ip)
+PUERTO_PRIORIDAD=$(kubectl --context minikube get service prioridad -o jsonpath='{.spec.ports[0].nodePort}')
+PRIORIDAD_BASE_URL="http://${IP_MINIKUBE}:${PUERTO_PRIORIDAD}" \
+  docker compose up -d --no-deps --force-recreate backend
+docker network connect minikube "$(docker compose ps -q backend)"
+```
+
+En un clúster remoto, usá como `PRIORIDAD_BASE_URL` la URL base del priorizador
+que pueda alcanzar el backend. Para probar el autoescalado desde la terminal,
+seguí la [guía de despliegue en PDF](docs/despliegue-prioridad-kubernetes.pdf)
+o su [versión en Markdown](docs/despliegue-prioridad-kubernetes.md).
 
 ## Cliente reutilizable de Bonita
 
