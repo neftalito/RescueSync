@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
+from app.api.busqueda import BusquedaDep
 from app.api.dependencies import (
     ClienteBonitaDep,
     GestorTiempoRealDep,
@@ -168,12 +169,18 @@ def publicar_convocatoria(
 )
 def listar_convocatorias_abiertas(
     paginacion: PaginacionDep,
+    busqueda: BusquedaDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaConvocatorias,
+    zona: Annotated[
+        str, Query(max_length=120, description="Texto de la zona afectada.")
+    ] = "",
 ) -> list[ConvocatoriaAbiertaResponse]:
     """Consulta las convocatorias abiertas sin reclamar ni modificar nada."""
 
-    convocatorias = servicio.listar_convocatorias_abiertas(session, paginacion)
+    convocatorias = servicio.listar_convocatorias_abiertas(
+        session, paginacion, busqueda=busqueda, zona=zona.strip()
+    )
     return [
         ConvocatoriaAbiertaResponse(
             requiere_desglose_nacional=bool(convocatoria.sistema_origen_ref),

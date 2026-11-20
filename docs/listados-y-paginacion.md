@@ -19,6 +19,26 @@ antes del límite en SQL. Emergencias también admite `tiene_lotes` y `estado`,
 aplicados en PostgreSQL antes de paginar. Las claves de caché separan páginas,
 filtros y consultas completas; las mutaciones y los eventos invalidan sus listados.
 
+Emergencias, convocatorias abiertas, usuarios, organizaciones y ofertas también
+admiten `q`, un texto opcional de hasta 120 caracteres. La comparación textual es
+por subcadena literal e ignora mayúsculas y tildes en las vocales. Los criterios
+se aplican dentro del conjunto que el usuario puede consultar, antes de `limit`
+y `offset`. Los parámetros pueden combinarse.
+
+| Listado | Campos de búsqueda | Filtros adicionales |
+| --- | --- | --- |
+| Emergencias | Número de emergencia y descripción | `tiene_lotes`, `estado` |
+| Convocatorias abiertas | Número de emergencia o convocatoria, descripción de la emergencia y necesidades de los lotes publicados | `zona`, por texto parcial |
+| Usuarios | Correo y nombre de la organización | `rol`, `activo` |
+| Organizaciones | Nombre | `tipo`, `activa` |
+| Mis ofertas | Número de oferta o emergencia, descripción de la emergencia, observaciones y aportes de la versión vigente | `estado` |
+
+Inventario de la ONG y catálogo nacional buscan por nombre y código en la
+colección completa recibida, antes de mostrar el primer bloque de coincidencias.
+El inventario incluye la capacidad en la búsqueda. Los selectores de organización
+al crear y editar usuarios permiten buscar por nombre entre las opciones
+compatibles con el rol.
+
 Omitir `limit` conserva el contrato anterior para los selectores, formularios y
 consumidores internos que necesitan la colección completa. En notificaciones se
 conserva el resumen de las últimas 50 novedades para la campana, mientras que el

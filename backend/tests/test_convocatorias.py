@@ -777,6 +777,59 @@ def test_listar_convocatorias_devuelve_solo_abiertas_con_sus_lotes(
     assert "bonita_generar_lotes_ultimo_intento_en" not in cuerpo[0]
 
 
+def test_busca_necesidades_publicadas_antes_de_paginar_y_filtra_por_zona(
+    client: TestClient,
+    db_session: Session,
+    emergencia: Emergencia,
+    coordinador: Usuario,
+    usuarios_denegados: dict[RolUsuario, Usuario],
+) -> None:
+    _neutralizar_convocatorias_abiertas(db_session)
+    objetivo = _convocatoria(
+        db_session,
+        emergencia,
+        [_lote(db_session, emergencia, coordinador, tipo="Atención médica")],
+    )
+    _convocatoria(
+        db_session,
+        emergencia,
+        [_lote(db_session, emergencia, coordinador, tipo="Atención médica")],
+        numero=2,
+        estado=EstadoConvocatoria.CERRADA,
+    )
+    otra_emergencia = Emergencia(
+        municipio_id=emergencia.municipio_id,
+        creada_por_usuario_id=emergencia.creada_por_usuario_id,
+        gravedad=emergencia.gravedad,
+        zona="Ribera sur",
+        descripcion="Desborde del río",
+    )
+    db_session.add(otra_emergencia)
+    db_session.flush()
+    _convocatoria(
+        db_session,
+        otra_emergencia,
+        [_lote(db_session, otra_emergencia, coordinador, tipo="Abrigo")],
+    )
+    _autenticar(client, usuarios_denegados[RolUsuario.REPRESENTANTE_ONG])
+
+    respuesta = client.get(
+        "/api/v1/convocatorias", params={"q": "ATENCION MEDICA", "limit": 1}
+    )
+    assert respuesta.status_code == 200
+    assert [fila["id"] for fila in respuesta.json()] == [objetivo.id]
+    assert (
+        client.get(
+            "/api/v1/convocatorias", params={"q": "atencion", "zona": "SUR"}
+        ).json()
+        == []
+    )
+    por_descripcion = client.get(
+        "/api/v1/convocatorias", params={"q": "INUNDACION", "zona": "NORTE"}
+    )
+    assert [fila["id"] for fila in por_descripcion.json()] == [objetivo.id]
+
+
 def test_listar_convocatorias_excluye_abierta_fuera_de_ventana(
     client: TestClient,
     db_session: Session,

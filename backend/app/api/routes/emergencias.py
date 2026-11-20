@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, status
 from sqlalchemy.orm import Session
 
+from app.api.busqueda import BusquedaDep
 from app.api.dependencies import (
     ClienteBonitaDep,
     GestorTiempoRealDep,
@@ -174,6 +175,7 @@ UsuarioConsultaEmergencias = Annotated[
 )
 def listar_bandeja_emergencias(
     paginacion: PaginacionDep,
+    busqueda: BusquedaDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaEmergencias,
     tiene_lotes: bool | None = None,
@@ -183,7 +185,12 @@ def listar_bandeja_emergencias(
 
     try:
         emergencias = servicio.listar_emergencias(
-            session, usuario, paginacion, tiene_lotes=tiene_lotes, estado=estado
+            session,
+            usuario,
+            paginacion,
+            tiene_lotes=tiene_lotes,
+            estado=estado,
+            busqueda=busqueda,
         )
     except servicio.MunicipioInvalidoError as error:
         raise HTTPException(

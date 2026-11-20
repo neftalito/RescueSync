@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from secrets import token_urlsafe
 
 from pydantic import SecretStr
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -12,6 +12,7 @@ from app.db.models import Organizacion, RolUsuario, Usuario
 from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.schemas.usuarios import UsuarioCreate, UsuarioUpdate
 from app.services.admin_lock import bloquear_gestion_administradores
+from app.services.busqueda import contiene_texto
 
 
 class UsuarioNoEncontradoError(LookupError):
@@ -41,18 +42,31 @@ class ResultadoAltaUsuario:
 def listar_usuarios(
     session: Session,
     paginacion: Paginacion = SIN_PAGINACION,
+    *,
+    busqueda: str = "",
+    rol: RolUsuario | None = None,
+    activo: bool | None = None,
 ) -> list[Usuario]:
     """Lista todas las cuentas, incluidas las inactivas, ordenadas por correo."""
 
-    return list(
-        session.scalars(
-            select(Usuario)
-            .options(joinedload(Usuario.organizacion))
-            .order_by(func.lower(Usuario.email), Usuario.id)
-            .offset(paginacion.offset)
-            .limit(paginacion.limit)
+    consulta = select(Usuario).options(joinedload(Usuario.organizacion))
+    if busqueda:
+        consulta = consulta.where(
+            or_(
+                contiene_texto(Usuario.email, busqueda),
+                Usuario.organizacion.has(contiene_texto(Organizacion.nombre, busqueda)),
+            )
         )
+    if rol is not None:
+        consulta = consulta.where(Usuario.rol == rol)
+    if activo is not None:
+        consulta = consulta.where(Usuario.activo == activo)
+    consulta = (
+        consulta.order_by(func.lower(Usuario.email), Usuario.id)
+        .offset(paginacion.offset)
+        .limit(paginacion.limit)
     )
+    return list(session.scalars(consulta))
 
 
 def _normalizar_email(email: str) -> str:

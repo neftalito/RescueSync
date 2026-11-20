@@ -5,8 +5,11 @@ import { useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
 import { useListadoPaginado } from "../hooks/useListadoPaginado";
+import { useTextoBusqueda } from "../hooks/useTextoBusqueda";
 import { ListadoRemoto } from "../components/ListadoProgresivo";
 import { ActionIcon } from "../components/ActionIcon";
+import { CampoBusqueda } from "../components/CampoBusqueda";
+import { SelectorFiltro } from "../components/SelectorFiltro";
 import { ApiError } from "../api/client";
 import {
   createOrganization,
@@ -41,7 +44,10 @@ export function OrganizationsPage({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [editingOrganization, setEditingOrganization] =
     useState<Organization | null>(null);
-  const organizations = useListadoPaginado(organizationsQueryKey, "/organizaciones", organizationsSchema);
+  const busqueda = useTextoBusqueda();
+  const [tipo, setTipo] = useState("");
+  const [activa, setActiva] = useState("");
+  const organizations = useListadoPaginado(organizationsQueryKey, "/organizaciones", organizationsSchema, true, { q: busqueda.termino, tipo, activa });
   const {
     register,
     control,
@@ -266,6 +272,18 @@ export function OrganizationsPage({
             )}
           </div>
 
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <CampoBusqueda etiqueta="Buscar organizaciones" ejemplo="Nombre" valor={busqueda.texto} cambiar={busqueda.cambiar} />
+            <SelectorFiltro etiqueta="Tipo de organización" valor={tipo} cambiar={setTipo}>
+              <option value="">Todos los tipos</option>
+              {organizationTypes.map((valor) => <option key={valor} value={valor}>{organizationTypeLabels[valor]}</option>)}
+            </SelectorFiltro>
+            <SelectorFiltro etiqueta="Estado de la organización" valor={activa} cambiar={setActiva}>
+              <option value="">Todos los estados</option>
+              <option value="true">Activas</option>
+              <option value="false">Inactivas</option>
+            </SelectorFiltro>
+          </div>
           {organizations.isPending ? (
             <p role="status" className="mt-5 text-slate-600">
               Cargando organizaciones…
@@ -278,8 +296,10 @@ export function OrganizationsPage({
               {errorMessage(organizations.error)}
             </p>
           ) : organizations.data.length === 0 ? (
-            <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
-              Todavía no hay organizaciones registradas.
+            <p role="status" className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
+              {busqueda.termino || tipo || activa
+                ? "No encontramos organizaciones que coincidan con la búsqueda y los filtros."
+                : "Todavía no hay organizaciones registradas."}
             </p>
           ) : (
             <ListadoRemoto query={organizations} etiqueta="Listado de organizaciones registradas" className="mt-5">

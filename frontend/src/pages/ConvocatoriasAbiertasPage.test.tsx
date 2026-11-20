@@ -132,4 +132,23 @@ describe("ConvocatoriasAbiertasPage", () => {
     expect(await screen.findByText("Convocatoria N.º 1")).toBeInTheDocument();
     expect(intentos).toBe(2);
   });
+
+  it("busca por necesidad y zona desde la primera página de coincidencias", async () => {
+    const consultas: URLSearchParams[] = [];
+    server.use(http.get(`${API_URL}/convocatorias`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      consultas.push(params);
+      return HttpResponse.json(params.get("q") === "agua" && params.get("zona") === "norte" ? [convocatoria] : []);
+    }));
+    renderPage();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "Buscar convocatorias" }), "agua");
+    const zona = screen.getByRole("searchbox", { name: "Zona" });
+    await user.type(zona, "norte");
+
+    expect(await screen.findByText("Convocatoria N.º 1")).toBeInTheDocument();
+    expect(consultas.at(-1)?.get("offset")).toBe("0");
+    await user.clear(zona);
+    expect(await screen.findByText(/No encontramos convocatorias/)).toBeInTheDocument();
+  });
 });

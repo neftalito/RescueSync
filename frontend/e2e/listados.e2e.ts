@@ -26,9 +26,15 @@ test("carga emergencias al desplazar su listado sin descargar todas al entrar", 
     } else if (url.pathname.endsWith("/emergencias")) {
       const offset = Number(url.searchParams.get("offset"));
       const limit = Number(url.searchParams.get("limit"));
-      offsets.push(offset);
       expect(limit).toBe(21);
-      await route.fulfill({ json: emergencias.slice(offset, offset + limit) });
+      const termino = url.searchParams.get("q");
+      if (termino) {
+        expect(offset).toBe(0);
+        await route.fulfill({ json: emergencias.filter(({ id }) => `#${id}` === termino) });
+      } else {
+        offsets.push(offset);
+        await route.fulfill({ json: emergencias.slice(offset, offset + limit) });
+      }
     } else {
       await route.fulfill({ json: [] });
     }
@@ -38,6 +44,13 @@ test("carga emergencias al desplazar su listado sin descargar todas al entrar", 
   await expect(listado.locator("details")).toHaveCount(20);
   // El canal de novedades puede refrescar la página inicial al conectarse.
   expect([...new Set(offsets)]).toEqual([0]);
+  const buscar = page.getByRole("searchbox", { name: "Buscar emergencias" });
+  await buscar.fill("#45");
+  await expect(listado.locator("details")).toHaveCount(1);
+  await expect(listado.getByText("Emergencia #45")).toBeVisible();
+  await expect(buscar).toBeFocused();
+  await buscar.clear();
+  await expect(listado.locator("details")).toHaveCount(20);
   expect(await listado.evaluate((elemento) => elemento.scrollHeight > elemento.clientHeight)).toBe(true);
   await listado.evaluate((elemento) => { elemento.scrollTop = elemento.scrollHeight; });
   await expect(listado.locator("details")).toHaveCount(40);

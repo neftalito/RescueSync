@@ -9,7 +9,7 @@ la ruta HTTP, con `app.services.publicacion_bonita.completar_generacion_lotes`
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -28,6 +28,7 @@ from app.db.models import (
 )
 from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.busqueda import coincide_numero, contiene_texto
 from app.services.notificaciones import notificar_convocatoria_publicada
 
 VENTANA_CIERRE_PROVISORIA = timedelta(hours=2)
@@ -190,6 +191,9 @@ def publicar_convocatoria(
 def listar_convocatorias_abiertas(
     session: Session,
     paginacion: Paginacion = SIN_PAGINACION,
+    *,
+    busqueda: str = "",
+    zona: str = "",
 ) -> list[Convocatoria]:
     """Devuelve las convocatorias abiertas visibles para cualquier ONG activa.
 
@@ -198,22 +202,47 @@ def listar_convocatorias_abiertas(
     lotes publicados en una sola consulta.
     """
 
-    return list(
-        session.scalars(
-            select(Convocatoria)
-            .where(
-                Convocatoria.estado == EstadoConvocatoria.ABIERTA,
-                Convocatoria.cierra_en > datetime.now(UTC),
-            )
-            .options(
-                selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
-                joinedload(Convocatoria.emergencia),
-            )
-            .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
-            .offset(paginacion.offset)
-            .limit(paginacion.limit)
-        ).all()
+    consulta = select(Convocatoria).where(
+        Convocatoria.estado == EstadoConvocatoria.ABIERTA,
+        Convocatoria.cierra_en > datetime.now(UTC),
     )
+    if busqueda:
+        consulta = consulta.where(
+            or_(
+                coincide_numero(Convocatoria.emergencia_id, busqueda),
+                coincide_numero(Convocatoria.numero, busqueda),
+                Convocatoria.emergencia.has(
+                    contiene_texto(Emergencia.descripcion, busqueda)
+                ),
+                Convocatoria.lotes.any(
+                    or_(
+                        contiene_texto(
+                            ConvocatoriaLote.codigo_capacidad_publicada, busqueda
+                        ),
+                        ConvocatoriaLote.lote.has(
+                            or_(
+                                contiene_texto(Lote.tipo_necesidad, busqueda),
+                                contiene_texto(Lote.descripcion, busqueda),
+                            )
+                        ),
+                    )
+                ),
+            )
+        )
+    if zona:
+        consulta = consulta.where(
+            Convocatoria.emergencia.has(contiene_texto(Emergencia.zona, zona))
+        )
+    consulta = (
+        consulta.options(
+            selectinload(Convocatoria.lotes).selectinload(ConvocatoriaLote.lote),
+            joinedload(Convocatoria.emergencia),
+        )
+        .order_by(Convocatoria.publicada_en.desc(), Convocatoria.id.desc())
+        .offset(paginacion.offset)
+        .limit(paginacion.limit)
+    )
+    return list(session.scalars(consulta).all())
 
 
 def _obtener_centro(usuario: Usuario) -> Organizacion:
