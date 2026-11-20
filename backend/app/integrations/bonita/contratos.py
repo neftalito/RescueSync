@@ -147,14 +147,18 @@ class UsuarioBonita(_ModeloBonita):
 
 
 class TransicionTareaArchivada(_ModeloBonita):
-    """Relaciona transiciones de una misma tarea, sin confundirlas con repeticiones."""
+    """Relaciona transiciones de una misma tarea, sin confundirlas con repeticiones.
+
+    Bonita 10.4 archiva gateways sin `reached_state_date`; la fecha es opcional
+    para no descartar el historial completo del caso por esas filas.
+    """
 
     source_object_id: PositiveInt = Field(alias="sourceObjectId")
     root_case_id: PositiveInt = Field(alias="rootCaseId")
     name: str
     tipo: str = Field(alias="type")
     state: TextoNoVacio
-    reached_state_date: str
+    reached_state_date: str | None = None
 
 
 class TareaBonitaFallida(_ModeloBonita):

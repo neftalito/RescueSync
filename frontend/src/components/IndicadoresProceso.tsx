@@ -37,8 +37,9 @@ export function IndicadoresProceso({ datos }: { datos: Indicadores; }): ReactEle
       filas={datos.ranking_ongs.map(r => [r.ong, r.capacidad, r.unidad, r.cantidad, r.aportes, r.finalizados, r.aportes - r.finalizados, r.con_plazo_finalizados, porcentajeMonitoreo(r.tasa_cumplimiento)])} />
     <TablaMonitoreo titulo="Cobertura efectiva al cierre" columnas={["Cobertura", "Cierres", "Proporción"]}
       filas={cobertura.total + cobertura.parcial === 0 ? [] : [["Total", cobertura.total, porcentajeMonitoreo(cobertura.proporcion_total)], ["Parcial", cobertura.parcial, porcentajeMonitoreo(cobertura.proporcion_parcial)]]} />
-    <TablaMonitoreo titulo="Demanda e inhabilitación por rubro" columnas={["Capacidad", "Unidad", "Necesidad publicada", "Evaluaciones ONG/lote", "Inhabilitadas", "Tasa de inhabilitación"]}
-      filas={datos.demanda_rubros.map(r => [r.capacidad, r.unidad, r.cantidad, r.evaluaciones, r.inhabilitadas, porcentajeMonitoreo(r.tasa_inhabilitacion)])} />
+    <TablaMonitoreo titulo="Demanda por rubro" columnas={["Capacidad", "Unidad", "Necesidad publicada"]}
+      filas={datos.demanda_rubros.map(r => [r.capacidad, r.unidad, r.cantidad])}
+      vacio="Sin necesidades publicadas para los filtros seleccionados." />
     <article className="rounded-2xl border border-slate-200 bg-white p-5">
       <h3 className="text-lg font-bold text-slate-900">De la alerta a la primera adjudicación efectiva</h3>
       <p className="mt-2 text-2xl font-bold text-cyan-800">{horasMonitoreo(datos.alerta_adjudicacion_promedio_segundos)}</p>

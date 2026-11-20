@@ -1,14 +1,18 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation } from "@tanstack/react-query";
 import { type ReactElement } from "react";
 import { useForm } from "react-hook-form";
 
 import { ApiError } from "../api/client";
+import { consultarPrioridad } from "../api/emergencias";
 import { useRegistrarEmergencia } from "../hooks/useRegistrarEmergencia";
 import {
   emergenciaFormSchema,
   gravedadLabels,
   gravedades,
+  zonasPrioridad,
   type EmergenciaFormData,
+  type SolicitudPrioridad,
 } from "../schemas/emergencia";
 
 interface EmergenciaFormProps {
@@ -21,17 +25,46 @@ const inputClasses =
 export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement {
   const {
     register,
+    getValues,
     handleSubmit,
     reset,
+    trigger,
     formState: { errors },
   } = useForm<EmergenciaFormData>({
     resolver: zodResolver(emergenciaFormSchema),
     defaultValues: { gravedad: "MEDIA", zona: "", descripcion: "" },
   });
   const mutation = useRegistrarEmergencia();
+  const consulta = useMutation({
+    mutationFn: (datos: SolicitudPrioridad) => consultarPrioridad(datos, csrfToken),
+  });
 
   const submit = (datos: EmergenciaFormData): void => {
-    mutation.mutate({ ...datos, csrfToken });
+    if (
+      consulta.data &&
+      consulta.variables.gravedad === datos.gravedad &&
+      consulta.variables.zona === datos.zona
+    ) {
+      mutation.mutate(
+        { ...datos, csrfToken, comprobante_prioridad: consulta.data.comprobante },
+        {
+          onError: (error) => {
+            if (error instanceof ApiError && error.status === 409) consulta.reset();
+          },
+        },
+      );
+    }
+  };
+  const solicitarPrioridad = async (): Promise<void> => {
+    if (await trigger(["gravedad", "zona"])) {
+      mutation.reset();
+      const { gravedad, zona } = getValues();
+      consulta.mutate({ gravedad, zona });
+    }
+  };
+  const reiniciarSolicitudes = (): void => {
+    consulta.reset();
+    mutation.reset();
   };
   const requestError =
     mutation.error instanceof ApiError
@@ -39,10 +72,14 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
       : mutation.isError
         ? "No pudimos registrar la emergencia. Intentá nuevamente."
         : null;
+  const errorConsulta =
+    consulta.error instanceof ApiError
+      ? consulta.error.message
+      : "No pudimos consultar la prioridad. Intentá nuevamente.";
   const registrada = mutation.isSuccess ? mutation.data : null;
 
   const registrarOtra = (): void => {
-    mutation.reset();
+    reiniciarSolicitudes();
     reset({ gravedad: "MEDIA", zona: "", descripcion: "" });
   };
 
@@ -53,8 +90,8 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
         Registrar emergencia
       </h3>
       <p className="mt-2 leading-7 text-slate-600">
-        Gravedad, zona afectada y descripción inicial. Queda en estado
-        registrada hasta que el centro coordinador la tome.
+        Consultá la prioridad según la gravedad y la zona afectada. Después podés
+        registrar la emergencia para que la tome el centro coordinador.
       </p>
 
       {registrada ? (
@@ -68,6 +105,9 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
           <p className="mt-1">
             {gravedadLabels[registrada.gravedad]} · {registrada.zona}
           </p>
+          {registrada.prioridad !== null && (
+            <p className="mt-1">Prioridad {registrada.prioridad} de 10</p>
+          )}
           <button
             type="button"
             onClick={registrarOtra}
@@ -94,7 +134,8 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
               aria-invalid={errors.gravedad !== undefined}
               aria-describedby={errors.gravedad ? "gravedad-error" : undefined}
               className={inputClasses}
-              {...register("gravedad")}
+              disabled={mutation.isPending}
+              {...register("gravedad", { onChange: reiniciarSolicitudes })}
             >
               {gravedades.map((gravedad) => (
                 <option key={gravedad} value={gravedad}>
@@ -116,19 +157,45 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
             >
               Zona afectada
             </label>
-            <input
+            <select
               id="zona"
-              type="text"
-              autoComplete="off"
               aria-invalid={errors.zona !== undefined}
               aria-describedby={errors.zona ? "zona-error" : undefined}
               className={inputClasses}
-              placeholder="Barrio, localidad o referencia"
-              {...register("zona")}
-            />
+              disabled={mutation.isPending}
+              {...register("zona", { onChange: reiniciarSolicitudes })}
+            >
+              <option value="">Elegí una zona</option>
+              {zonasPrioridad.map(({ codigo, etiqueta }) => (
+                <option key={codigo} value={codigo}>
+                  {etiqueta}
+                </option>
+              ))}
+            </select>
             {errors.zona && (
               <p id="zona-error" className="mt-2 text-sm text-red-700">
                 {errors.zona.message}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => void solicitarPrioridad()}
+              disabled={consulta.isPending || mutation.isPending}
+              className="action-button w-full"
+            >
+              {consulta.isPending ? "Consultando…" : "Consultar prioridad"}
+            </button>
+            {consulta.data && (
+              <p role="status" className="font-semibold text-cyan-800">
+                Prioridad {consulta.data.prioridad} de 10
+              </p>
+            )}
+            {consulta.isError && (
+              <p role="alert" className="text-sm text-red-700">
+                {errorConsulta}
               </p>
             )}
           </div>
@@ -148,7 +215,7 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
                 errors.descripcion ? "descripcion-error" : undefined
               }
               className={`${inputClasses} min-h-28 resize-y`}
-              placeholder="Qué ocurrió, población afectada y accesos"
+              placeholder="Qué ocurrió, barrio o localidad, población afectada y accesos"
               {...register("descripcion")}
             />
             {errors.descripcion && (
@@ -169,7 +236,7 @@ export function EmergenciaForm({ csrfToken }: EmergenciaFormProps): ReactElement
 
           <button
             type="submit"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !consulta.data}
             className="action-button action-primary w-full"
           >
             {mutation.isPending ? "Registrando…" : "Registrar emergencia"}

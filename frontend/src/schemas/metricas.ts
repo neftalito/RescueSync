@@ -59,8 +59,6 @@ export const indicadoresProcesoSchema = z.object({
   }),
   demanda_rubros: z.array(z.object({
     capacidad: z.string(), unidad: z.string(), cantidad,
-    evaluaciones: z.number().int().nonnegative(), inhabilitadas: z.number().int().nonnegative(),
-    tasa_inhabilitacion: porcentaje,
   })),
   alerta_adjudicacion_promedio_segundos: segundos,
   alerta_adjudicacion_muestras: z.number().int().nonnegative(),

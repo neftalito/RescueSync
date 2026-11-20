@@ -88,20 +88,35 @@ permiten volver al inicio y navegar a la otra funcionalidad. El formulario conse
 la confirmación del alta y permite registrar otra emergencia; el listado permite
 consultar estados y reintentar la vinculación con Bonita.
 
-El operador completa gravedad, zona y descripción en
-`frontend/src/components/EmergenciaForm.tsx`. El hook
-`frontend/src/hooks/useRegistrarEmergencia.ts` llama a:
+El operador selecciona la gravedad y la zona en
+`frontend/src/components/EmergenciaForm.tsx`. El backend consulta el servicio
+de prioridad mediante:
+
+```http
+POST /api/v1/emergencias/prioridad
+```
+
+Este endpoint recibe `gravedad` y `zona`, y devuelve `prioridad` y
+`comprobante`. El comprobante dura diez minutos y queda ligado al operador,
+su versión de sesión, el municipio, la gravedad y la zona. Si cambian los
+datos consultados, el formulario pide una nueva prioridad.
+
+Cuando completa la descripción y confirma el alta, el hook
+`frontend/src/hooks/useRegistrarEmergencia.ts` envía esos datos y
+`comprobante_prioridad` a:
 
 ```http
 POST /api/v1/emergencias
 ```
 
 `backend/app/api/routes/emergencias.py` exige rol `OPERADOR_MUNICIPAL` y CSRF.
+Devuelve HTTP `409` si falta un comprobante válido para los datos del alta.
 `backend/app/services/emergencias.py` confirma primero una fila en `emergencia`
 con:
 
-- el municipio y usuario autenticados;
-- `estado = REGISTRADA`;
+- el municipio y usuario autenticados,
+- la prioridad obtenida durante la consulta,
+- `estado = REGISTRADA`,
 - `bonita_sync = PENDIENTE`.
 
 En la misma transacción se crean las notificaciones para los coordinadores

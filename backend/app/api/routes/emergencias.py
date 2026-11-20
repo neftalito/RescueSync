@@ -8,22 +8,31 @@ from sqlalchemy.orm import Session
 from app.api.busqueda import BusquedaDep
 from app.api.dependencies import (
     ClienteBonitaDep,
+    ClientePrioridadDep,
     GestorTiempoRealDep,
     requerir_operacion,
 )
 from app.api.paginacion import PaginacionDep
 from app.core.permissions import OperacionProtegida
 from app.core.security import verificar_token_csrf
-from app.db.models import EstadoEmergencia, Usuario
+from app.db.models import EstadoEmergencia, TipoOrganizacion, Usuario
 from app.db.session import get_db
+from app.integrations.prioridad import (
+    PrioridadNoDisponibleError,
+    RespuestaPrioridadInvalidaError,
+)
 from app.schemas import ErrorResponse
 from app.schemas.emergencia import (
-    EmergenciaCreate,
+    EmergenciaConPrioridadCreate,
     EmergenciaEnBandejaResponse,
     EmergenciaResponse,
+    PrioridadEmergenciaResponse,
+    SolicitudPrioridadEmergencia,
 )
 from app.services import emergencias as servicio
+from app.services.auth import organizacion_vigente_de_tipo
 from app.services.notificaciones import clave_emergencia_registrada
+from app.services.prioridad_emergencias import firmar_prioridad, leer_prioridad
 from app.services.tiempo_real import programar_evento_confirmado
 from app.services.vinculacion_bonita import vincular_emergencia_con_bonita
 
@@ -54,17 +63,64 @@ EmergenciaId = Annotated[int, Path(gt=0)]
 
 
 @router.post(
+    "/prioridad",
+    response_model=PrioridadEmergenciaResponse,
+    summary="Consultar la prioridad de una emergencia",
+    description=(
+        "Calcula la prioridad para la gravedad y zona indicadas y devuelve un "
+        "comprobante de diez minutos para el alta del operador municipal."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
+        status.HTTP_502_BAD_GATEWAY: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+def consultar_prioridad(
+    datos: SolicitudPrioridadEmergencia,
+    usuario: UsuarioRegistraEmergencia,
+    cliente: ClientePrioridadDep,
+) -> PrioridadEmergenciaResponse:
+    """Obtiene una puntuación y autoriza el siguiente paso del alta."""
+
+    if organizacion_vigente_de_tipo(usuario, TipoOrganizacion.MUNICIPIO) is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo un municipio activo puede registrar emergencias.",
+        )
+    try:
+        prioridad = cliente.consultar(datos)
+    except PrioridadNoDisponibleError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="El servicio de prioridad no está disponible. Intentá nuevamente.",
+        ) from error
+    except RespuestaPrioridadInvalidaError as error:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="El servicio devolvió una prioridad inválida. Intentá nuevamente.",
+        ) from error
+    return PrioridadEmergenciaResponse(
+        prioridad=prioridad,
+        comprobante=firmar_prioridad(usuario, datos.gravedad, datos.zona, prioridad),
+    )
+
+
+@router.post(
     "",
     response_model=EmergenciaResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
         status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_409_CONFLICT: {"model": ErrorResponse},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ErrorResponse},
     },
     summary="Registrar una emergencia municipal",
     description=(
-        "Persiste una emergencia con gravedad, zona y descripción en estado "
+        "Verifica el comprobante de prioridad y persiste la emergencia en estado "
         "REGISTRADA para el municipio autenticado y luego inicia su instancia "
         "en Bonita. Si Bonita falla, la emergencia se conserva con el estado "
         "de sincronización y un error seguro para reintentar. Solo "
@@ -72,7 +128,7 @@ EmergenciaId = Annotated[int, Path(gt=0)]
     ),
 )
 def crear_emergencia(
-    datos: EmergenciaCreate,
+    datos: EmergenciaConPrioridadCreate,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioRegistraEmergencia,
     cliente: ClienteBonitaDep,
@@ -80,8 +136,18 @@ def crear_emergencia(
 ) -> EmergenciaResponse:
     """Confirma el alta local y vincula su instancia de Bonita de forma trazable."""
 
+    prioridad = leer_prioridad(
+        datos.comprobante_prioridad, usuario, datos.gravedad, datos.zona
+    )
+    if prioridad is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Consultá la prioridad para esta gravedad y zona antes de registrar.",
+        )
     try:
-        emergencia = servicio.registrar_emergencia(session, usuario, datos)
+        emergencia = servicio.registrar_emergencia(
+            session, usuario, datos, prioridad=prioridad
+        )
     except servicio.MunicipioInvalidoError as error:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

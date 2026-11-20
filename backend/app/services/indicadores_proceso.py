@@ -28,7 +28,6 @@ from app.schemas.monitoreo import (
     RankingOng,
     ResolucionEmergencia,
     ResolucionGravedad,
-    ValidacionNacional,
 )
 from app.services.filtros_metricas import emergencias_filtradas
 from app.services.hechos_monitoreo import ADAPTADOR_HECHO
@@ -40,7 +39,7 @@ DEFINICIONES = [
     "Reaperturas y reformulaciones cuentan decisiones confirmadas distintas por emergencia y ronda.",
     "Ranking separado por capacidad y unidad: cantidades adjudicadas por ONG. Cumplimiento = aportes finalizados dentro de plazo / aportes finalizados con plazo. Los pendientes se informan por separado.",
     "Cobertura total exige cumplir todos los lotes de la ronda de cierre; parcial incluye cualquier faltante. Proporciones sobre cierres con evidencia completa.",
-    "Demanda = suma de necesidades publicadas por capacidad y unidad, incluyendo nuevas rondas. Inhabilitación = evaluaciones ONG/lote no habilitadas / evaluaciones, sin duplicar reintentos. El emisor debe distinguir inhabilitación de falta de stock y fallos de integración.",
+    "Demanda = suma de necesidades publicadas por capacidad y unidad, incluyendo nuevas rondas.",
     "Alerta a adjudicación usa la primera adjudicación confirmada de cada emergencia. Las fechas de alerta son explícitas y los casos sin hechos no se sustituyen por ceros.",
 ]
 
@@ -135,7 +134,6 @@ def obtener_indicadores(
         AcumuladoRanking
     )
     demanda: dict[tuple[str, str], Decimal] = defaultdict(Decimal)
-    validaciones: dict[tuple[str, str], list[int]] = defaultdict(lambda: [0, 0])
     for p, capacidad, unidad in publicaciones.values():
         demanda[(capacidad, unidad)] += p.cantidad_publicada
     primeras: dict[int, AdjudicacionConfirmada] = {}
@@ -143,13 +141,6 @@ def obtener_indicadores(
         if isinstance(h, DecisionConvocatoria):
             if h.decision in {"REABRIR", "REFORMULAR"}:
                 decisiones[eid][0 if h.decision == "REABRIR" else 1] += 1
-        elif isinstance(h, ValidacionNacional):
-            for r in h.resultados:
-                _, capacidad, unidad = publicaciones[
-                    (eid, h.convocatoria_numero, r.lote_id)
-                ]
-                validaciones[(capacidad, unidad)][0] += 1
-                validaciones[(capacidad, unidad)][1] += not r.habilitada
         elif isinstance(h, AdjudicacionConfirmada):
             if eid not in primeras or h.ocurrido_en < primeras[eid].ocurrido_en:
                 primeras[eid] = h
@@ -211,17 +202,7 @@ def obtener_indicadores(
             proporcion_parcial=porcentaje(len(cierres) - totales, len(cierres)),
         ),
         demanda_rubros=[
-            DemandaRubro(
-                capacidad=capacidad,
-                unidad=unidad,
-                cantidad=cantidad,
-                evaluaciones=validaciones[(capacidad, unidad)][0],
-                inhabilitadas=validaciones[(capacidad, unidad)][1],
-                tasa_inhabilitacion=porcentaje(
-                    validaciones[(capacidad, unidad)][1],
-                    validaciones[(capacidad, unidad)][0],
-                ),
-            )
+            DemandaRubro(capacidad=capacidad, unidad=unidad, cantidad=cantidad)
             for (capacidad, unidad), cantidad in sorted(
                 demanda.items(), key=lambda par: (par[0][1], -par[1], par[0][0])
             )

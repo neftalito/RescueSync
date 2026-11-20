@@ -13,6 +13,7 @@ from app.db.session import SessionLocal
 from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.integrations.email.cliente import ClienteSMTP, ConfiguracionSMTP
 from app.integrations.nacional.cliente import ClienteNacional
+from app.integrations.prioridad import ClientePrioridad
 from app.services.bootstrap import asegurar_admin_inicial
 from app.services.evaluaciones import IntegracionLocalError
 from app.services.monitor_bonita import monitorizar_bonita
@@ -37,6 +38,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         str(settings.nacional_base_url), settings.nacional_timeout_seconds
     )
     app.state.cliente_nacional = cliente_nacional
+    cliente_prioridad = ClientePrioridad(
+        str(settings.prioridad_base_url), settings.prioridad_timeout_seconds
+    )
+    app.state.cliente_prioridad = cliente_prioridad
     try:
         with ClienteBonita(ConfiguracionBonita.desde_settings(settings)) as cliente:
             app.state.cliente_bonita = cliente
@@ -61,6 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 if monitor is not None:
                     await monitor
     finally:
+        cliente_prioridad.close()
         cliente_nacional.close()
         await gestor_tiempo_real.detener()
 

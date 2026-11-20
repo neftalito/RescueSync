@@ -175,9 +175,6 @@ class DemandaRubro(BaseModel):
     capacidad: str
     unidad: str
     cantidad: Decimal
-    evaluaciones: int
-    inhabilitadas: int
-    tasa_inhabilitacion: float | None
 
 
 class CasoReiterado(BaseModel):

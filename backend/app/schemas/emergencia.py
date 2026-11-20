@@ -1,5 +1,7 @@
 """Esquemas HTTP para el registro municipal de emergencias."""
 
+from typing import Literal
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 from app.db.models.enums import (
@@ -7,6 +9,25 @@ from app.db.models.enums import (
     EstadoSincronizacionBonita,
     GravedadEmergencia,
 )
+
+ZonaPrioridad = Literal["NORTE", "CENTRO", "SUR"]
+
+
+class SolicitudPrioridadEmergencia(BaseModel):
+    """Identifica la gravedad y la zona que se envían al priorizador."""
+
+    gravedad: GravedadEmergencia
+    zona: ZonaPrioridad
+
+
+class PrioridadCalculada(BaseModel):
+    """Valida que el priorizador devuelva un entero dentro de su escala."""
+
+    prioridad: int = Field(strict=True, ge=1, le=10)
+
+
+class PrioridadEmergenciaResponse(PrioridadCalculada):
+    comprobante: str
 
 
 class EmergenciaCreate(BaseModel):
@@ -24,6 +45,13 @@ class EmergenciaCreate(BaseModel):
         return valor.strip() if isinstance(valor, str) else valor
 
 
+class EmergenciaConPrioridadCreate(EmergenciaCreate):
+    """Exige una consulta previa para los datos del alta municipal."""
+
+    zona: ZonaPrioridad
+    comprobante_prioridad: str | None = Field(default=None, max_length=2048)
+
+
 class EmergenciaResponse(BaseModel):
     """Emergencia persistida con su estado inicial y vínculo municipal."""
 
@@ -35,6 +63,7 @@ class EmergenciaResponse(BaseModel):
     creada_por_usuario_id: int
     gravedad: GravedadEmergencia
     zona: str
+    prioridad: int | None
     descripcion: str
     estado: EstadoEmergencia
     bonita_sync: EstadoSincronizacionBonita

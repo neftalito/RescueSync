@@ -30,6 +30,7 @@ from app.integrations.bonita.cliente import ClienteBonita, ConfiguracionBonita
 from app.main import app
 from app.schemas.emergencia import EmergenciaCreate
 from app.services import emergencias as servicio_emergencias
+from app.services.prioridad_emergencias import firmar_prioridad
 from app.services.vinculacion_bonita import vincular_emergencia_con_bonita
 
 BASE_URL = "http://bonita:8080/bonita"
@@ -331,8 +332,11 @@ def test_alta_inicia_instancia_y_devuelve_vinculada(
             "/api/v1/emergencias",
             json={
                 "gravedad": "CRITICA",
-                "zona": "Corredor norte",
+                "zona": "NORTE",
                 "descripcion": "Inundación con evacuados",
+                "comprobante_prioridad": firmar_prioridad(
+                    usuario_municipal, GravedadEmergencia.CRITICA, "NORTE", 8
+                ),
             },
             headers={"X-CSRF-Token": csrf},
         )
@@ -365,8 +369,11 @@ def test_alta_con_bonita_rechazada_devuelve_201_con_error_trazable(
             "/api/v1/emergencias",
             json={
                 "gravedad": "MEDIA",
-                "zona": "Arroyo sur",
+                "zona": "SUR",
                 "descripcion": "Desborde preventivo",
+                "comprobante_prioridad": firmar_prioridad(
+                    usuario_municipal, GravedadEmergencia.MEDIA, "SUR", 5
+                ),
             },
             headers={"X-CSRF-Token": csrf},
         )
