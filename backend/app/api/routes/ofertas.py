@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.busqueda import BusquedaDep
 from app.api.dependencies import (
     ClienteNacionalDep,
     GestorTiempoRealDep,
@@ -238,13 +239,17 @@ def modificar_oferta(
 )
 def listar_mis_ofertas(
     paginacion: PaginacionDep,
+    busqueda: BusquedaDep,
     session: Annotated[Session, Depends(get_db)],
     usuario: UsuarioConsultaOfertas,
+    estado: EstadoOferta | None = None,
 ) -> list[OfertaPropiaResponse]:
     """Consulta las ofertas de la ONG del usuario sin modificar nada."""
 
     try:
-        ofertas = servicio.listar_ofertas_propias(session, usuario, paginacion)
+        ofertas = servicio.listar_ofertas_propias(
+            session, usuario, paginacion, busqueda=busqueda, estado=estado
+        )
     except servicio.OfertaError as error:
         raise HTTPException(
             status_code=_CODIGOS_ERROR[type(error)], detail=str(error)

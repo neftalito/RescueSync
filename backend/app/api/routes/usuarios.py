@@ -3,9 +3,10 @@ from typing import Annotated, NoReturn
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.busqueda import BusquedaDep
 from app.api.dependencies import ClienteEmailDep, UsuarioAdministrador, validar_csrf
 from app.api.paginacion import PaginacionDep
-from app.db.models import Usuario
+from app.db.models import RolUsuario, Usuario
 from app.db.session import get_db
 from app.integrations.email.cliente import EmailNoDisponibleError
 from app.schemas import ErrorResponse
@@ -79,10 +80,15 @@ def _traducir_error(error: Exception) -> NoReturn:
 )
 def obtener_usuarios(
     paginacion: PaginacionDep,
+    busqueda: BusquedaDep,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
+    rol: RolUsuario | None = None,
+    activo: bool | None = None,
 ) -> list[Usuario]:
-    return listar_usuarios(session, paginacion)
+    return listar_usuarios(
+        session, paginacion, busqueda=busqueda, rol=rol, activo=activo
+    )
 
 
 @router.post(

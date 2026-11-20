@@ -1,12 +1,15 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactElement } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, type UseFormRegisterReturn } from "react-hook-form";
 import { Link } from "react-router";
 
 import { useListadoPaginado } from "../hooks/useListadoPaginado";
+import { useTextoBusqueda } from "../hooks/useTextoBusqueda";
 import { ListadoRemoto } from "../components/ListadoProgresivo";
 import { ActionIcon } from "../components/ActionIcon";
+import { CampoBusqueda } from "../components/CampoBusqueda";
+import { SelectorFiltro } from "../components/SelectorFiltro";
 import { ApiError } from "../api/client";
 import {
   getOrganizations,
@@ -32,6 +35,7 @@ import {
   type Organization,
   type ResetPasswordForm,
 } from "../schemas/users";
+import { normalizarBusqueda } from "../utils/busqueda";
 
 const usersQueryKey = ["users"] as const;
 const organizationTypeByRole: Partial<Record<Role, Organization["tipo"]>> = {
@@ -49,7 +53,10 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [resettingUser, setResettingUser] = useState<ManagedUser | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const users = useListadoPaginado(usersQueryKey, "/usuarios", usersSchema);
+  const busqueda = useTextoBusqueda();
+  const [rol, setRol] = useState("");
+  const [activo, setActivo] = useState("");
+  const users = useListadoPaginado(usersQueryKey, "/usuarios", usersSchema, true, { q: busqueda.termino, rol, activo });
   const organizations = useQuery({
     queryKey: organizationsQueryKey,
     queryFn: getOrganizations,
@@ -159,13 +166,27 @@ export function UsersPage({ session }: UsersPageProps): ReactElement {
             )}
           </div>
 
+          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+            <CampoBusqueda etiqueta="Buscar usuarios" ejemplo="Correo u organización" valor={busqueda.texto} cambiar={busqueda.cambiar} />
+            <SelectorFiltro etiqueta="Rol de usuario" valor={rol} cambiar={setRol}>
+              <option value="">Todos los roles</option>
+              {roleOptions()}
+            </SelectorFiltro>
+            <SelectorFiltro etiqueta="Estado de la cuenta" valor={activo} cambiar={setActivo}>
+              <option value="">Todos los estados</option>
+              <option value="true">Activos</option>
+              <option value="false">Inactivos</option>
+            </SelectorFiltro>
+          </div>
           {users.isPending || organizations.isPending ? (
             <p role="status" className="mt-5 text-slate-600">
               Cargando usuarios…
             </p>
           ) : users.data?.length === 0 ? (
-            <p className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
-              Todavía no hay usuarios registrados.
+            <p role="status" className="mt-5 rounded-2xl border border-slate-200 bg-white p-6 text-slate-600">
+              {busqueda.termino || rol || activo
+                ? "No encontramos usuarios que coincidan con la búsqueda y los filtros."
+                : "Todavía no hay usuarios registrados."}
             </p>
           ) : (
             <ListadoRemoto query={users} etiqueta="Listado de usuarios registrados" className="mt-5">
@@ -310,6 +331,39 @@ function matchingOrganizations(
     : [];
 }
 
+interface OrganizationFieldProps {
+  organizations: Organization[];
+  role: Role;
+  selectedId: string;
+  field: UseFormRegisterReturn<"organizacion_id">;
+  error?: string;
+}
+
+function OrganizationField({ organizations, role, selectedId, field, error }: OrganizationFieldProps): ReactElement {
+  const [search, setSearch] = useState("");
+  const term = normalizarBusqueda(search);
+  const compatible = matchingOrganizations(organizations, role);
+  const matches = compatible.filter((organization) => normalizarBusqueda(organization.nombre).includes(term));
+  const selected = compatible.find((organization) => String(organization.id) === selectedId);
+  const visible = selected && !matches.includes(selected) ? [selected, ...matches] : matches;
+  const required = !!organizationTypeByRole[role];
+
+  return (
+    <div className="grid gap-2">
+      {required && <CampoBusqueda etiqueta="Buscar organización por nombre" valor={search} cambiar={setSearch} />}
+      <FormField label="Organización" error={error}>
+        <select className="form-input" {...field}>
+          <option value="">{required ? "Seleccionar organización" : "No corresponde"}</option>
+          {visible.map((organization) => (
+            <option key={organization.id} value={organization.id}>{organization.nombre}</option>
+          ))}
+        </select>
+      </FormField>
+      {term && matches.length === 0 && <p role="status" className="text-sm text-slate-600">No encontramos organizaciones que coincidan con la búsqueda.</p>}
+    </div>
+  );
+}
+
 function hasCompatibleOrganization(
   organizations: Organization[],
   role: Role,
@@ -353,7 +407,7 @@ function CreateUserPanel({
       organizacion_id: "",
     },
   });
-  const role = useWatch({ control, name: "rol" });
+  const [role, organizationId] = useWatch({ control, name: ["rol", "organizacion_id"] });
   const mutation = useMutation({
     mutationFn: (values: CreateUserForm) => createUser(values, csrfToken),
     onSuccess: async () => {
@@ -403,20 +457,14 @@ function CreateUserPanel({
             {roleOptions()}
           </select>
         </FormField>
-        <FormField label="Organización" error={errors.organizacion_id?.message}>
-          <select className="form-input" {...register("organizacion_id")}>
-            <option value="">
-              {organizationTypeByRole[role]
-                ? "Seleccionar organización"
-                : "No corresponde"}
-            </option>
-            {matchingOrganizations(organizations, role).map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.nombre}
-              </option>
-            ))}
-          </select>
-        </FormField>
+        <OrganizationField
+          key={role}
+          organizations={organizations}
+          role={role}
+          selectedId={organizationId}
+          field={register("organizacion_id")}
+          error={errors.organizacion_id?.message}
+        />
         {mutation.isError && (
           <p role="alert" className="text-sm text-red-700 md:col-span-2">
             {errorMessage(mutation.error)}
@@ -467,7 +515,7 @@ function EditUserPanel({
       organizacion_id: String(user.organizacion?.id ?? ""),
     },
   });
-  const role = useWatch({ control, name: "rol" });
+  const [role, organizationId] = useWatch({ control, name: ["rol", "organizacion_id"] });
   const mutation = useMutation({
     mutationFn: (values: EditUserForm) =>
       updateUser(user.id, values, csrfToken),
@@ -518,20 +566,14 @@ function EditUserPanel({
             </select>
           )}
         </FormField>
-        <FormField label="Organización" error={errors.organizacion_id?.message}>
-          <select className="form-input" {...register("organizacion_id")}>
-            <option value="">
-              {organizationTypeByRole[role]
-                ? "Seleccionar organización"
-                : "No corresponde"}
-            </option>
-            {matchingOrganizations(organizations, role).map((organization) => (
-              <option key={organization.id} value={organization.id}>
-                {organization.nombre}
-              </option>
-            ))}
-          </select>
-        </FormField>
+        <OrganizationField
+          key={role}
+          organizations={organizations}
+          role={role}
+          selectedId={organizationId}
+          field={register("organizacion_id")}
+          error={errors.organizacion_id?.message}
+        />
         {mutation.isError && (
           <p role="alert" className="text-sm text-red-700">
             {errorMessage(mutation.error)}

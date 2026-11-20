@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.db.models import (
     Convocatoria,
     ConvocatoriaLote,
+    Emergencia,
     EstadoConvocatoria,
     EstadoLote,
     EstadoOferta,
@@ -32,6 +33,7 @@ from app.schemas.oferta import (
 )
 from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.busqueda import coincide_numero, contiene_texto
 from app.services.notificaciones import notificar_oferta_recibida
 
 
@@ -288,11 +290,12 @@ def listar_ofertas_propias(
     paginacion: Paginacion = SIN_PAGINACION,
     *,
     convocatoria_id: int | None = None,
+    busqueda: str = "",
+    estado: EstadoOferta | None = None,
 ) -> list[Oferta]:
     """Devuelve las ofertas de la ONG activa del usuario, sin importar quién las creó.
 
-    Nunca incluye ofertas de otra organización: la consulta filtra siempre
-    por `ong_creadora_id` de la ONG vigente del usuario autenticado.
+    Incluye las ofertas vigentes que creó la ONG o en las que participa.
 
     Raises:
         OngNoAutorizadaError: Si el usuario no representa una ONG activa.
@@ -302,52 +305,71 @@ def listar_ofertas_propias(
     if ong is None:
         raise OngNoAutorizadaError("Solo una ONG activa consulta sus ofertas.")
 
-    return list(
-        session.scalars(
-            select(Oferta)
-            .join(
-                OfertaVersion,
+    consulta = (
+        select(Oferta)
+        .join(
+            OfertaVersion,
+            and_(
+                OfertaVersion.oferta_id == Oferta.id,
+                OfertaVersion.numero == Oferta.version_actual,
+            ),
+        )
+        .where(
+            or_(convocatoria_id is None, Oferta.convocatoria_id == convocatoria_id),
+            or_(
+                Oferta.ong_creadora_id == ong.id,
+                select(OfertaVersionParticipante.oferta_version_id)
+                .where(
+                    OfertaVersionParticipante.oferta_version_id == OfertaVersion.id,
+                    OfertaVersionParticipante.ong_id == ong.id,
+                )
+                .correlate(OfertaVersion)
+                .exists(),
+            ),
+            Oferta.fusionada_en_oferta_id.is_(None),
+            or_(
+                OfertaVersion.presentada_en.is_not(None),
                 and_(
-                    OfertaVersion.oferta_id == Oferta.id,
-                    OfertaVersion.numero == Oferta.version_actual,
+                    Oferta.estado == EstadoOferta.BORRADOR,
+                    OfertaVersion.requiere_desglose_nacional,
                 ),
-            )
-            .where(
-                or_(convocatoria_id is None, Oferta.convocatoria_id == convocatoria_id),
-                or_(
-                    Oferta.ong_creadora_id == ong.id,
-                    select(OfertaVersionParticipante.oferta_version_id)
-                    .where(
-                        OfertaVersionParticipante.oferta_version_id == OfertaVersion.id,
-                        OfertaVersionParticipante.ong_id == ong.id,
-                    )
-                    .correlate(OfertaVersion)
-                    .exists(),
-                ),
-                Oferta.fusionada_en_oferta_id.is_(None),
-                or_(
-                    OfertaVersion.presentada_en.is_not(None),
-                    and_(
-                        Oferta.estado == EstadoOferta.BORRADOR,
-                        OfertaVersion.requiere_desglose_nacional,
-                    ),
-                ),
-            )
-            .options(
-                joinedload(Oferta.convocatoria).joinedload(Convocatoria.emergencia),
-                selectinload(Oferta.versiones).selectinload(OfertaVersion.items),
-                selectinload(Oferta.versiones)
-                .selectinload(OfertaVersion.items)
-                .selectinload(OfertaItem.aportes),
-                selectinload(Oferta.versiones).selectinload(
-                    OfertaVersion.participantes
-                ),
-            )
-            .order_by(Oferta.creada_en.desc(), Oferta.id.desc())
-            .offset(paginacion.offset)
-            .limit(paginacion.limit)
-        ).all()
+            ),
+        )
     )
+    if busqueda:
+        consulta = consulta.where(
+            or_(
+                coincide_numero(Oferta.id, busqueda),
+                Oferta.convocatoria.has(
+                    or_(
+                        coincide_numero(Convocatoria.emergencia_id, busqueda),
+                        Convocatoria.emergencia.has(
+                            contiene_texto(Emergencia.descripcion, busqueda)
+                        ),
+                    )
+                ),
+                contiene_texto(OfertaVersion.observaciones, busqueda),
+                OfertaVersion.items.any(
+                    contiene_texto(OfertaItem.descripcion, busqueda)
+                ),
+            )
+        )
+    if estado is not None:
+        consulta = consulta.where(Oferta.estado == estado)
+    consulta = (
+        consulta.options(
+            joinedload(Oferta.convocatoria).joinedload(Convocatoria.emergencia),
+            selectinload(Oferta.versiones).selectinload(OfertaVersion.items),
+            selectinload(Oferta.versiones)
+            .selectinload(OfertaVersion.items)
+            .selectinload(OfertaItem.aportes),
+            selectinload(Oferta.versiones).selectinload(OfertaVersion.participantes),
+        )
+        .order_by(Oferta.creada_en.desc(), Oferta.id.desc())
+        .offset(paginacion.offset)
+        .limit(paginacion.limit)
+    )
+    return list(session.scalars(consulta).all())
 
 
 def _publicaciones_bloqueadas(

@@ -1,7 +1,7 @@
 import { ListadoLocal } from "../components/ListadoProgresivo";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Link } from "react-router";
 
@@ -13,6 +13,7 @@ import {
   unidadesQueryKey,
 } from "../api/catalogo";
 import { ActionIcon } from "../components/ActionIcon";
+import { CampoBusqueda } from "../components/CampoBusqueda";
 import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
 import {
@@ -23,6 +24,7 @@ import {
   type CapacidadForm,
 } from "../schemas/catalogo";
 import { capacidadSchema } from "../schemas/inventario";
+import { normalizarBusqueda } from "../utils/busqueda";
 
 function mensajeError(error: Error | null): string {
   return error instanceof ApiError
@@ -36,6 +38,8 @@ export function CatalogoNacionalPage({
   session: Session;
 }): ReactElement {
   const queryClient = useQueryClient();
+  const [busqueda, setBusqueda] = useState("");
+  const termino = normalizarBusqueda(busqueda);
   const catalogo = useQuery({
     queryKey: catalogoAdminQueryKey,
     queryFn: consultarCatalogoNacional,
@@ -46,6 +50,10 @@ export function CatalogoNacionalPage({
     queryFn: consultarUnidades,
     retry: false,
   });
+  const capacidades = catalogo.data?.filter((capacidad) =>
+    normalizarBusqueda(capacidad.nombre).includes(termino) ||
+    normalizarBusqueda(capacidad.codigo).includes(termino),
+  );
   const {
     register,
     control,
@@ -353,6 +361,9 @@ export function CatalogoNacionalPage({
               <span className="sr-only">Actualizar catálogo</span>
             </button>
           </div>
+          <div className="mt-4 max-w-md">
+            <CampoBusqueda etiqueta="Buscar capacidades" ejemplo="Nombre o código" valor={busqueda} cambiar={setBusqueda} />
+          </div>
           {catalogo.isPending && (
             <p role="status" className="mt-4">
               Cargando capacidades…
@@ -363,13 +374,13 @@ export function CatalogoNacionalPage({
               {mensajeError(catalogo.error)}
             </p>
           )}
-          {catalogo.isSuccess && catalogo.data.length === 0 && (
-            <p className="mt-4 text-slate-600">
-              Todavía no hay capacidades activas.
+          {capacidades?.length === 0 && (
+            <p role="status" className="mt-4 text-slate-600">
+              {termino ? "No encontramos capacidades que coincidan con la búsqueda." : "Todavía no hay capacidades activas."}
             </p>
           )}
-          {catalogo.data && (
-            <ListadoLocal items={catalogo.data} etiqueta="Capacidades disponibles" className="mt-4">
+          {!!capacidades?.length && (
+            <ListadoLocal key={termino} items={capacidades} etiqueta="Capacidades disponibles" className="mt-4">
               {(visibles) => (
                 <ul className="mt-5 grid gap-4 sm:grid-cols-2">
                   {visibles.map((capacidad) => (

@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.busqueda import BusquedaDep
 from app.api.dependencies import ClienteNacionalDep, UsuarioAdministrador, validar_csrf
 from app.api.paginacion import PaginacionDep
 from app.db.models import Organizacion, TipoOrganizacion
@@ -40,10 +41,15 @@ router = APIRouter()
 )
 def obtener_organizaciones(
     paginacion: PaginacionDep,
+    busqueda: BusquedaDep,
     _: UsuarioAdministrador,
     session: Annotated[Session, Depends(get_db)],
+    tipo: TipoOrganizacion | None = None,
+    activa: bool | None = None,
 ) -> list[Organizacion]:
-    return listar_organizaciones(session, paginacion)
+    return listar_organizaciones(
+        session, paginacion, busqueda=busqueda, tipo=tipo, activa=activa
+    )
 
 
 @router.post(

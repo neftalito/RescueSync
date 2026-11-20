@@ -1,13 +1,16 @@
-import { useId, type ReactElement } from "react";
+import { useId, useState, type ReactElement } from "react";
 import { Link } from "react-router";
 
 import { ListadoRemoto } from "../components/ListadoProgresivo";
 import { ActionIcon } from "../components/ActionIcon";
+import { CampoBusqueda } from "../components/CampoBusqueda";
+import { SelectorFiltro } from "../components/SelectorFiltro";
 import { ApiError } from "../api/client";
 import { ConsorcioOferta } from "../components/ConsorcioOferta";
 import { useMisOfertasPaginadas } from "../hooks/useMisOfertas";
+import { useTextoBusqueda } from "../hooks/useTextoBusqueda";
 import { gravedadLabels } from "../schemas/emergencia";
-import { estadoOfertaLabels, tipoAporteLabels, type Oferta } from "../schemas/oferta";
+import { estadoOfertaLabels, estadosOferta, tipoAporteLabels, type Oferta } from "../schemas/oferta";
 import { formatearCantidad } from "../utils/cantidades";
 import { motivoOfertaNoEditable } from "../utils/ofertas";
 
@@ -79,7 +82,9 @@ function TarjetaOferta({ oferta }: { oferta: Oferta; }): ReactElement {
 }
 
 export function MisOfertasPage(): ReactElement {
-  const query = useMisOfertasPaginadas();
+  const busqueda = useTextoBusqueda();
+  const [estado, setEstado] = useState("");
+  const query = useMisOfertasPaginadas(busqueda.termino, estadosOferta.find((valor) => valor === estado));
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -103,6 +108,13 @@ export function MisOfertasPage(): ReactElement {
       </header>
 
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6">
+        <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <CampoBusqueda etiqueta="Buscar ofertas" ejemplo="Emergencia, aporte u observación" valor={busqueda.texto} cambiar={busqueda.cambiar} />
+          <SelectorFiltro etiqueta="Estado de la oferta" valor={estado} cambiar={setEstado}>
+            <option value="">Todos los estados</option>
+            {estadosOferta.map((valor) => <option key={valor} value={valor}>{estadoOfertaLabels[valor]}</option>)}
+          </SelectorFiltro>
+        </div>
         {query.isPending ? (
           <section
             role="status"
@@ -135,7 +147,9 @@ export function MisOfertasPage(): ReactElement {
             role="status"
             className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm"
           >
-            Todavía no presentaste ofertas.
+            {busqueda.termino || estado
+              ? "No encontramos ofertas que coincidan con la búsqueda y los filtros."
+              : "Todavía no presentaste ofertas."}
           </p>
         ) : (
           <ListadoRemoto query={query} etiqueta="Mis ofertas">

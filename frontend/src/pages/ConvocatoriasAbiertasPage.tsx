@@ -1,4 +1,6 @@
 import { type ReactElement } from "react";
+import { CampoBusqueda } from "../components/CampoBusqueda";
+import { useTextoBusqueda } from "../hooks/useTextoBusqueda";
 import { Link } from "react-router";
 
 import { ListadoLocal, ListadoRemoto } from "../components/ListadoProgresivo";
@@ -68,7 +70,9 @@ function TarjetaConvocatoria({
 }
 
 export function ConvocatoriasAbiertasPage(): ReactElement {
-  const query = useConvocatoriasPaginadas();
+  const busqueda = useTextoBusqueda();
+  const zona = useTextoBusqueda();
+  const query = useConvocatoriasPaginadas(busqueda.termino, zona.termino);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -94,6 +98,10 @@ export function ConvocatoriasAbiertasPage(): ReactElement {
       </header>
 
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-6">
+        <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <CampoBusqueda etiqueta="Buscar convocatorias" ejemplo="Necesidad, descripción o número" valor={busqueda.texto} cambiar={busqueda.cambiar} />
+          <CampoBusqueda etiqueta="Zona" ejemplo="Ej.: Norte" valor={zona.texto} cambiar={zona.cambiar} />
+        </div>
         {query.isPending ? (
           <section
             role="status"
@@ -126,7 +134,9 @@ export function ConvocatoriasAbiertasPage(): ReactElement {
             role="status"
             className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-sm"
           >
-            No hay convocatorias abiertas por el momento.
+            {busqueda.termino || zona.termino
+              ? "No encontramos convocatorias que coincidan con la búsqueda y los filtros."
+              : "No hay convocatorias abiertas por el momento."}
           </p>
         ) : (
           <ListadoRemoto query={query} etiqueta="Convocatorias abiertas">

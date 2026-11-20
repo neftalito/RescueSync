@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.models import Organizacion, TipoOrganizacion, Usuario
 from app.schemas.organizaciones import OrganizacionCreate, OrganizacionUpdate
 from app.schemas.paginacion import SIN_PAGINACION, Paginacion
+from app.services.busqueda import contiene_texto
 
 
 class OrganizacionDuplicadaError(ValueError):
@@ -22,22 +23,31 @@ class TipoOrganizacionEnUsoError(ValueError):
 def listar_organizaciones(
     session: Session,
     paginacion: Paginacion = SIN_PAGINACION,
+    *,
+    busqueda: str = "",
+    tipo: TipoOrganizacion | None = None,
+    activa: bool | None = None,
 ) -> list[Organizacion]:
     """Lista organizaciones activas e inactivas para su administración."""
 
-    return list(
-        session.scalars(
-            select(Organizacion)
-            .order_by(
-                Organizacion.activa.desc(),
-                Organizacion.tipo,
-                Organizacion.nombre,
-                Organizacion.id,
-            )
-            .offset(paginacion.offset)
-            .limit(paginacion.limit)
+    consulta = select(Organizacion)
+    if busqueda:
+        consulta = consulta.where(contiene_texto(Organizacion.nombre, busqueda))
+    if tipo is not None:
+        consulta = consulta.where(Organizacion.tipo == tipo)
+    if activa is not None:
+        consulta = consulta.where(Organizacion.activa == activa)
+    consulta = (
+        consulta.order_by(
+            Organizacion.activa.desc(),
+            Organizacion.tipo,
+            Organizacion.nombre,
+            Organizacion.id,
         )
+        .offset(paginacion.offset)
+        .limit(paginacion.limit)
     )
+    return list(session.scalars(consulta))
 
 
 def _validar_identidad_disponible(

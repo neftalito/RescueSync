@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -104,7 +104,7 @@ describe("MisOfertasPage", () => {
     renderPage();
 
     expect(await screen.findByText("Alta · Ribera norte")).toBeInTheDocument();
-    expect(screen.getByText("Presentada")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Mis ofertas" })).getByText("Presentada")).toBeInTheDocument();
     expect(screen.queryByText(/Oferta N/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Convocatoria N/)).not.toBeInTheDocument();
 
@@ -118,6 +118,21 @@ describe("MisOfertasPage", () => {
     expect(
       screen.getByRole("link", { name: "Modificar oferta" }),
     ).toHaveAttribute("href", "/ofertas/9/editar");
+  });
+
+  it("combina la búsqueda por aporte con el estado de la oferta", async () => {
+    server.use(http.get(`${API_URL}/ofertas`, ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      return HttpResponse.json(params.get("q") === "bidones" && params.get("estado") === "PRESENTADA" ? [oferta] : []);
+    }));
+    renderPage();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "Buscar ofertas" }), "bidones");
+    const estado = screen.getByRole("combobox", { name: "Estado de la oferta" });
+    await user.selectOptions(estado, "PRESENTADA");
+    expect(await screen.findByText("Alta · Ribera norte")).toBeInTheDocument();
+    await user.selectOptions(estado, "ADJUDICADA");
+    expect(await screen.findByText(/No encontramos ofertas/)).toBeInTheDocument();
   });
 
   it("muestra el error accionable y permite reintentar", async () => {

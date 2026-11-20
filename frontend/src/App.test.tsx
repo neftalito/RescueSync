@@ -463,6 +463,7 @@ describe("autenticación", () => {
             tipo: "MUNICIPIO",
             activa: true,
           },
+          { id: 4, nombre: "Municipio del valle", tipo: "MUNICIPIO", activa: true },
         ]),
       ),
       http.post(`${API_URL}/usuarios`, async ({ request }) => {
@@ -508,7 +509,13 @@ describe("autenticación", () => {
       screen.queryByLabelText("Contraseña temporal"),
     ).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Rol"), "OPERADOR_MUNICIPAL");
+    const buscarOrganizacion = screen.getByRole("searchbox", { name: "Buscar organización por nombre" });
+    await user.type(buscarOrganizacion, "delta");
+    expect(screen.queryByRole("option", { name: "Municipio del valle" })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Organización"), "3");
+    await user.clear(buscarOrganizacion);
+    await user.type(buscarOrganizacion, "valle");
+    expect(screen.getByLabelText("Organización")).toHaveValue("3");
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     expect(await screen.findByText(
