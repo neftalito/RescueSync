@@ -19,7 +19,7 @@ ocurridos exclusivamente dentro del mes ni una reconstrucción histórica al
 | Reaperturas y reformulaciones | Decisiones confirmadas por emergencia y ronda, diferenciando `REABRIR` y `REFORMULAR`. `CONTINUAR_PARCIAL` se conserva sin incrementar esas dos categorías. |
 | Ranking de ONG | Cantidades adjudicadas a cada ONG, por capacidad y unidad. Los miembros de un consorcio cuentan por sus aportes propios. Cumplimiento: aportes finalizados dentro del plazo / aportes finalizados con plazo. Se muestran finalizados y pendientes. |
 | Cobertura del cierre | Total si se cumplieron todos los lotes de la ronda de cierre; parcial si existe un faltante. Proporciones sobre cierres con evidencia completa. |
-| Demanda e inhabilitación | Necesidades publicadas por capacidad/unidad, incluyendo nuevas rondas. Inhabilitación: evaluaciones ONG/lote no habilitadas / evaluaciones. Stock, transporte y referencias incompletas no son inhabilitaciones. El orden por cantidad compara rubros dentro de cada unidad, sin sumar litros con kits. |
+| Demanda por rubro | Suma de necesidades publicadas por capacidad y unidad, incluyendo nuevas rondas. Los rubros se ordenan por cantidad dentro de cada unidad. |
 | Alerta a adjudicación | Primera adjudicación confirmada menos alerta explícita; una muestra por emergencia. |
 
 Las cantidades se conservan como `Decimal` y se exportan como strings.

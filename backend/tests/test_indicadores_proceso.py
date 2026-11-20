@@ -191,8 +191,14 @@ def test_seis_indicadores_cruzan_hechos_y_negocio_sin_confundir_ofrecido(
         for p in escenario.scalars(select(ConvocatoriaLote))
     }
     assert all(r.tasa_cumplimiento == 100 for r in reporte.ranking_ongs)
-    assert {r.tasa_inhabilitacion for r in reporte.demanda_rubros} == {0, 100}
-    assert sum(r.evaluaciones for r in reporte.demanda_rubros) == len(a.aportes)
+    assert {r.unidad: r.cantidad for r in reporte.demanda_rubros} == {
+        p.unidad_publicada.lower(): p.cantidad_publicada
+        for p in escenario.scalars(select(ConvocatoriaLote))
+    }
+    assert all(
+        r.model_dump().keys() == {"capacidad", "unidad", "cantidad"}
+        for r in reporte.demanda_rubros
+    )
     assert reporte.emergencias_con_hechos == reporte.emergencias_sin_hechos == 1
 
 
