@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { IndicadoresProceso } from "./IndicadoresProceso";
 import { ActividadesBonita } from "./ActividadesBonita";
@@ -13,7 +13,7 @@ const datos = indicadoresProcesoSchema.parse({
   reiteradas: [{ emergencia_id: 9, reaperturas: 1, reformulaciones: 2 }],
   ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 2, finalizados: 1, con_plazo_finalizados: 1, en_termino: 1, tasa_cumplimiento: 100 }],
   cobertura_cierres: { total: 0, parcial: 1, proporcion_total: 0, proporcion_parcial: 100 },
-  demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250", evaluaciones: 0, inhabilitadas: 0, tasa_inhabilitacion: null }],
+  demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250" }],
   alerta_adjudicacion_promedio_segundos: 3600, alerta_adjudicacion_muestras: 1,
   definiciones: ["Se seleccionan emergencias por fecha de alta."],
 });
@@ -35,10 +35,15 @@ describe("resultados del proceso", () => {
   it("muestra los seis indicadores, cobertura de evidencia y ausencia de plazos", () => {
     render(<IndicadoresProceso datos={datos} />);
     expect(screen.getByText(/2 sin evidencia de resultados/)).toBeInTheDocument();
-    for (const titulo of ["Resolución por gravedad", "Reaperturas y reformulaciones", "ONG por recursos adjudicados y cumplimiento", "Cobertura efectiva al cierre", "Demanda e inhabilitación por rubro", "De la alerta a la primera adjudicación efectiva"])
+    for (const titulo of ["Resolución por gravedad", "Reaperturas y reformulaciones", "ONG por recursos adjudicados y cumplimiento", "Cobertura efectiva al cierre", "Demanda por rubro", "De la alerta a la primera adjudicación efectiva"])
       expect(screen.getByRole("heading", { name: titulo })).toBeInTheDocument();
+    const demanda = within(screen.getByRole("table", { name: "Demanda por rubro" }));
+    expect(demanda.getAllByRole("columnheader").map(c => c.textContent)).toEqual([
+      "Capacidad", "Unidad", "Necesidad publicada",
+    ]);
+    expect(demanda.getByRole("cell", { name: "200.250" })).toBeInTheDocument();
     expect(screen.getByText("100.125")).toBeInTheDocument();
-    expect(screen.getAllByText("Sin datos")).toHaveLength(3);
+    expect(screen.getAllByText("Sin datos")).toHaveLength(2);
     expect(screen.getByText("Se seleccionan emergencias por fecha de alta.")).toBeInTheDocument();
   });
 
@@ -53,9 +58,13 @@ describe("resultados del proceso", () => {
   it("exporta evidencia, definiciones, decimales y tareas en JSON, CSV y PDF", () => {
     const json = crearReporteExportable(locales, tiempos);
     expect(json.locales.indicadores_proceso).toEqual(datos);
+    expect(json.locales.indicadores_proceso?.demanda_rubros).toEqual([
+      { capacidad: "AGUA", unidad: "litros", cantidad: "200.250" },
+    ]);
     expect(json.tiempos?.tareas_activas?.[0]?.tarea_id).toBe(7);
     const csv = generarCsvMetricas(locales, tiempos);
-    for (const texto of ["ranking_ongs", "100.125", "tasa_inhabilitacion", "Sin datos", "tareas_activas", datos.definiciones[0]]) expect(csv).toContain(texto);
+    for (const texto of ["ranking_ongs", "100.125", '"demanda_rubros","cantidad","AGUA / litros","200.250"', "Sin datos", "tareas_activas", datos.definiciones[0]]) expect(csv).toContain(texto);
+    expect(csv).not.toContain("tasa_inhabilitacion");
     const pdf = generarPdfMetricas(locales, tiempos);
     expect(pdf.type).toBe("application/pdf");
     expect(pdf.size).toBeGreaterThan(1000);

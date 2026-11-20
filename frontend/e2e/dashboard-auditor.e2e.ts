@@ -100,7 +100,7 @@ async function simularApi(
             reiteradas: [{ emergencia_id: 9, reaperturas: 1, reformulaciones: 0 }],
             ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 1, finalizados: 1, con_plazo_finalizados: 1, en_termino: 1, tasa_cumplimiento: 100 }],
             cobertura_cierres: { total: 1, parcial: 0, proporcion_total: 100, proporcion_parcial: 0 },
-            demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250", evaluaciones: 1, inhabilitadas: 0, tasa_inhabilitacion: 0 }],
+            demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250" }],
             alerta_adjudicacion_promedio_segundos: 3600, alerta_adjudicacion_muestras: 1,
             definiciones: ["Se seleccionan emergencias por fecha de alta."],
           },
