@@ -37,7 +37,11 @@ export const seguimientoSchema = z.object({
   idEmergencia: z.number(), estado: z.string(), puedeSolicitarCierre: z.boolean(),
   adjudicaciones: z.array(adjudicacionSchema),
   operaciones: z.array(z.object({ operacionId: z.string().uuid(), tipo: z.string(), estadoIntegracion: z.string(), etapaPendiente: z.string().nullable().optional() })).default([]),
-  cierre: z.object({ solicitudCierreId: z.string().uuid(), operacionesInciertas: z.boolean() }).nullable(),
+  cierre: z.object({
+    solicitudCierreId: z.string().uuid(),
+    operacionCierreId: z.string().uuid(),
+    operacionesInciertas: z.boolean(),
+  }).nullable(),
 });
 export const comandosSchema = z.array(z.object({
   comandoId: z.string().uuid(), estado: z.string(), error: z.string().nullable(),
