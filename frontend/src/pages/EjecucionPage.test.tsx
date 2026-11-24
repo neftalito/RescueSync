@@ -69,6 +69,33 @@ describe("Evaluación y ejecución", () => {
     expect(screen.getByRole("button", { name: "Solicitar cierre de emergencia" })).toBeDisabled();
   });
 
+  it("actualiza el mensaje cuando se confirma el cierre de esa emergencia", async () => {
+    const usuario = userEvent.setup();
+    const solicitudCierreId = "00000000-0000-4000-8000-000000000103";
+    const operacionCierreId = "00000000-0000-4000-8000-000000000104";
+    let confirmado = false;
+    server.use(http.get(`${base}/adjudicaciones`, () => HttpResponse.json({
+      ...seguimiento,
+      estado: confirmado ? "RESUELTA" : "EN_EJECUCION",
+      cierre: { solicitudCierreId, operacionCierreId, operacionesInciertas: false },
+      operaciones: [
+        { operacionId: validacionId, tipo: "LIBERACION", estadoIntegracion: "CONFIRMADA" },
+        { operacionId: operacionCierreId, tipo: "CIERRE", estadoIntegracion: confirmado ? "CONFIRMADA" : "PENDIENTE" },
+      ],
+    })));
+    pagina("COORDINADOR_REGIONAL");
+    const espera = "Cierre solicitado. La resolución espera la confirmación nacional.";
+    expect(await screen.findByText(espera)).toBeInTheDocument();
+    expect(screen.queryByText("Cierre confirmado.")).not.toBeInTheDocument();
+
+    confirmado = true;
+    await usuario.click(screen.getByRole("button", { name: "Actualizar seguimiento" }));
+
+    expect(await screen.findByText("Cierre confirmado.")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("heading", { name: "Seguimiento · RESUELTA" })).toBeInTheDocument();
+    expect(screen.queryByText(espera)).not.toBeInTheDocument();
+  });
+
   it("permite corregir cantidades cuando la API rechaza el comando sin efectos", async () => {
     const usuario = userEvent.setup();
     const solicitudes: unknown[] = [];

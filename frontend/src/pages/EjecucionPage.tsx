@@ -36,6 +36,9 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
   });
   const v = evaluacion.data?.validacion;
   const bloqueada = seguimiento.data?.adjudicaciones.some(a => a.estado !== "REQUIERE_REVISION") ?? false;
+  const cierre = seguimiento.data?.cierre;
+  const operacionCierre = seguimiento.data?.operaciones.find(op => op.operacionId === cierre?.operacionCierreId);
+  const cierreConfirmado = operacionCierre?.estadoIntegracion === "CONFIRMADA";
 
   function identidad(contenido: object): string | null {
     const serializado = JSON.stringify(contenido);
@@ -111,7 +114,9 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
       </div>)}
       {rol === "COORDINADOR_REGIONAL" && <button className="action-button action-primary" disabled={mutation.isPending || !seguimiento.data.puedeSolicitarCierre || seguimiento.data.cierre !== null} onClick={() => mutation.mutate({ ruta: "solicitudes-cierre" })}>Solicitar cierre de emergencia</button>}
       {rol === "COORDINADOR_REGIONAL" && seguimiento.data.operaciones.filter(op => !["PENDIENTE", "CONFIRMADA"].includes(op.estadoIntegracion) || op.etapaPendiente).map(op => <div key={op.operacionId} className="space-y-2 rounded-xl bg-amber-50 p-3"><p>{op.tipo}: {op.estadoIntegracion.replaceAll("_", " ")}{op.etapaPendiente ? ` · ${op.etapaPendiente.replaceAll("_", " ")}` : ""}</p>{op.estadoIntegracion !== "RECHAZO_DEFINITIVO" && <button className="action-button" disabled={mutation.isPending} onClick={() => recuperar(op.operacionId, "REINTENTAR_MISMA_OPERACION")}>Recuperar la misma operación</button>}{op.tipo === "COMPROMISO" && op.estadoIntegracion === "RECHAZO_DEFINITIVO" && <button className="action-button" disabled={mutation.isPending} onClick={() => recuperar(op.operacionId, "VOLVER_A_SELECCION")}>Volver a selección municipal</button>}</div>)}
-      {seguimiento.data.cierre && <p>Cierre solicitado. La resolución espera la confirmación nacional.</p>}
+      {cierre && <p role="status" className={cierreConfirmado ? "rounded-xl bg-emerald-50 p-4 text-emerald-900" : undefined}>
+        {cierreConfirmado ? "Cierre confirmado." : "Cierre solicitado. La resolución espera la confirmación nacional."}
+      </p>}
     </section>}
     {!!comandos.data?.length && <section className="space-y-3"><h2 className="text-xl font-bold">Solicitudes y sincronización</h2>
       {comandos.data.map(c => <div key={c.comandoId} className="rounded-xl border border-slate-200 p-4"><p>{c.estado.replaceAll("_", " ")}</p>{c.error && <p>{c.error}</p>}{c.estado !== "COMPLETADA" && <button className="action-button" disabled={mutation.isPending || c.estado === "EN_PROGRESO"} onClick={() => mutation.mutate({ ruta: `comandos-bonita/${c.comandoId}/reintentar` })}>Reintentar sincronización</button>}</div>)}
