@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { formatearCantidad } from "../utils/cantidades";
+import { formatearCantidad, formatearCantidadExactaParaFormulario } from "../utils/cantidades";
 import { emergenciaResumenSchema } from "./convocatoria";
 
 export const estadosOferta = [
@@ -41,6 +41,12 @@ function milesimas(valor: string): bigint | null {
   if (!cantidadOfrecidaPattern.test(valor)) return null;
   const [entero, fraccion = ""] = valor.replace(",", ".").split(".");
   return BigInt(entero + fraccion.padEnd(3, "0"));
+}
+
+export function formatearCantidadAporte(valor: string): string {
+  return cantidadOfrecidaPattern.test(valor)
+    ? formatearCantidadExactaParaFormulario(valor.replace(",", "."))
+    : valor;
 }
 
 export function calcularTotalAportes(

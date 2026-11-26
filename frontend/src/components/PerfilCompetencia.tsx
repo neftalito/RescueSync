@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ApiError } from "../api/client";
 import type { PerfilCompetencia } from "../schemas/perfiles";
+import { formatearCantidad } from "../utils/cantidades";
 import { ListadoLocal } from "./ListadoProgresivo";
 
 export function ResumenCompetencia({ perfil }: { perfil: PerfilCompetencia | null }): ReactElement {
@@ -14,9 +15,9 @@ export function ResumenCompetencia({ perfil }: { perfil: PerfilCompetencia | nul
           {(visibles) => <ul className="space-y-3">{visibles.map(c => <li key={c.capacidadId} className="rounded-xl border border-slate-200 p-4">
             <h3 className="font-semibold">{c.nombre}</h3>
             <dl className="mt-2 flex flex-wrap gap-4 text-sm">
-              <div><dt>Total</dt><dd>{c.cantidadTotal} {c.unidad}</dd></div>
-              <div><dt>Comprometido</dt><dd>{c.cantidadComprometida} {c.unidad}</dd></div>
-              <div><dt>Disponible</dt><dd>{c.cantidadDisponible} {c.unidad}</dd></div>
+              <div><dt>Total</dt><dd>{formatearCantidad(c.cantidadTotal)} {c.unidad}</dd></div>
+              <div><dt>Comprometido</dt><dd>{formatearCantidad(c.cantidadComprometida)} {c.unidad}</dd></div>
+              <div><dt>Disponible</dt><dd>{formatearCantidad(c.cantidadDisponible)} {c.unidad}</dd></div>
             </dl>
           </li>)}</ul>}
         </ListadoLocal>}

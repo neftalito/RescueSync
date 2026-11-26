@@ -236,6 +236,12 @@ describe("OfertaForm", () => {
     await user.click(screen.getByRole("button", { name: "Agregar recurso" }));
     await user.selectOptions(screen.getByLabelText("Recurso"), tanque1!.id);
     const primeraCantidad = screen.getByLabelText("Cantidad del recurso");
+    expect(primeraCantidad).toHaveValue("");
+    await user.type(primeraCantidad, "250.5");
+    await user.tab();
+    expect(primeraCantidad).toHaveValue("250,50");
+
+    await user.clear(primeraCantidad);
     await user.type(primeraCantidad, "1000,001");
     await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
     expect(await screen.findByText("La cantidad ofrecida no puede superar 1.000,00 litros.")).toBeInTheDocument();
@@ -246,7 +252,7 @@ describe("OfertaForm", () => {
     await user.click(screen.getByRole("button", { name: "Agregar recurso" }));
     await user.selectOptions(screen.getAllByLabelText("Recurso")[1]!, tanque2!.id);
     await user.type(screen.getAllByLabelText("Cantidad del recurso")[1]!, "0,375");
-    expect(total).toHaveTextContent("250,5");
+    expect(total).toHaveTextContent(/^250,50$/);
 
     await user.click(screen.getAllByRole("button", { name: "Quitar recurso" })[1]!);
     expect(total).toHaveTextContent("250,125");
@@ -483,8 +489,11 @@ describe("OfertaForm", () => {
     const total = await screen.findByLabelText("Cantidad ofrecida");
     expect(total).toHaveTextContent("250,501");
     const cantidad = screen.getByLabelText("Cantidad del recurso");
+    expect(cantidad).toHaveValue("250,501");
     await user.clear(cantidad);
-    await user.type(cantidad, "251,125");
+    await user.type(cantidad, "251.125");
+    await user.tab();
+    expect(cantidad).toHaveValue("251,125");
     expect(total).toHaveTextContent("251,125");
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
 

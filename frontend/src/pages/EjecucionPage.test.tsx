@@ -52,6 +52,47 @@ describe("Evaluación y ejecución", () => {
     expect(csrf).toBe("csrf-firmado");
   });
 
+  it("muestra la cobertura con dos decimales", async () => {
+    server.use(http.get(`${base}/ofertas-validadas`, () => HttpResponse.json({
+      ...evaluacion,
+      validacion: {
+        ...evaluacion.validacion,
+        lotesCompatiblesCubiertos: false,
+        cobertura: [{ loteId: 1, cantidadRequerida: "5.000", cantidadAsignable: "3.000", faltante: "2.000", unidad: "personas", aportes: [] }],
+      },
+    })));
+    pagina("COORDINADOR_REGIONAL");
+    expect(await screen.findByText("Lote 1: 3,00 de 5,00 personas; faltante 2,00.")).toBeInTheDocument();
+    expect(screen.queryByText(/3\.000/)).not.toBeInTheDocument();
+  });
+
+  it("muestra el perfil de la oferta con dos decimales", async () => {
+    server.use(http.get(`${base}/ofertas-validadas`, () => HttpResponse.json({
+      ...evaluacion,
+      diagnosticos: [{
+        ofertaId: 10,
+        ongId: 3,
+        perfilCompetencia: {
+          ongId: "00000000-0000-4000-8000-000000000103",
+          nombre: "Ayuda Sin Fronteras",
+          estadoOng: "HABILITADA",
+          evaluadoEn: "2026-11-26T19:00:00Z",
+          capacidadesDeclaradas: [{
+            capacidadId: "00000000-0000-4000-8000-000000000104",
+            codigo: "PP", nombre: "Personal paramédico", tipo: "PERSONAL",
+            unidad: "personas", admiteFracciones: false,
+            cantidadTotal: "30.000", cantidadComprometida: "0.000", cantidadDisponible: "30.000",
+          }],
+        },
+        motivos: [{ codigo: "ONGC", mensaje: "Perfil informativo." }],
+      }],
+    })));
+    pagina("COORDINADOR_REGIONAL");
+    expect(await screen.findAllByText("30,00 personas")).toHaveLength(2);
+    expect(screen.getByText("0,00 personas")).toBeInTheDocument();
+    expect(screen.queryByText(/30\.000|0\.000/)).not.toBeInTheDocument();
+  });
+
   it("conserva la identidad al reintentar una respuesta perdida", async () => {
     const usuario = userEvent.setup();
     const solicitudes: unknown[] = [];

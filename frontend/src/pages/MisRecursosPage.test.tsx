@@ -178,9 +178,9 @@ describe("Mis recursos nacionales", () => {
   it("describe recursos sin certificados ni permisos por riesgo", async () => {
     renderPage("perfil-competencia");
     expect(await screen.findByRole("heading", { name: "Ambulancias" })).toBeInTheDocument();
-    expect(screen.getByText("10.000 vehículos")).toBeInTheDocument();
-    expect(screen.getByText("4.000 vehículos")).toBeInTheDocument();
-    expect(screen.getByText("6.000 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("10,00 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("4,00 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("6,00 vehículos")).toBeInTheDocument();
     expect(screen.queryByText(/riesgo permitido/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/acreditaciones/i)).not.toBeInTheDocument();
   });
@@ -191,7 +191,7 @@ describe("Mis recursos nacionales", () => {
     })));
     renderPage("perfil-competencia");
     expect(await screen.findByRole("heading", { name: "Ambulancias" })).toBeInTheDocument();
-    expect(screen.getByText("0.000 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("0,00 vehículos")).toBeInTheDocument();
   });
 
   it("muestra un perfil vacío sin exigir validación", async () => {
@@ -223,6 +223,47 @@ describe("Mis recursos nacionales", () => {
       await screen.findByText("ONG de prueba · Activa"),
     ).toBeInTheDocument();
   });
+  it("informa el mínimo exacto al editar un recurso fraccionable", async () => {
+    recursos = [{
+      ...recurso,
+      unidad: "litros",
+      admiteFracciones: true,
+      cantidadComprometida: "4.004",
+      cantidadDisponible: "5.996",
+    }];
+    const solicitudes: unknown[] = [];
+    server.use(http.patch(`${base}/recursos/${recurso.id}`, async ({ request }) => {
+      solicitudes.push(await request.json());
+      return HttpResponse.json({
+        ...recursos[0],
+        cantidadTotal: "4.004",
+        cantidadDisponible: "0.000",
+      });
+    }));
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Editar AMB-01" }));
+    const cantidad = screen.getByLabelText(/Nuevo total/);
+    const guardar = screen.getByRole("button", { name: "Guardar cantidad" });
+
+    await user.clear(cantidad);
+    await user.type(cantidad, "4.00");
+    await user.click(guardar);
+    expect(await screen.findByText(
+      "El total debe ser al menos 4,004, que ya está comprometido.",
+    )).toBeInTheDocument();
+    expect(solicitudes).toHaveLength(0);
+
+    await user.clear(cantidad);
+    await user.type(cantidad, "4,004");
+    await user.click(guardar);
+    expect(await screen.findByText("Cantidad actualizada.")).toBeInTheDocument();
+    expect(solicitudes).toEqual([{
+      cantidadTotal: "4.004",
+      actualizadoEn: recurso.actualizadoEn,
+    }]);
+  });
+
   it("muestra revisión administrativa ante revocación del acceso", async () => {
     server.use(
       http.get(`${base}/perfil-competencia`, () => {
@@ -367,7 +408,7 @@ describe("Mis recursos nacionales", () => {
     await user.type(screen.getByLabelText(/Nuevo total/), "3");
     await user.click(screen.getByRole("button", { name: "Guardar cantidad" }));
     expect(
-      await screen.findByText(/El total debe ser al menos 4.000/),
+      await screen.findByText(/El total debe ser al menos 4,00/),
     ).toBeInTheDocument();
     expect(llamadas).toBe(0);
     await user.clear(screen.getByLabelText(/Nuevo total/));
@@ -377,7 +418,7 @@ describe("Mis recursos nacionales", () => {
       await screen.findByText("Cantidad actualizada."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(await screen.findByText("12.000")).toBeInTheDocument();
+    expect(await screen.findByText("12,00")).toBeInTheDocument();
   });
   it("muestra revisión administrativa sin pedir contraseña", async () => {
     server.use(

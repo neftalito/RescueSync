@@ -18,6 +18,7 @@ import { useRegistrarOferta } from "../hooks/useRegistrarOferta";
 import type { LotePublicado } from "../schemas/convocatoria";
 import {
   calcularTotalAportes,
+  formatearCantidadAporte,
   ofertaFormSchema,
   tipoAporteLabels,
   tiposAporte,
@@ -25,6 +26,7 @@ import {
 } from "../schemas/oferta";
 import {
   formatearCantidad,
+  formatearCantidadExactaParaFormulario,
   formatearCantidadParaFormulario,
 } from "../utils/cantidades";
 
@@ -68,6 +70,7 @@ export function OfertaForm({
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<OfertaFormData>({
     resolver: zodResolver(ofertaFormSchema),
@@ -159,7 +162,10 @@ export function OfertaForm({
           cantidad_publicada: lote?.cantidad_publicada ?? "0",
           unidad: item.unidad,
           requiere_desglose: Boolean(lote?.capacidad_nacional_id),
-          aportes: (item.aportes ?? []).map((a) => ({ recurso_nacional_id: a.recurso_nacional_id, cantidad: a.cantidad })),
+          aportes: (item.aportes ?? []).map((a) => ({
+            recurso_nacional_id: a.recurso_nacional_id,
+            cantidad: formatearCantidadAporte(a.cantidad),
+          })),
         };
       }),
     });
@@ -507,7 +513,7 @@ export function OfertaForm({
                       {lote?.capacidad_nacional_id && <>
                         {recursosQuery.isPending && <p role="status">Cargando tu inventario…</p>}
                         {recursosQuery.isError && <p role="alert">{recursosQuery.error instanceof ApiError ? recursosQuery.error.message : "No pudimos consultar el inventario."} <Link to="/mis-recursos">Ir a Mis recursos</Link></p>}
-                        <RecursosOferta index={index} control={control} register={register} errores={errors} recursos={(recursosQuery.isError ? [] : recursosQuery.data ?? []).filter((r) => r.activo && r.capacidadId === lote.capacidad_nacional_id && r.unidad === lote.unidad_publicada)} />
+                        <RecursosOferta index={index} control={control} register={register} setValue={setValue} errores={errors} recursos={(recursosQuery.isError ? [] : recursosQuery.data ?? []).filter((r) => r.activo && r.capacidadId === lote.capacidad_nacional_id && r.unidad === lote.unidad_publicada)} />
                       </>}
                       <input
                         type="hidden"
@@ -558,7 +564,7 @@ export function OfertaForm({
                                 aria-describedby={cantidadErrorId}
                                 className="mt-2 rounded-xl bg-slate-100 px-4 py-3 font-semibold tabular-nums text-slate-900"
                               >
-                                {totalAportes?.replace(".", ",") ?? "—"}
+                                {totalAportes === null ? "—" : formatearCantidadExactaParaFormulario(totalAportes)}
                               </output>
                             ) : (
                               <input

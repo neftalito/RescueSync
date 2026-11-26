@@ -2,6 +2,7 @@ import { ListadoLocal } from "./ListadoProgresivo";
 import type { ReactElement, ReactNode } from "react";
 import type { IndicadoresProceso as Indicadores } from "../schemas/metricas";
 import { gravedadLabels } from "../schemas/emergencia";
+import { formatearCantidad } from "../utils/cantidades";
 import { etiquetaUmbral, porcentajeMonitoreo, horasMonitoreo } from "../utils/formatoMonitoreo";
 import { GraficoMetricas } from "./GraficoMetricas";
 
@@ -59,7 +60,7 @@ export function IndicadoresProceso({ datos, umbralAportes, umbralResolucion }: {
     <TablaMonitoreo titulo="ONG por recursos adjudicados y cumplimiento"
       columnas={["ONG", "Capacidad", "Unidad", "Cantidad adjudicada", "Aportes", "Finalizados", "Pendientes", "Finalizados con tiempo medido", `Finalizados en hasta ${limiteAportes}`, `% en hasta ${limiteAportes}`]}
       filas={datos.ranking_ongs.map(r => [
-        r.ong, r.capacidad, r.unidad, r.cantidad, r.aportes, r.finalizados, r.aportes - r.finalizados,
+        r.ong, r.capacidad, r.unidad, formatearCantidad(r.cantidad), r.aportes, r.finalizados, r.aportes - r.finalizados,
         r.finalizados_con_tiempo, r.dentro_del_umbral, porcentajeMonitoreo(r.tasa_dentro_del_umbral),
       ])} />
     <TablaMonitoreo titulo="Cobertura efectiva al cierre" columnas={["Cobertura", "Cierres", "Proporción"]}
@@ -67,11 +68,11 @@ export function IndicadoresProceso({ datos, umbralAportes, umbralResolucion }: {
       descripcion={cobertura.sin_evidencia ? `${cobertura.sin_evidencia} emergencias resueltas sin evidencia completa de cobertura.` : undefined}
       vacio="Sin cierres con cantidades cumplidas verificables para estos filtros." />
     <TablaMonitoreo titulo="Demanda por rubro" columnas={["Capacidad", "Unidad", "Necesidad publicada"]}
-      filas={datos.demanda_rubros.map(r => [r.capacidad, r.unidad, r.cantidad])}
+      filas={datos.demanda_rubros.map(r => [r.capacidad, r.unidad, formatearCantidad(r.cantidad)])}
       vacio="Sin necesidades publicadas para los filtros seleccionados." />
     {movilizados && <TablaMonitoreo titulo="Suministros movilizados"
       columnas={["Capacidad", "Unidad", "Cantidad movilizada"]}
-      filas={movilizados.cantidades.map(r => [r.capacidad, r.unidad, r.cantidad])}
+      filas={movilizados.cantidades.map(r => [r.capacidad, r.unidad, formatearCantidad(r.cantidad)])}
       descripcion={`${movilizados.participaciones_con_registro} participaciones liberadas con cantidades declaradas · ${movilizados.participaciones_sin_registro} sin registro.`}
       vacio="Sin cantidades movilizadas declaradas para estos filtros." />}
     {consorcios && <article className="rounded-2xl border border-slate-200 bg-white p-5">

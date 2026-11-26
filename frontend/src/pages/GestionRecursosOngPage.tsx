@@ -9,6 +9,7 @@ import { ApiError } from "../api/client";
 import { PerfilCompetenciaPanel } from "../components/PerfilCompetencia";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
 import type { Session } from "../schemas/auth";
+import { formatearCantidad, formatearCantidadExactaParaFormulario } from "../utils/cantidades";
 import {
   cantidadEnMiles,
   cantidadFormSchema,
@@ -316,9 +317,9 @@ function GestionRecursosOngPage({
                           </p>
                           <dl className="my-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                             {[
-                              ["Total", recurso.cantidadTotal],
-                              ["Comprometido", recurso.cantidadComprometida],
-                              ["Disponible", recurso.cantidadDisponible],
+                              ["Total", formatearCantidad(recurso.cantidadTotal)],
+                              ["Comprometido", formatearCantidad(recurso.cantidadComprometida)],
+                              ["Disponible", formatearCantidad(recurso.cantidadDisponible)],
                             ].map(([label, value]) => (
                               <div key={label}>
                                 <dt className="text-slate-600">{label}</dt>
@@ -646,8 +647,9 @@ function CantidadFormView({
             return;
           }
           if (cantidad < cantidadEnMiles(recurso.cantidadComprometida)) {
+            const minimo = formatearCantidadExactaParaFormulario(recurso.cantidadComprometida);
             setError("cantidadTotal", {
-              message: `El total debe ser al menos ${recurso.cantidadComprometida}, que ya está comprometido.`,
+              message: `El total debe ser al menos ${minimo}, que ya está comprometido.`,
             });
             return;
           }
@@ -670,7 +672,9 @@ function CantidadFormView({
           aria-describedby={
             errors.cantidadTotal ? "editar-cantidad-error" : undefined
           }
-          {...register("cantidadTotal")}
+          {...register("cantidadTotal", {
+            setValueAs: (valor: string) => valor.replace(",", "."),
+          })}
         />
         {errors.cantidadTotal && (
           <span id="editar-cantidad-error" role="alert">

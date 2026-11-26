@@ -174,7 +174,7 @@ test("auditor usa gráficos, filtros y exportaciones sin desbordamiento", async 
   await expect(page.getByRole("heading", { name: "Resultados del proceso" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Finalizados en hasta 12 h" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Cierres en hasta 1 mes (30 días)" })).toBeVisible();
-  await expect(page.getByRole("table", { name: "Suministros movilizados" })).toContainText("90.125");
+  await expect(page.getByRole("table", { name: "Suministros movilizados" })).toContainText("90,13");
   await expect(page.getByText(/1 de 1 cierres con adjudicación verificable/)).toBeVisible();
   await expect(page.getByRole("table", { name: "Tareas en ejecución y pendientes" })).toContainText("Revisar necesidades");
   const csvDescargado = page.waitForEvent("download");

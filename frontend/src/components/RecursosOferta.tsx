@@ -1,16 +1,18 @@
-import { useFieldArray, type Control, type FieldErrors, type UseFormRegister } from "react-hook-form";
-import type { ReactElement } from "react";
+import { useFieldArray, type Control, type FieldErrors, type UseFormRegister, type UseFormSetValue } from "react-hook-form";
+import type { FocusEvent, ReactElement } from "react";
 import { ActionIcon } from "./ActionIcon";
-import type { OfertaFormData } from "../schemas/oferta";
+import { formatearCantidadAporte, type OfertaFormData } from "../schemas/oferta";
 import type { Recurso } from "../schemas/inventario";
+import { formatearCantidad } from "../utils/cantidades";
 interface Props {
     index: number;
     control: Control<OfertaFormData>;
     register: UseFormRegister<OfertaFormData>;
+    setValue: UseFormSetValue<OfertaFormData>;
     errores: FieldErrors<OfertaFormData>;
     recursos: Recurso[];
 }
-export function RecursosOferta({ index, control, register, errores, recursos }: Props): ReactElement {
+export function RecursosOferta({ index, control, register, setValue, errores, recursos }: Props): ReactElement {
     const { fields, append, remove } = useFieldArray({ control, name: `items.${index}.aportes` });
     const error = errores.items?.[index]?.aportes;
     return <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
@@ -20,11 +22,24 @@ export function RecursosOferta({ index, control, register, errores, recursos }: 
       <label>Recurso
         <select className="mt-1 w-full rounded border border-slate-300 bg-white p-2" {...register(`items.${index}.aportes.${aporteIndex}.recurso_nacional_id`)}>
           <option value="">Elegí un recurso</option>
-          {recursos.map((r) => <option key={r.id} value={r.id}>{r.nombre} · {r.cantidadDisponible} {r.unidad} disponibles</option>)}
+          {recursos.map((r) => <option key={r.id} value={r.id}>{r.nombre} · {formatearCantidad(r.cantidadDisponible)} {r.unidad} disponibles</option>)}
         </select>
       </label>
       <label>Cantidad del recurso
-        <input className="mt-1 w-full rounded border border-slate-300 bg-white p-2" inputMode="decimal" placeholder="Ej.: 10" {...register(`items.${index}.aportes.${aporteIndex}.cantidad`)}/>
+        <input
+          className="mt-1 w-full rounded border border-slate-300 bg-white p-2"
+          inputMode="decimal"
+          placeholder="Ej.: 10,00"
+          {...register(`items.${index}.aportes.${aporteIndex}.cantidad`, {
+            onBlur: (event: FocusEvent<HTMLInputElement>) => {
+              const valor = event.target.value;
+              const cantidad = formatearCantidadAporte(valor);
+              if (cantidad !== valor) {
+                setValue(`items.${index}.aportes.${aporteIndex}.cantidad`, cantidad, { shouldDirty: true });
+              }
+            },
+          })}
+        />
       </label>
       <button
         type="button"

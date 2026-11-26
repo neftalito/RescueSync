@@ -49,10 +49,10 @@ describe("resultados del proceso", () => {
     expect(demanda.getAllByRole("columnheader").map(c => c.textContent)).toEqual([
       "Capacidad", "Unidad", "Necesidad publicada",
     ]);
-    expect(demanda.getByRole("cell", { name: "200.250" })).toBeInTheDocument();
-    expect(within(screen.getByRole("table", { name: "Suministros movilizados" })).getByRole("cell", { name: "80.125" })).toBeInTheDocument();
+    expect(demanda.getByRole("cell", { name: "200,25" })).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Suministros movilizados" })).getByRole("cell", { name: "80,13" })).toBeInTheDocument();
     expect(screen.getByText(/1 de 1 cierres con adjudicación verificable/)).toBeInTheDocument();
-    expect(screen.getByText("100.125")).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "ONG por recursos adjudicados y cumplimiento" })).getByRole("cell", { name: "100,13" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Finalizados en hasta 12 h" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Cierres en hasta 1 semana" })).toBeInTheDocument();
     expect(screen.getAllByText("Sin datos")).toHaveLength(3);
