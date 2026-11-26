@@ -100,6 +100,11 @@ async function simularApi(
             reiteradas: [{ emergencia_id: 9, reaperturas: 1, reformulaciones: 0 }],
             ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 1, finalizados: 1, con_plazo_finalizados: 1, en_termino: 1, tasa_cumplimiento: 100 }],
             cobertura_cierres: { total: 1, parcial: 0, proporcion_total: 100, proporcion_parcial: 0 },
+            suministros_movilizados: {
+              cantidades: [{ capacidad: "AGUA", unidad: "litros", cantidad: "90.125" }],
+              participaciones_con_registro: 1, participaciones_sin_registro: 0,
+            },
+            resolucion_consorcios: { con_consorcio: 1, con_adjudicacion_verificable: 1, sin_adjudicacion_verificable: 0, proporcion: 100 },
             demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250" }],
             alerta_adjudicacion_promedio_segundos: 3600, alerta_adjudicacion_muestras: 1,
             definiciones: ["Se seleccionan emergencias por fecha de alta."],
@@ -157,6 +162,8 @@ test("auditor usa gráficos, filtros y exportaciones sin desbordamiento", async 
   expect(contenido).toContain('"bonita": "PARCIAL"');
   expect(contenido).toContain('"cantidad": "100.125"');
   await expect(page.getByRole("heading", { name: "Resultados del proceso" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Suministros movilizados" })).toContainText("90.125");
+  await expect(page.getByText(/1 de 1 cierres con adjudicación verificable/)).toBeVisible();
   await expect(page.getByRole("table", { name: "Tareas en ejecución y pendientes" })).toContainText("Revisar necesidades");
   const csvDescargado = page.waitForEvent("download");
   await page.getByRole("button", { name: "Exportar" }).click();

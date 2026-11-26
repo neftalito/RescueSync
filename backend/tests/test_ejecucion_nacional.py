@@ -1,6 +1,6 @@
 """Camino bilateral y rechazos de correlación/idempotencia sobre PostgreSQL real."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -31,9 +31,12 @@ from app.db.models.ejecucion import ComandoBonita, EvaluacionLocal, OperacionNac
 from app.db.models.enums import EstadoTareaBonita
 from app.schemas import ejecucion as dto
 from app.schemas.bonita import OfertasConsolidadasResponse
+from app.schemas.metricas import ZONA_REPORTES, FiltrosMetricas
 from app.services import ejecucion as servicio
 from app.services import evaluaciones
+from app.services.consorcios import confirmar_consorcio, proponer_consorcio
 from app.services.evaluaciones import IntegracionLocalError, objeto
+from app.services.indicadores_proceso import obtener_indicadores
 
 __all__ = ["capacidad", "client", "escenario"]
 
@@ -55,14 +58,27 @@ def coordinador(db_session: Session, escenario: Escenario) -> Usuario:
 
 
 def preparar(
-    db: Session, esc: Escenario, cap: UUID, dos_ongs: bool = False
+    db: Session,
+    esc: Escenario,
+    cap: UUID,
+    dos_ongs: bool = False,
+    consorcio: bool = False,
 ) -> dto.PerfilesRequest:
-    presentar(db, esc, esc.representante, cap, "300")
+    primera = presentar(db, esc, esc.representante, cap, "300")
     if dos_ongs:
         miembro = _usuario(
             db, esc.otra_ong, RolUsuario.REPRESENTANTE_ONG, "segunda-ejecucion@test.org"
         )
         presentar(db, esc, miembro, cap, "300")
+        if consorcio:
+            conjunta = proponer_consorcio(
+                db,
+                esc.representante,
+                primera.id,
+                primera.version_bloqueo,
+                [esc.otra_ong.id],
+            )
+            confirmar_consorcio(db, miembro, conjunta.id, conjunta.version_bloqueo)
     cerrar(db, esc)
     esc.emergencia.estado = EstadoEmergencia.EN_EVALUACION
     db.commit()
@@ -125,7 +141,11 @@ def preparar(
 
 
 def adjudicar(
-    db: Session, esc: Escenario, coord: Usuario, datos: dto.PerfilesRequest
+    db: Session,
+    esc: Escenario,
+    coord: Usuario,
+    datos: dto.PerfilesRequest,
+    plazos: dto.PlazosEjecucion | None = None,
 ) -> dto.AdjudicacionPreparada:
     evaluaciones.guardar_perfiles(db, esc.emergencia.id, 4242, datos)
     decision = servicio.decidir(
@@ -148,6 +168,7 @@ def adjudicar(
         esc.emergencia,
         esc.operador_municipal,
         dto.AdjudicacionRequest(
+            **(plazos or dto.PlazosEjecucion()).model_dump(),
             adjudicacion_id=uuid4(),
             validacion_id=datos.validacion_id,
             revision=datos.revision,
@@ -158,6 +179,15 @@ def adjudicar(
         ),
     )
     return servicio.preparacion_adjudicacion(db, adj, 1)
+
+
+def filtros_del_caso(escenario: Escenario) -> FiltrosMetricas:
+    fecha = escenario.emergencia.creada_en.astimezone(ZONA_REPORTES).date()
+    return FiltrosMetricas(
+        fecha_desde=fecha,
+        fecha_hasta=fecha,
+        municipio_id=escenario.emergencia.municipio_id,
+    )
 
 
 def confirmacion(prep: dto.AdjudicacionPreparada) -> dto.ConfirmarCompromisosRequest:
@@ -350,10 +380,17 @@ def test_timeout_compromiso_bloquea_nueva_seleccion_y_conflicto_replay(
     )
 
 
+@pytest.mark.parametrize("consorcio", [False, True])
 def test_dos_ongs_liberan_independientemente_y_cierre_exige_confirmacion(
-    db_session: Session, escenario: Escenario, capacidad: UUID, coordinador: Usuario
+    db_session: Session,
+    escenario: Escenario,
+    capacidad: UUID,
+    coordinador: Usuario,
+    consorcio: bool,
 ) -> None:
-    datos = preparar(db_session, escenario, capacidad, dos_ongs=True)
+    datos = preparar(
+        db_session, escenario, capacidad, dos_ongs=True, consorcio=consorcio
+    )
     prep = adjudicar(db_session, escenario, coordinador, datos)
     r = confirmacion(prep)
     respuesta = servicio.confirmar_compromisos(db_session, escenario.emergencia, r)
@@ -421,6 +458,12 @@ def test_dos_ongs_liberan_independientemente_y_cierre_exige_confirmacion(
     resolucion = servicio.resolver(db_session, escenario.emergencia, payload)
     assert resolucion.estado == EstadoEmergencia.RESUELTA
     assert servicio.resolver(db_session, escenario.emergencia, payload) == resolucion
+    indicadores = obtener_indicadores(db_session, filtros_del_caso(escenario))
+    assert len(indicadores.ranking_ongs) == 2
+    assert all(r.finalizados == 1 for r in indicadores.ranking_ongs)
+    assert indicadores.resolucion_consorcios.con_adjudicacion_verificable == 1
+    assert indicadores.resolucion_consorcios.con_consorcio == int(consorcio)
+    assert indicadores.resolucion_consorcios.proporcion == (100 if consorcio else 0)
 
 
 @pytest.mark.parametrize("fallo", ["items", "proyecto", "duplicados"])
@@ -481,6 +524,15 @@ def test_alternativas_conservan_historial_y_no_duplican_ronda(
         if accion == "REABRIR"
         else escenario.emergencia.estado == EstadoEmergencia.EN_COORDINACION
     )
+    filtros = filtros_del_caso(escenario)
+    assert obtener_indicadores(db_session, filtros).reiteradas == []
+    db_session.get(ComandoBonita, d.id).estado = EstadoTareaBonita.COMPLETADA
+    db_session.flush()
+    reporte = obtener_indicadores(db_session, filtros)
+    fila = reporte.reiteradas[0]
+    assert fila.emergencia_id == escenario.emergencia.id
+    assert fila.reaperturas == int(accion == "REABRIR")
+    assert fila.reformulaciones == int(accion == "REFORMULAR")
 
 
 def test_endpoints_callback_y_rbac_no_confian_en_caso_o_ids_del_cliente(
@@ -541,6 +593,7 @@ def test_endpoints_callback_y_rbac_no_confian_en_caso_o_ids_del_cliente(
     assert csrf
 
 
+@pytest.mark.parametrize("con_registro", [False, True])
 def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver(
     client: TestClient,
     db_session: Session,
@@ -548,6 +601,7 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
     capacidad: UUID,
     coordinador: Usuario,
     monkeypatch: pytest.MonkeyPatch,
+    con_registro: bool,
 ) -> None:
     from app.integrations.bonita.cliente import ClienteBonita
 
@@ -562,7 +616,15 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
     }
     base = f"/api/v1/emergencias/{escenario.emergencia.id}"
     datos = preparar(db_session, escenario, capacidad)
-    prep = adjudicar(db_session, escenario, coordinador, datos)
+    plazo = datetime.now(UTC) + timedelta(hours=1)
+    plazos = (
+        dto.PlazosEjecucion(plazo_aportes_en=plazo, plazo_resolucion_en=plazo)
+        if con_registro
+        else None
+    )
+    prep = adjudicar(db_session, escenario, coordinador, datos, plazos)
+    filtros = filtros_del_caso(escenario)
+    assert obtener_indicadores(db_session, filtros).ranking_ongs == []
     consulta = client.get(
         f"{base}/adjudicaciones/{prep.adjudicacion_id}?version=1", headers=headers
     )
@@ -570,20 +632,67 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
         consulta.status_code == 200
         and consulta.json()["huellaRequest"] == prep.huella_request
     )
+    confirmacion_nacional = confirmacion(prep)
     confirmada = client.post(
         f"{base}/compromisos/confirmacion",
         headers=headers,
-        json=objeto(confirmacion(prep)),
+        json=objeto(confirmacion_nacional),
     )
     assert confirmada.status_code == 200
     participante = confirmada.json()["participantes"][0]
+    pendiente = obtener_indicadores(db_session, filtros).ranking_ongs[0]
+    assert pendiente.cantidad == Decimal(100)
+    assert pendiente.finalizados == 0
     csrf = _autenticar_con_cookie(client, escenario.representante)
+    ruta_finalizacion = (
+        f"{base}/participaciones/{participante['participacionId']}/finalizacion"
+    )
+    lotes = participante["lotes"]
+    assert len(lotes) == 1 and Decimal(lotes[0]["cantidad"]) == Decimal(100)
+    entrega = {
+        "loteId": lotes[0]["loteId"],
+        "movilizada": "80.500",
+        "cumplida": "70.250",
+    }
+    if con_registro:
+        for invalida in (
+            {**entrega, "loteId": escenario.lote_sin_publicar.id},
+            {**entrega, "movilizada": "101"},
+            {**entrega, "cumplida": "81"},
+        ):
+            assert (
+                client.post(
+                    ruta_finalizacion,
+                    headers={"X-CSRF-Token": csrf},
+                    json={"cantidades": [invalida]},
+                ).status_code
+                == 422
+            )
     finalizada = client.post(
-        f"{base}/participaciones/{participante['participacionId']}/finalizacion",
+        ruta_finalizacion,
         headers={"X-CSRF-Token": csrf},
+        json={"cantidades": [entrega]} if con_registro else None,
     )
     assert finalizada.status_code == 200
     fid = finalizada.json()["finalizacionId"]
+    if con_registro:
+        assert (
+            client.post(
+                ruta_finalizacion,
+                headers={"X-CSRF-Token": csrf},
+                json={"cantidades": [entrega]},
+            ).json()["finalizacionId"]
+            == fid
+        )
+        assert (
+            client.post(
+                ruta_finalizacion,
+                headers={"X-CSRF-Token": csrf},
+                json={"cantidades": [{**entrega, "cumplida": "69"}]},
+            ).status_code
+            == 409
+        )
+    assert obtener_indicadores(db_session, filtros).ranking_ongs[0].finalizados == 0
     operaciones = client.get(
         f"{base}/finalizaciones/{fid}/liberaciones", headers=headers
     )
@@ -635,6 +744,73 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
     )
     response = client.post(f"{base}/resolver", headers=headers, json=objeto(payload))
     assert response.status_code == 200 and response.json()["estado"] == "RESUELTA"
+
+    auditor = Usuario(
+        email="auditor-ejecucion@test.org",
+        rol=RolUsuario.AUDITOR_DIRECTIVO,
+        password_hash=escenario.representante.password_hash,
+    )
+    db_session.add(auditor)
+    db_session.flush()
+    _autenticar_con_cookie(client, auditor)
+    metricas = client.get(
+        "/api/v1/metricas", params=filtros.model_dump(mode="json", exclude_none=True)
+    )
+    assert metricas.status_code == 200
+    reporte = metricas.json()["indicadores_proceso"]
+    assert reporte["emergencias_con_hechos"] == 1
+    assert reporte["alerta_adjudicacion_muestras"] == 1
+    assert reporte["alerta_adjudicacion_promedio_segundos"] >= 0
+    assert reporte["reiteradas"] == []
+    assert reporte["demanda_rubros"]
+    ranking = reporte["ranking_ongs"]
+    assert len(ranking) == 1
+    assert ranking[0]["ong_id"] == escenario.ong.id
+    assert Decimal(ranking[0]["cantidad"]) == Decimal(100)
+    assert ranking[0]["finalizados"] == 1
+    assert ranking[0]["tasa_cumplimiento"] == (100 if con_registro else None)
+    resolucion = next(r for r in reporte["resolucion_por_gravedad"] if r["resueltas"])
+    assert resolucion["cierres_confirmados"] == 1
+    assert resolucion["promedio_segundos"] >= 0
+    assert resolucion["tasa_en_termino"] == (100 if con_registro else None)
+    assert reporte["cobertura_cierres"]["parcial"] == int(con_registro)
+    assert reporte["cobertura_cierres"]["sin_evidencia"] == int(not con_registro)
+    movilizados = reporte["suministros_movilizados"]
+    assert movilizados["participaciones_con_registro"] == int(con_registro)
+    assert movilizados["participaciones_sin_registro"] == int(not con_registro)
+    if con_registro:
+        assert Decimal(movilizados["cantidades"][0]["cantidad"]) == Decimal("80.500")
+    else:
+        assert movilizados["cantidades"] == []
+        fecha_alerta = escenario.emergencia.creada_en.isoformat()
+        legado = client.post(
+            f"{base}/hechos-monitoreo",
+            headers=headers,
+            json={
+                "clave": "adjudicacion:historica",
+                "datos": {
+                    "tipo": "ADJUDICACION_CONFIRMADA",
+                    "ocurrido_en": confirmacion_nacional.confirmacion.registrado_en.isoformat(),
+                    "convocatoria_numero": escenario.convocatoria.numero,
+                    "adjudicacion_ref": "historica",
+                    "alerta_en": fecha_alerta,
+                    "aportes": [
+                        {
+                            "ong_id": escenario.ong.id,
+                            "lote_id": lotes[0]["loteId"],
+                            "cantidad": "100",
+                            "plazo_en": plazo.isoformat(),
+                        }
+                    ],
+                },
+            },
+        )
+        assert legado.status_code == 200, legado.text
+        consolidada = obtener_indicadores(db_session, filtros).ranking_ongs
+        assert len(consolidada) == 1
+        assert consolidada[0].cantidad == Decimal(100)
+        assert consolidada[0].aportes == consolidada[0].finalizados == 1
+        assert consolidada[0].tasa_cumplimiento == 100
 
 
 def test_recuperacion_no_vuelve_a_seleccion_ante_incertidumbre(

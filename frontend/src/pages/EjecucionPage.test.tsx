@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -41,9 +41,17 @@ describe("Evaluación y ejecución", () => {
     server.use(http.post(`${base}/adjudicaciones`, async ({ request }) => { payload = await request.json(); csrf = request.headers.get("X-CSRF-Token"); return HttpResponse.json({}); }));
     pagina("OPERADOR_MUNICIPAL");
     await usuario.type(await screen.findByLabelText("Cantidad aporte 20"), "6");
+    const plazoAportes = "2099-12-20T15:00";
+    const plazoResolucion = "2099-12-21T15:00";
+    fireEvent.change(screen.getByLabelText("Finalización de los aportes"), { target: { value: plazoAportes } });
+    fireEvent.change(screen.getByLabelText("Resolución de la emergencia"), { target: { value: plazoResolucion } });
     await usuario.click(screen.getByRole("button", { name: "Solicitar adjudicación" }));
     await screen.findByText(/Solicitud guardada/);
-    expect(payload).toMatchObject({ validacionId, revision: 2, aportes: [{ aporteId: 20, cantidad: "6" }] });
+    expect(payload).toMatchObject({
+      validacionId, revision: 2, aportes: [{ aporteId: 20, cantidad: "6" }],
+      plazoAportesEn: new Date(plazoAportes).toISOString(),
+      plazoResolucionEn: new Date(plazoResolucion).toISOString(),
+    });
     expect(csrf).toBe("csrf-firmado");
   });
 
@@ -121,5 +129,41 @@ describe("Evaluación y ejecución", () => {
     expect(await screen.findByText(/Finalización informada; liberación pendiente/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Informar finalización" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Solicitar adjudicación" })).not.toBeInTheDocument();
+  });
+
+  it("envía las cantidades reales y permite declarar cero por lote al finalizar", async () => {
+    const usuario = userEvent.setup();
+    let payload: unknown;
+    server.use(
+      http.get(`${base}/adjudicaciones`, () => HttpResponse.json({
+        ...seguimiento,
+        estado: "EN_EJECUCION",
+        adjudicaciones: [{
+          adjudicacionId: validacionId, estado: "CONFIRMADA", estadoIntegracion: "CONFIRMADA",
+          participantes: [{
+            participacionId, ongId: 2, estado: "EN_EJECUCION", compromisoIds: [validacionId], finalizacionId: null,
+            lotes: [{ loteId: 1, capacidad: "AGUA", cantidad: "20.000", unidad: "litros", admiteFracciones: true }],
+          }],
+        }],
+      })),
+      http.post(`${base}/participaciones/${participacionId}/finalizacion`, async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+    pagina("REPRESENTANTE_ONG");
+    const movilizada = await screen.findByLabelText("Cantidad movilizada");
+    const cumplida = screen.getByLabelText("Cantidad cumplida");
+    await usuario.type(movilizada, "19,125");
+    await usuario.type(cumplida, "20");
+    const finalizar = screen.getByRole("button", { name: "Informar finalización" });
+    await usuario.click(finalizar);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revisá el lote 1");
+    expect(payload).toBeUndefined();
+    await usuario.clear(cumplida);
+    await usuario.type(cumplida, "0");
+    await usuario.click(finalizar);
+    await screen.findByText(/Solicitud guardada/);
+    expect(payload).toEqual({ cantidades: [{ loteId: 1, movilizada: "19.125", cumplida: "0" }] });
   });
 });

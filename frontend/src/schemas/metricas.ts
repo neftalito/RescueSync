@@ -32,6 +32,9 @@ const conteoSchema = z.object({
 const porcentaje = z.number().min(0).max(100).nullable();
 const segundos = z.number().nonnegative().nullable();
 const cantidad = z.string().regex(/^\d+(\.\d+)?$/);
+const cantidadPorRubro = z.object({
+  capacidad: z.string(), unidad: z.string(), cantidad,
+});
 export const indicadoresProcesoSchema = z.object({
   emergencias_con_hechos: z.number().int().nonnegative(),
   emergencias_sin_hechos: z.number().int().nonnegative(),
@@ -56,10 +59,20 @@ export const indicadoresProcesoSchema = z.object({
   cobertura_cierres: z.object({
     total: z.number().int().nonnegative(), parcial: z.number().int().nonnegative(),
     proporcion_total: porcentaje, proporcion_parcial: porcentaje,
+    sin_evidencia: z.number().int().nonnegative().optional(),
   }),
-  demanda_rubros: z.array(z.object({
-    capacidad: z.string(), unidad: z.string(), cantidad,
-  })),
+  demanda_rubros: z.array(cantidadPorRubro),
+  suministros_movilizados: z.object({
+    cantidades: z.array(cantidadPorRubro),
+    participaciones_con_registro: z.number().int().nonnegative(),
+    participaciones_sin_registro: z.number().int().nonnegative(),
+  }).optional(),
+  resolucion_consorcios: z.object({
+    con_consorcio: z.number().int().nonnegative(),
+    con_adjudicacion_verificable: z.number().int().nonnegative(),
+    sin_adjudicacion_verificable: z.number().int().nonnegative(),
+    proporcion: porcentaje,
+  }).optional(),
   alerta_adjudicacion_promedio_segundos: segundos,
   alerta_adjudicacion_muestras: z.number().int().nonnegative(),
   definiciones: z.array(z.string()),

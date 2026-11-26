@@ -1,8 +1,9 @@
 # Monitoreo de procesos
 
-El dashboard del auditor incorpora los seis ejemplos de la página 12 de
-[`Monitoreo de procesos.pptx.pdf`](<./Monitoreo de procesos.pptx.pdf>) y el
-seguimiento de actividades en curso. React consulta FastAPI, que combina
+El dashboard del auditor incorpora indicadores de
+[`Monitoreo de procesos.pptx.pdf`](<./Monitoreo de procesos.pptx.pdf>),
+suministros movilizados, resolución mediante consorcios y seguimiento de
+actividades en curso. React consulta FastAPI, que combina
 PostgreSQL con la API REST de Bonita. El monitoreo no ejecuta tareas ni timers.
 
 ## Alcance y fórmulas
@@ -15,12 +16,14 @@ ocurridos exclusivamente dentro del mes ni una reconstrucción histórica al
 
 | Indicador | Fuente y cálculo |
 | --- | --- |
-| Resolución por gravedad | Resueltas por estado local o cierre confirmado / emergencias de esa gravedad. Se informan cierres con evidencia y resueltas sin evidencia por separado. Tiempo medio: cierre menos alerta explícita. En término: cierres dentro del plazo / cierres con plazo informado, con su tiempo medio propio. |
-| Reaperturas y reformulaciones | Decisiones confirmadas por emergencia y ronda, diferenciando `REABRIR` y `REFORMULAR`. `CONTINUAR_PARCIAL` se conserva sin incrementar esas dos categorías. |
-| Ranking de ONG | Cantidades adjudicadas a cada ONG, por capacidad y unidad. Los miembros de un consorcio cuentan por sus aportes propios. Cumplimiento: aportes finalizados dentro del plazo / aportes finalizados con plazo. Se muestran finalizados y pendientes. |
-| Cobertura del cierre | Total si se cumplieron todos los lotes de la ronda de cierre; parcial si existe un faltante. Proporciones sobre cierres con evidencia completa. |
+| Resolución por gravedad | Resueltas por estado local o cierre confirmado sobre emergencias de esa gravedad. El tiempo se mide desde el alta municipal o la alerta explícita hasta el cierre confirmado. La tasa en término usa los cierres con plazo informado. |
+| Reaperturas y reformulaciones | Decisiones `REABRIR` y `REFORMULAR` por emergencia y ronda, una vez completado el despacho en Bonita. |
+| Ranking de ONG | Cantidades confirmadas por ONG, capacidad y unidad. Los miembros de consorcios cuentan por sus aportes propios. Se mide un aporte por ONG y lote en cada adjudicación. Una vez confirmada la liberación, se compara la fecha en que la ONG informó la finalización con el plazo establecido para los aportes. |
+| Cobertura del cierre | Total cuando las cantidades cumplidas cubren todos los lotes de la ronda de cierre. Parcial cuando hay un faltante. El porcentaje usa cierres con cantidades verificables. |
 | Demanda por rubro | Suma de necesidades publicadas por capacidad y unidad, incluyendo nuevas rondas. Los rubros se ordenan por cantidad dentro de cada unidad. |
-| Alerta a adjudicación | Primera adjudicación confirmada menos alerta explícita; una muestra por emergencia. |
+| Alerta a adjudicación | Primera adjudicación nacional confirmada menos la fecha de alta municipal o la alerta explícita. Una muestra por emergencia. |
+| Suministros movilizados | Cantidades movilizadas declaradas por cada ONG al finalizar, una vez confirmada su liberación. Se agrupan por capacidad y unidad para las emergencias seleccionadas y se informa cuántas participaciones liberadas tienen cantidades registradas. |
+| Resolución mediante consorcios | Cierres con al menos dos integrantes adjudicados de una misma oferta conjunta confirmada, aunque el caso también haya tenido adjudicaciones individuales. El porcentaje usa cierres con adjudicación verificable. |
 
 Las cantidades se conservan como `Decimal` y se exportan como strings.
 Denominadores vacíos, plazos ausentes y duraciones sin evidencia se representan
@@ -37,13 +40,27 @@ La actividad tiene su propia cobertura y comparte con el historial el presupuest
 de 20 segundos. Una consulta incompleta no significa ausencia de tareas activas.
 La integración pagina resultados y verifica el caso raíz.
 
-## Registro de evidencia confirmada
+## Registro durante la ejecución
 
-La migración `20261015_0014` agrega `hecho_monitoreo` sin inventar historia previa:
+El municipio puede indicar un plazo para los aportes seleccionados y otro
+para resolver la emergencia en **Solicitar adjudicación**. Los plazos quedan
+asociados a esa selección. Cada ONG registra sus cantidades reales por lote
+en **Informar finalización**. Puede declarar cero. La cantidad cumplida puede
+ser como máximo la movilizada, y esta, como máximo la adjudicada.
 
-```bash
-docker compose exec backend alembic upgrade head
-```
+Se aplica la migración `20261126_0019` con `alembic upgrade head`. Los casos
+históricos aportan sus confirmaciones existentes. Para finalizaciones previas
+a la migración o enviadas sin cuerpo, las cantidades permanecen desconocidas.
+Un cierre con evidencia parcial de cantidades queda fuera de las proporciones
+de cobertura total y parcial.
+
+## Callback de evidencia histórica
+
+La migración `20261015_0014` agregó `hecho_monitoreo`. El dashboard conserva
+esa evidencia para los casos históricos. Si existe una adjudicación operativa
+confirmada en la misma ronda, se cuenta esa adjudicación una sola vez. Una
+adjudicación histórica equivalente puede aportar plazos. Los cierres
+históricos aportan cobertura cuando faltan las cantidades operativas.
 
 Callback técnico:
 
@@ -101,25 +118,16 @@ operativos**. Los conectores deben conservar cuerpo y clave para reintentar un
 registro cuya respuesta se perdió, sin repetir la operación de negocio con otra
 identidad. Un hecho confirmado invalida las consultas del panel por WebSocket.
 
-## Integración pendiente del proceso
-
-El BAR **1.2 no emite estos nuevos hechos**. La actividad en curso y los tiempos
-históricos funcionan con ese BAR; la demanda usa lotes locales existentes.
-Los indicadores de resultado se pueblan al recibir evidencia. Hasta entonces
-la interfaz muestra cobertura y ausencias, sin simular resultados reales.
-
-Al implementar T35–T37, incorporar las emisiones de la tabla a los conectores
-que confirman esas operaciones y exportar una nueva versión según `AGENTS.md`.
-Este cambio no modifica el BAR ni implementa esos casos de uso. La presentación
-tampoco fija SLA concretos: los plazos deben venir de la política del negocio,
-no de la ventana de recepción de ofertas.
+En Bonita 1.5, el cálculo toma las confirmaciones de los callbacks operativos
+de [T36–T37](./bonita/contratos-t36-t37.md). El callback de evidencia histórica
+sigue disponible para emisores que registren hechos explícitos.
 
 ## Verificación
 
 Las pruebas cubren PostgreSQL aislado, autenticación, reintentos/conflictos,
 cantidades imposibles, cierres prematuros, consorcios, cobertura parcial y falta
 de plazos. La prueba Runtime crea y elimina solo su caso temporal. Vitest cubre
-los seis indicadores y exportaciones; Playwright verifica escritorio y 320 px.
+los indicadores y exportaciones. Playwright verifica escritorio y 320 px.
 
 ```bash
 docker compose exec -e APP_ENV=test -e BONITA_MONITOR_ENABLED=false \

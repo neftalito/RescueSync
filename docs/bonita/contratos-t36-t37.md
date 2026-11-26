@@ -175,9 +175,9 @@ El administrador no obtiene permisos de negocio por ser administrador.
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET `/ofertas-validadas`                         | Municipio propietario o coordinador asignado; sólo el coordinador recibe diagnósticos no habilitados.                                          |
 | POST `/decision-evaluacion`                      | Coordinador: `decisionId`, `validacionId`, `revision`, `convocatoriaId`, `accion`, `motivo`.                                                   |
-| POST `/adjudicaciones`                           | Municipio: `adjudicacionId`, `validacionId`, `revision`, `aportes: [{aporteId, cantidad}]`. UUID y contenido se conservan en un reintento.     |
+| POST `/adjudicaciones`                           | Municipio. `adjudicacionId`, `validacionId`, `revision`, `aportes: [{aporteId, cantidad}]` y plazos opcionales `plazoAportesEn` y `plazoResolucionEn`. UUID y contenido se conservan en un reintento. |
 | GET `/adjudicaciones`                            | Seguimiento municipal/coordinador; ONG sólo ve sus participaciones confirmadas.                                                                |
-| POST `/participaciones/{id}/finalizacion`        | Representante de esa ONG; cuerpo vacío, devuelve la primera finalización. La líder de un consorcio no finaliza a otras miembros.               |
+| POST `/participaciones/{id}/finalizacion`        | Representante de esa ONG. `cantidades: [{loteId, movilizada, cumplida}]` por cada lote adjudicado. Los clientes que omiten el cuerpo dejan las cantidades desconocidas. Devuelve la primera finalización. |
 | POST `/solicitudes-cierre`                       | Coordinador; cuerpo vacío. Exige todas las liberaciones confirmadas.                                                                           |
 | GET `/comandos-bonita`                           | Estado de despachos; ONG sólo consulta intenciones propias.                                                                                    |
 | POST `/comandos-bonita/{id}/reintentar`          | Reconciliar el despacho original con los permisos del rol que lo creó.                                                                         |

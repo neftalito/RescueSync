@@ -6,7 +6,7 @@ export function filasMonitoreo(locales: ReporteMetricas, tiempos: ReporteTiempos
   const agregar = (seccion: string, categoria: string, objeto: object): void => {
     for (const [indicador, valor] of Object.entries(objeto)) {
       if (valor === null || ["string", "number", "boolean"].includes(typeof valor))
-        filas.push([seccion, indicador, categoria, valor === null ? "Sin datos" : String(valor), indicador.includes("segundos") ? "segundos" : indicador.startsWith("tasa_") || indicador.startsWith("proporcion_") ? "%" : ""]);
+        filas.push([seccion, indicador, categoria, valor === null ? "Sin datos" : String(valor), indicador.includes("segundos") ? "segundos" : indicador.startsWith("tasa_") || indicador.startsWith("proporcion") ? "%" : ""]);
     }
   };
   const datos = locales.indicadores_proceso;
@@ -17,6 +17,12 @@ export function filasMonitoreo(locales: ReporteMetricas, tiempos: ReporteTiempos
     for (const r of datos.ranking_ongs) agregar("ranking_ongs", `${r.ong_id} / ${r.capacidad} / ${r.unidad}`, r);
     agregar("cobertura_cierres", "", datos.cobertura_cierres);
     for (const r of datos.demanda_rubros) agregar("demanda_rubros", `${r.capacidad} / ${r.unidad}`, r);
+    if (datos.suministros_movilizados) {
+      agregar("suministros_movilizados", "", datos.suministros_movilizados);
+      for (const r of datos.suministros_movilizados.cantidades)
+        agregar("suministros_movilizados", `${r.capacidad} / ${r.unidad}`, r);
+    }
+    if (datos.resolucion_consorcios) agregar("resolucion_consorcios", "", datos.resolucion_consorcios);
     datos.definiciones.forEach((d, i) => filas.push(["definiciones", String(i + 1), "", d, ""]));
   }
   if (tiempos) {

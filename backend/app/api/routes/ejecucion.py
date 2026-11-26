@@ -17,6 +17,7 @@ from app.api.dependencies import (
 from app.api.routes.bonita import CasoBonitaId, EmergenciaId
 from app.db.models import RolUsuario, Usuario
 from app.db.models.ejecucion import ComandoBonita, DecisionLocal, OperacionNacional
+from app.db.models.enums import EstadoTareaBonita
 from app.db.session import get_db
 from app.schemas import ErrorResponse
 from app.schemas import ejecucion as dto
@@ -205,10 +206,13 @@ def confirmar_liberacion(
     compromiso_id: UUID,
     datos: dto.LiberacionConfirmadaRequest,
     session: DB,
+    gestor: GestorTiempoRealDep,
 ) -> dto.ParticipacionResponse:
-    return servicio.confirmar_liberacion(
+    resultado = servicio.confirmar_liberacion(
         session, bloquear_emergencia(session, emergencia_id, caso), compromiso_id, datos
     )
+    gestor.programar_metricas()
+    return resultado
 
 
 @tecnico.get(
@@ -239,10 +243,13 @@ def resolver(
     caso: CasoBonitaId,
     datos: dto.ResolverRequest,
     session: DB,
+    gestor: GestorTiempoRealDep,
 ) -> dto.ResolucionResponse:
-    return servicio.resolver(
+    resultado = servicio.resolver(
         session, bloquear_emergencia(session, emergencia_id, caso), datos
     )
+    gestor.programar_metricas()
+    return resultado
 
 
 @router.get(
@@ -271,11 +278,13 @@ def decidir(
     session: DB,
     usuario: Coordinador,
     cliente: ClienteBonitaDep,
+    gestor: GestorTiempoRealDep,
 ) -> dto.DecisionResponse:
     decision = servicio.decidir(
         session, bloquear_emergencia(session, emergencia_id), usuario, datos
     )
-    despachar(session, decision.id, cliente)
+    if despachar(session, decision.id, cliente).estado == EstadoTareaBonita.COMPLETADA:
+        gestor.programar_metricas()
     return dto.DecisionResponse.model_validate(decision.contenido)
 
 
@@ -325,9 +334,14 @@ def finalizar(
     session: DB,
     usuario: Ong,
     cliente: ClienteBonitaDep,
+    datos: dto.FinalizacionRequest | None = None,
 ) -> dto.FinalizacionResponse:
     f = servicio.finalizar(
-        session, bloquear_emergencia(session, emergencia_id), usuario, participacion_id
+        session,
+        bloquear_emergencia(session, emergencia_id),
+        usuario,
+        participacion_id,
+        datos,
     )
     despachar(session, f.id, cliente)
     return dto.FinalizacionResponse(
@@ -405,6 +419,7 @@ def reintentar(
     session: DB,
     usuario: Consulta,
     cliente: ClienteBonitaDep,
+    gestor: GestorTiempoRealDep,
 ) -> dto.DespachoResponse:
     e = bloquear_emergencia(session, emergencia_id)
     c = session.get(ComandoBonita, comando_id)
@@ -421,4 +436,7 @@ def reintentar(
             c.tarea == "Seleccionar ofertas validadas"
         ):
             raise IntegracionLocalError("La intención corresponde a otro rol.", 403)
-    return despachar(session, c.id, cliente)
+    resultado = despachar(session, c.id, cliente)
+    if resultado.estado == EstadoTareaBonita.COMPLETADA:
+        gestor.programar_metricas()
+    return resultado

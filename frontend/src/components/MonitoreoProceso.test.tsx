@@ -14,6 +14,11 @@ const datos = indicadoresProcesoSchema.parse({
   ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 2, finalizados: 1, con_plazo_finalizados: 1, en_termino: 1, tasa_cumplimiento: 100 }],
   cobertura_cierres: { total: 0, parcial: 1, proporcion_total: 0, proporcion_parcial: 100 },
   demanda_rubros: [{ capacidad: "AGUA", unidad: "litros", cantidad: "200.250" }],
+  suministros_movilizados: {
+    cantidades: [{ capacidad: "AGUA", unidad: "litros", cantidad: "80.125" }],
+    participaciones_con_registro: 1, participaciones_sin_registro: 0,
+  },
+  resolucion_consorcios: { con_consorcio: 1, con_adjudicacion_verificable: 1, sin_adjudicacion_verificable: 0, proporcion: 100 },
   alerta_adjudicacion_promedio_segundos: 3600, alerta_adjudicacion_muestras: 1,
   definiciones: ["Se seleccionan emergencias por fecha de alta."],
 });
@@ -32,16 +37,18 @@ const tiempos: ReporteTiempos = {
 afterEach(cleanup);
 
 describe("resultados del proceso", () => {
-  it("muestra los seis indicadores, cobertura de evidencia y ausencia de plazos", () => {
+  it("muestra los indicadores del proceso, cobertura y ausencia de plazos", () => {
     render(<IndicadoresProceso datos={datos} />);
     expect(screen.getByText(/2 sin evidencia de resultados/)).toBeInTheDocument();
-    for (const titulo of ["Resolución por gravedad", "Reaperturas y reformulaciones", "ONG por recursos adjudicados y cumplimiento", "Cobertura efectiva al cierre", "Demanda por rubro", "De la alerta a la primera adjudicación efectiva"])
+    for (const titulo of ["Resolución por gravedad", "Reaperturas y reformulaciones", "ONG por recursos adjudicados y cumplimiento", "Cobertura efectiva al cierre", "Demanda por rubro", "De la alerta a la primera adjudicación efectiva", "Suministros movilizados", "Resolución mediante consorcios"])
       expect(screen.getByRole("heading", { name: titulo })).toBeInTheDocument();
     const demanda = within(screen.getByRole("table", { name: "Demanda por rubro" }));
     expect(demanda.getAllByRole("columnheader").map(c => c.textContent)).toEqual([
       "Capacidad", "Unidad", "Necesidad publicada",
     ]);
     expect(demanda.getByRole("cell", { name: "200.250" })).toBeInTheDocument();
+    expect(within(screen.getByRole("table", { name: "Suministros movilizados" })).getByRole("cell", { name: "80.125" })).toBeInTheDocument();
+    expect(screen.getByText(/1 de 1 cierres con adjudicación verificable/)).toBeInTheDocument();
     expect(screen.getByText("100.125")).toBeInTheDocument();
     expect(screen.getAllByText("Sin datos")).toHaveLength(2);
     expect(screen.getByText("Se seleccionan emergencias por fecha de alta.")).toBeInTheDocument();
@@ -57,6 +64,7 @@ describe("resultados del proceso", () => {
 
   it("exporta evidencia, definiciones, decimales y tareas en JSON, CSV y PDF", () => {
     const json = crearReporteExportable(locales, tiempos);
+    expect(json.indicadores_pendientes).toEqual([]);
     expect(json.locales.indicadores_proceso).toEqual(datos);
     expect(json.locales.indicadores_proceso?.demanda_rubros).toEqual([
       { capacidad: "AGUA", unidad: "litros", cantidad: "200.250" },
@@ -65,6 +73,8 @@ describe("resultados del proceso", () => {
     const csv = generarCsvMetricas(locales, tiempos);
     for (const texto of ["ranking_ongs", "100.125", '"demanda_rubros","cantidad","AGUA / litros","200.250"', "Sin datos", "tareas_activas", datos.definiciones[0]]) expect(csv).toContain(texto);
     expect(csv).not.toContain("tasa_inhabilitacion");
+    expect(csv).toContain('"suministros_movilizados","cantidad","AGUA / litros","80.125"');
+    expect(csv).toContain('"resolucion_consorcios","proporcion","","100","%"');
     const pdf = generarPdfMetricas(locales, tiempos);
     expect(pdf.type).toBe("application/pdf");
     expect(pdf.size).toBeGreaterThan(1000);

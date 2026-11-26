@@ -188,6 +188,20 @@ class CoberturaCierres(BaseModel):
     parcial: int
     proporcion_total: float | None
     proporcion_parcial: float | None
+    sin_evidencia: int
+
+
+class SuministrosMovilizados(BaseModel):
+    cantidades: list[DemandaRubro]
+    participaciones_con_registro: int
+    participaciones_sin_registro: int
+
+
+class ResolucionConsorcios(BaseModel):
+    con_consorcio: int
+    con_adjudicacion_verificable: int
+    sin_adjudicacion_verificable: int
+    proporcion: float | None
 
 
 class IndicadoresProceso(BaseModel):
@@ -200,6 +214,8 @@ class IndicadoresProceso(BaseModel):
     ranking_ongs: list[RankingOng]
     cobertura_cierres: CoberturaCierres
     demanda_rubros: list[DemandaRubro]
+    suministros_movilizados: SuministrosMovilizados
+    resolucion_consorcios: ResolucionConsorcios
     alerta_adjudicacion_promedio_segundos: float | None
     alerta_adjudicacion_muestras: int
     definiciones: list[str]
