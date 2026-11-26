@@ -1,4 +1,6 @@
+import argparse
 import sys
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -422,7 +424,7 @@ def aprovisionar_ongs_demo(session: Session, cliente: ClienteNacional) -> None:
 
 
 def seed_development_data(
-    session: Session, *, incluir_dashboard: bool = True
+    session: Session, *, incluir_dashboard: bool = True, solo_cuentas: bool = False
 ) -> SeedResult:
     """Carga escenarios operativos y de auditoría reproducibles sin duplicarlos."""
 
@@ -486,6 +488,41 @@ def seed_development_data(
         RolUsuario.AUDITOR_DIRECTIVO,
         None,
     )
+
+    cuentas = (
+        CuentaSeed(
+            "municipio@rescuesync.org",
+            RolUsuario.OPERADOR_MUNICIPAL,
+            municipio.nombre,
+        ),
+        CuentaSeed(
+            "coordinador@rescuesync.org",
+            RolUsuario.COORDINADOR_REGIONAL,
+            centro.nombre,
+        ),
+        CuentaSeed(
+            "ong@rescuesync.org",
+            RolUsuario.REPRESENTANTE_ONG,
+            ong.nombre,
+        ),
+        CuentaSeed(
+            "redmedica@rescuesync.org",
+            RolUsuario.REPRESENTANTE_ONG,
+            red_medica.nombre,
+        ),
+        CuentaSeed(
+            "auditor@rescuesync.org",
+            RolUsuario.AUDITOR_DIRECTIVO,
+            None,
+        ),
+        CuentaSeed(
+            administrador.email,
+            RolUsuario.ADMINISTRADOR,
+            None,
+        ),
+    )
+    if solo_cuentas:
+        return SeedResult(cuentas=cuentas, emergencias=0, lotes_publicados=0, ofertas=0)
 
     _emergencia(
         session,
@@ -584,47 +621,23 @@ def seed_development_data(
         )
 
     return SeedResult(
-        cuentas=(
-            CuentaSeed(
-                "municipio@rescuesync.org",
-                RolUsuario.OPERADOR_MUNICIPAL,
-                municipio.nombre,
-            ),
-            CuentaSeed(
-                "coordinador@rescuesync.org",
-                RolUsuario.COORDINADOR_REGIONAL,
-                centro.nombre,
-            ),
-            CuentaSeed(
-                "ong@rescuesync.org",
-                RolUsuario.REPRESENTANTE_ONG,
-                ong.nombre,
-            ),
-            CuentaSeed(
-                "redmedica@rescuesync.org",
-                RolUsuario.REPRESENTANTE_ONG,
-                red_medica.nombre,
-            ),
-            CuentaSeed(
-                "auditor@rescuesync.org",
-                RolUsuario.AUDITOR_DIRECTIVO,
-                None,
-            ),
-            CuentaSeed(
-                administrador.email,
-                RolUsuario.ADMINISTRADOR,
-                None,
-            ),
-        )
-        + tuple(extras),
+        cuentas=cuentas + tuple(extras),
         emergencias=2 + demo_emergencias,
         lotes_publicados=3 + demo_lotes,
         ofertas=1 + demo_ofertas,
     )
 
 
-def main() -> int:
+def main(argv: Sequence[str] = ()) -> int:
     """Carga el escenario demo y muestra únicamente identidades no sensibles."""
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    parser.add_argument(
+        "--solo-cuentas",
+        action="store_true",
+        help="Prepara usuarios y ONGs para el BPM.",
+    )
+    args = parser.parse_args(argv)
 
     if get_settings().app_env.casefold() == "production":
         print(
@@ -635,7 +648,7 @@ def main() -> int:
 
     try:
         with SessionLocal.begin() as session:
-            resultado = seed_development_data(session)
+            resultado = seed_development_data(session, solo_cuentas=args.solo_cuentas)
         settings = get_settings()
         cliente = ClienteNacional(
             str(settings.nacional_base_url), settings.nacional_timeout_seconds
@@ -677,4 +690,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

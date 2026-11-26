@@ -104,6 +104,21 @@ def test_seed_es_idempotente_y_crea_un_usuario_vigente_por_rol(
     assert roles == {cuenta.rol for cuenta in primer_resultado.cuentas}
 
 
+def test_seed_solo_cuentas_prepara_ongs_sin_crear_emergencias_ni_ofertas(
+    db_session: Session,
+) -> None:
+    resultado = seed_development_data(db_session, solo_cuentas=True)
+
+    assert {cuenta.email for cuenta in resultado.cuentas} == set(EMAILS)
+    assert resultado.emergencias == resultado.lotes_publicados == resultado.ofertas == 0
+    assert db_session.scalar(select(func.count()).select_from(Emergencia)) == 0
+    assert db_session.scalar(select(func.count()).select_from(Oferta)) == 0
+    assert (
+        db_session.scalar(select(func.count()).select_from(AprovisionamientoNacional))
+        == 2
+    )
+
+
 def test_seed_dashboard_cubre_estados_gravedades_historia_y_ofertas_sin_duplicar(
     db_session: Session,
 ) -> None:

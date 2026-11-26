@@ -85,6 +85,38 @@ def _transicion(identidad: int, *, root: int = 42) -> dict[str, str]:
 
 
 @respx.mock
+def test_reprograma_solo_el_temporizador_elegido_del_caso(
+    cliente: ClienteBonita,
+) -> None:
+    _login(respx)
+    temporizadores = respx.get(f"{BASE_URL}/API/bpm/timerEventTrigger").respond(
+        200,
+        json=[
+            {
+                "id": 51,
+                "eventInstanceName": "Recordatorio",
+                "executionDate": 1795712400000,
+            },
+            {
+                "id": 52,
+                "eventInstanceName": "EsperarOfertas",
+                "executionDate": 1795719600000,
+            },
+        ],
+    )
+    fecha = 1795712460000
+    cambio = respx.put(f"{BASE_URL}/API/bpm/timerEventTrigger/52").respond(
+        200, json={"executionDate": fecha}
+    )
+
+    timer = cliente.buscar_temporizador(42, "EsperarOfertas")
+    assert timer is not None
+    assert temporizadores.calls.last.request.url.params["caseId"] == "42"
+    cliente.reprogramar_temporizador(timer.id, fecha)
+    assert json.loads(cambio.calls.last.request.content) == {"executionDate": fecha}
+
+
+@respx.mock
 def test_tareas_activas_pagina_y_rechaza_datos_de_otro_caso(
     cliente: ClienteBonita,
 ) -> None:
@@ -101,13 +133,23 @@ def test_tareas_activas_pagina_y_rechaza_datos_de_otro_caso(
             "dueDate": "",
         }
 
+    temporizador = {
+        "id": "102",
+        "rootCaseId": "42",
+        "name": "EsperarOfertas",
+        "type": "INTERMEDIATE_CATCH_EVENT",
+        "state": "waiting",
+    }
     ruta = respx.get(f"{BASE_URL}/API/bpm/flowNode").mock(
         side_effect=[
             httpx.Response(200, json=[tarea(i) for i in range(1, 101)]),
-            httpx.Response(200, json=[tarea(101)]),
+            httpx.Response(200, json=[tarea(101), temporizador]),
         ]
     )
-    assert len(cliente.obtener_tareas_activas(42)) == 101
+    nodos = cliente.obtener_tareas_activas(42)
+    assert len(nodos) == 102
+    assert nodos[-1].name == "EsperarOfertas"
+    assert nodos[-1].reached_state_date is None
     assert ruta.calls[1].request.url.params["p"] == "1"
     assert ruta.calls[0].request.url.params["f"] == "caseId=42"
     ruta.mock(return_value=httpx.Response(200, json=[tarea(1, root=99)]))

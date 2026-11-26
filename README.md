@@ -354,6 +354,9 @@ para una instalación existente.
    Si falla el alta nacional, los datos locales y las solicitudes quedan guardados;
    corregir la causa y repetir el mismo comando no duplica las altas.
 
+   Para preparar casos con tareas reales de Bonita y compromisos nacionales,
+   seguí la [carga operativa para la demo](docs/dashboard-auditor.md#demo-con-casos-reales).
+
    Para medir el sistema con miles de registros, usar el
    [seed masivo configurable](docs/seed-masivo.md):
    `docker compose run --rm backend python -m app.scripts.seed_masivo`.

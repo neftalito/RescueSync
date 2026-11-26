@@ -126,7 +126,59 @@ conservan sus etiquetas para que la lectura no dependa exclusivamente del color.
 Las tablas de los acordeones y cantidades ofrecidas tienen altura máxima,
 scroll en ambos ejes cuando se necesita y acceso por teclado.
 
-## Demo ampliada
+## Demo con casos reales
+
+Corré estos comandos desde `RescueSync/` con el entorno de desarrollo levantado,
+las migraciones aplicadas, Bonita 1.5 habilitado y el priorizador y la API Nacional
+configurados. Bonita y FastAPI deben usar el mismo emisor nacional de demo.
+
+```bash
+docker compose exec backend python -m app.scripts.seed --solo-cuentas
+docker compose exec backend python -m app.scripts.seed_demo_operativo --corrida DEMO-01 --ventana-segundos 60
+```
+
+El primer comando prepara las cuentas locales y aprovisiona las dos ONG. Si ya
+tenés las cuentas de demo con sus credenciales del seed y acceso nacional,
+podés ejecutar directamente el segundo. Este registra inventario de
+paramédicos, agua y alimentos para las dos ONG, identificado con la marca de
+la corrida. Luego crea diez emergencias y usa las operaciones de cada rol
+para avanzar el proceso.
+Para que el tablero muestre únicamente los casos de este recorrido, empezá
+con una base de demo nueva y prepará las cuentas con `--solo-cuentas`.
+
+| Casos | Resultado |
+| --- | --- |
+| HIST-01 a HIST-07 | Siete emergencias resueltas y archivadas en Bonita con tareas completadas. Incluyen las cuatro gravedades, consorcio, cobertura total individual, reapertura, reformulación y cobertura parcial. Las ONG declaran cantidades movilizadas y cumplidas, y la API Nacional confirma las liberaciones y termina los proyectos. |
+| ACTIVO | Adjudicación confirmada con cinco paramédicos comprometidos y una tarea de finalización ONG lista en Bonita. |
+| PENDIENTE | Emergencia registrada con la tarea **Generar lotes de necesidades** lista en Bonita. |
+| ABIERTA | Una convocatoria publicada al final de la corrida, con una oferta parcial y su timer activo. Si la ventana venció, repetí la misma marca para reabrirla mediante Bonita. |
+
+Para verlos, ingresá como `auditor@rescuesync.org` con las credenciales del seed.
+Seleccioná **Municipalidad de Puerto Esperanza** y un período que incluya la fecha
+de alta, con todas las gravedades y estados. La evolución mensual usa la fecha
+real de cada alta. Una corrida hecha en un día aporta datos a ese mes.
+Abrí **Tiempos por tarea de Bonita** para ver el historial y la actividad
+actual. El comando muestra los IDs locales, los casos Bonita y las referencias
+nacionales para abrir cada ejemplo.
+
+Con `--ventana-segundos 60`, el seed acorta el temporizador de cada ronda que
+debe atravesar una vez que presenta sus ofertas. Bonita dispara el cierre
+y sigue ejecutando los conectores habituales. Esto también se aplica a las
+segundas rondas de reapertura y reformulación. La convocatoria **ABIERTA**
+y las emergencias que registres después usan el plazo habitual del proceso,
+porque el parámetro global de Bonita conserva su valor.
+
+Si omitís la opción, todas las rondas usan el plazo habitual. Las
+convocatorias de la primera ronda se publican en paralelo. Con el timer de
+dos horas, las dos rondas llevan aproximadamente cuatro horas.
+[Despliegue y operación de Bonita](bonita/despliegue-y-operacion.md)
+
+Si se interrumpe la carga, corregí la causa y repetí la misma marca para
+retomar los casos y recursos existentes. Si una ventana ya cerró sin recibir
+los aportes previstos, usá una marca nueva para completar otro ensayo.
+Las corridas conservan sus casos y los compromisos activos que dejaron preparados.
+
+## Demo ampliada con datos locales
 
 ```bash
 docker compose exec backend python -m app.scripts.seed

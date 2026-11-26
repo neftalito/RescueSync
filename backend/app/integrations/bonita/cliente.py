@@ -25,10 +25,12 @@ from app.integrations.bonita.contratos import (
     CasoBonita,
     ContratoInicioProceso,
     DefinicionProceso,
+    FechaTemporizador,
     InstanciaIniciada,
     TareaActiva,
     TareaBonitaFallida,
     TareaHumana,
+    TemporizadorBonita,
     TransicionTareaArchivada,
     UsuarioBonita,
 )
@@ -325,6 +327,38 @@ class ClienteBonita:
         raise BonitaRespuestaInvalidaError(
             "Las tareas fallidas superan el límite de paginación segura."
         )
+
+    def buscar_temporizador(
+        self, case_id: int, nombre: str
+    ) -> TemporizadorBonita | None:
+        """Encuentra un disparo pendiente de una instancia concreta."""
+        respuesta = self._enviar(
+            "GET",
+            "/API/bpm/timerEventTrigger",
+            params=[("caseId", case_id), ("p", 0), ("c", 100)],
+            estados_esperados=(httpx.codes.OK,),
+        )
+        timers = _validar_lista(respuesta, TemporizadorBonita, "temporizadores")
+        coincidencias = [t for t in timers if t.name == nombre]
+        if len(timers) >= 100 or len(coincidencias) > 1:
+            raise BonitaRespuestaInvalidaError(
+                f"No se pudo identificar un único temporizador {nombre!r} para el caso {case_id}."
+            )
+        return coincidencias[0] if coincidencias else None
+
+    def reprogramar_temporizador(self, temporizador_id: int, fecha_ms: int) -> None:
+        """Adelanta o pospone un disparo existente conservando el parámetro del BPM."""
+        respuesta = self._enviar(
+            "PUT",
+            f"/API/bpm/timerEventTrigger/{temporizador_id}",
+            json={"executionDate": fecha_ms},
+            estados_esperados=(httpx.codes.OK,),
+        )
+        fecha = _validar_objeto(respuesta, FechaTemporizador, "fecha del temporizador")
+        if fecha.execution_date_ms != fecha_ms:
+            raise BonitaRespuestaInvalidaError(
+                f"Bonita devolvió un vencimiento distinto para el temporizador {temporizador_id}."
+            )
 
     def obtener_tareas_activas(self, case_id: int) -> list[TareaActiva]:
         """Pagina nodos actuales del caso sin ejecutar ni modificar tareas."""

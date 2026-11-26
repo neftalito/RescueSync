@@ -170,13 +170,24 @@ class TareaBonitaFallida(_ModeloBonita):
     state: Literal["failed"]
 
 
+class FechaTemporizador(_ModeloBonita):
+    execution_date_ms: PositiveInt = Field(alias="executionDate")
+
+
+class TemporizadorBonita(FechaTemporizador):
+    """Disparo programado por el motor para un evento del caso."""
+
+    id: PositiveInt
+    name: TextoNoVacio = Field(alias="eventInstanceName")
+
+
 class TareaActiva(_ModeloBonita):
-    """Estado actual de un nodo; las fechas vacías del motor son admisibles."""
+    """Estado actual de un nodo, incluidos temporizadores sin fecha de transición."""
 
     id: PositiveInt
     root_case_id: PositiveInt = Field(alias="rootCaseId")
     name: str
     tipo: str = Field(alias="type")
     state: TextoNoVacio
-    reached_state_date: str
+    reached_state_date: str | None = None
     due_date: str | None = Field(default=None, alias="dueDate")
