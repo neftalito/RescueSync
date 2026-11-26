@@ -15,7 +15,7 @@ export function RecursosOferta({ index, control, register, errores, recursos }: 
     const error = errores.items?.[index]?.aportes;
     return <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 p-4">
     <p className="font-semibold">Recursos de mi ONG</p>
-    <p className="mt-1 text-sm">Desglosá la cantidad ofrecida. La disponibilidad se volverá a comprobar al adjudicar.</p>
+    <p className="mt-1 text-sm">Ingresá la cantidad de cada recurso. La disponibilidad se volverá a comprobar al adjudicar.</p>
     {fields.map((field, aporteIndex) => <div key={field.id} className="mt-3 grid gap-2 sm:grid-cols-3">
       <label>Recurso
         <select className="mt-1 w-full rounded border border-slate-300 bg-white p-2" {...register(`items.${index}.aportes.${aporteIndex}.recurso_nacional_id`)}>

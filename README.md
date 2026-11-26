@@ -33,6 +33,8 @@ En **Lotes publicados**, **Crear oferta** queda deshabilitado cuando la ONG ya
 ofertó ese lote en la convocatoria vigente. Para sumar otros lotes de esa misma
 convocatoria se debe editar la oferta existente desde **Mis ofertas**. Las ofertas
 de rondas anteriores no bloquean una convocatoria nueva.
+Al ofertar para un lote vinculado al catálogo nacional, la **Cantidad ofrecida**
+se calcula con las cantidades ingresadas en **Recursos de mi ONG**.
 
 El formulario de lotes usa un selector de capacidades nacionales y determina
 automáticamente el nombre y la unidad de cada necesidad. El coordinador completa
