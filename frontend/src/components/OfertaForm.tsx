@@ -17,6 +17,7 @@ import { useMisOfertas } from "../hooks/useMisOfertas";
 import { useRegistrarOferta } from "../hooks/useRegistrarOferta";
 import type { LotePublicado } from "../schemas/convocatoria";
 import {
+  calcularTotalAportes,
   ofertaFormSchema,
   tipoAporteLabels,
   tiposAporte,
@@ -151,9 +152,9 @@ export function OfertaForm({
           lote_id: item.lote_id,
           tipo: item.tipo,
           descripcion: item.descripcion,
-          cantidad_ofrecida: formatearCantidadParaFormulario(
-            item.cantidad_ofrecida,
-          ),
+          cantidad_ofrecida: lote?.capacidad_nacional_id
+            ? ""
+            : formatearCantidadParaFormulario(item.cantidad_ofrecida),
           cantidad_publicada: lote?.cantidad_publicada ?? "0",
           unidad: item.unidad,
           requiere_desglose: Boolean(lote?.capacidad_nacional_id),
@@ -479,6 +480,13 @@ export function OfertaForm({
                     (opcion) => opcion.lote_id === items[index]?.lote_id,
                   );
                   const itemErrors = errors.items?.[index];
+                  const cantidadId = `items.${index}.cantidad_ofrecida`;
+                  const cantidadErrorId = itemErrors?.cantidad_ofrecida
+                    ? `cantidad-${index}-error`
+                    : undefined;
+                  const totalAportes = lote?.capacidad_nacional_id
+                    ? calcularTotalAportes(items[index]?.aportes)
+                    : null;
                   return (
                     <fieldset
                       key={field.id}
@@ -535,33 +543,39 @@ export function OfertaForm({
                         </div>
                         <div>
                           <label
-                            htmlFor={`items.${index}.cantidad_ofrecida`}
+                            htmlFor={cantidadId}
                             className="block text-sm font-semibold text-slate-800"
                           >
                             Cantidad ofrecida
                           </label>
                           <div className="flex items-center gap-2">
-                            <input
-                              id={`items.${index}.cantidad_ofrecida`}
-                              type="text"
-                              inputMode="decimal"
-                              placeholder="Ej.: 100"
-                              aria-invalid={itemErrors?.cantidad_ofrecida !== undefined}
-                              aria-describedby={
-                                itemErrors?.cantidad_ofrecida
-                                  ? `cantidad-${index}-error`
-                                  : undefined
-                              }
-                              className={inputClasses}
-                              {...register(`items.${index}.cantidad_ofrecida`)}
-                            />
+                            {lote?.capacidad_nacional_id ? (
+                              <output
+                                id={cantidadId}
+                                aria-describedby={cantidadErrorId}
+                                className="mt-2 rounded-xl bg-slate-100 px-4 py-3 font-semibold tabular-nums text-slate-900"
+                              >
+                                {totalAportes?.replace(".", ",") ?? "—"}
+                              </output>
+                            ) : (
+                              <input
+                                id={cantidadId}
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Ej.: 100"
+                                aria-invalid={itemErrors?.cantidad_ofrecida !== undefined}
+                                aria-describedby={cantidadErrorId}
+                                className={inputClasses}
+                                {...register(`items.${index}.cantidad_ofrecida`)}
+                              />
+                            )}
                             <span className="mt-2 shrink-0 text-sm text-slate-600">
                               {lote?.unidad_publicada}
                             </span>
                           </div>
                           {itemErrors?.cantidad_ofrecida && (
                             <p
-                              id={`cantidad-${index}-error`}
+                              id={cantidadErrorId}
                               className="mt-2 text-sm text-red-700"
                             >
                               {itemErrors.cantidad_ofrecida.message}
