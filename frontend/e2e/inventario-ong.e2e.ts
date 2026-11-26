@@ -147,7 +147,7 @@ test("conserva el modal durante el guardado y actualiza el inventario al termina
     confirmarGuardado();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("status")).toHaveText("Cantidad actualizada.");
-    await expect(page.getByText("12.000", { exact: true })).toBeVisible();
+    await expect(page.getByText("12,00", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Editar AMB-01" })).toBeFocused();
   } finally {
     confirmarGuardado();
