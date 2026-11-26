@@ -579,12 +579,14 @@ El perfil **Auditor / Directivo** dispone de un [dashboard global de indicadores
 con filtros, gráficos interactivos, tiempos por tarea de Bonita y exportación CSV/JSON/PDF.
 Se actualiza por WebSocket e incluye alertas de tareas fallidas de Bonita; el seed
 contiene una demo ampliada para recorrer distintas métricas y estados.
-Los indicadores que requieren adjudicación y cierre se identifican como no disponibles.
+Los indicadores de resultado usan las confirmaciones de adjudicación, liberación
+y cierre que guarda el flujo operativo.
 
-El [monitoreo de procesos](docs/monitoreo-procesos.md) agrega tareas activas y
-los seis indicadores BAM del material de clase, con evidencia confirmada,
-fórmulas, cobertura de datos y exportación. La guía distingue las consultas
-disponibles con el BPM 1.2 de las emisiones que corresponden a T35–T37.
+El [monitoreo de procesos](docs/monitoreo-procesos.md) explica los cálculos,
+incluidos los suministros movilizados y la resolución mediante consorcios. Al
+adjudicar, el municipio puede fijar plazos. Al finalizar, cada ONG informa
+cuánto movilizó y cumplió por lote. Actualizá la base con `alembic upgrade head`
+para habilitar el registro de estas cantidades.
 
 El [índice de `docs/`](docs/README.md) organiza las guías por tema. Los accesos
 principales son:

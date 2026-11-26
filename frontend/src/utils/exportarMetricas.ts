@@ -1,12 +1,15 @@
 import type { ReporteMetricas, ReporteTiempos } from "../schemas/metricas";
 import { filasMonitoreo } from "./filasMonitoreo";
 
-export const indicadoresPendientes = [
-  "Suministros movilizados",
-  "Resolución mediante consorcios",
-];
-export const motivoIndicadoresPendientes =
-  "No disponible: requiere adjudicación y cierre";
+export function indicadoresPendientes(locales: ReporteMetricas): string[] {
+  const datos = locales.indicadores_proceso;
+  return [
+    ...(!datos?.suministros_movilizados ? ["Suministros movilizados"] : []),
+    ...(!datos?.resolucion_consorcios ? ["Resolución mediante consorcios"] : []),
+  ];
+}
+
+export const motivoIndicadoresPendientes = "El servidor no incluyó el indicador.";
 
 interface ReporteExportable {
   generado_en: string;
@@ -35,7 +38,7 @@ export function crearReporteExportable(
     },
     locales,
     tiempos: tiempos ?? null,
-    indicadores_pendientes: indicadoresPendientes.map((indicador) => ({
+    indicadores_pendientes: indicadoresPendientes(locales).map((indicador) => ({
       indicador,
       valor: null,
       motivo: motivoIndicadoresPendientes,
@@ -132,7 +135,7 @@ export function generarCsvMetricas(
       ]);
     }
   }
-  for (const indicador of indicadoresPendientes)
+  for (const indicador of indicadoresPendientes(locales))
     filas.push(["pendientes", indicador, "", motivoIndicadoresPendientes, ""]);
   filas.push(...filasMonitoreo(locales, tiempos));
   return `\uFEFF${filas.map((fila) => fila.map(celdaCsv).join(",")).join("\r\n")}\r\n`;

@@ -54,6 +54,24 @@ const locales: ReporteMetricas = {
       unidad: "litros",
     },
   ],
+  indicadores_proceso: {
+    emergencias_con_hechos: 1,
+    emergencias_sin_hechos: 1,
+    resolucion_por_gravedad: [],
+    reiteradas: [],
+    ranking_ongs: [],
+    cobertura_cierres: { total: 0, parcial: 0, proporcion_total: null, proporcion_parcial: null, sin_evidencia: 1 },
+    demanda_rubros: [],
+    suministros_movilizados: {
+      cantidades: [],
+      participaciones_con_registro: 0,
+      participaciones_sin_registro: 1,
+    },
+    resolucion_consorcios: { con_consorcio: 0, con_adjudicacion_verificable: 0, sin_adjudicacion_verificable: 1, proporcion: null },
+    alerta_adjudicacion_muestras: 0,
+    alerta_adjudicacion_promedio_segundos: null,
+    definiciones: [],
+  },
 };
 const tiempos: ReporteTiempos = {
   generado_en: "2026-10-15T12:00:00Z",
@@ -125,9 +143,9 @@ describe("dashboard del auditor", () => {
     expect(
       screen.getByRole("table", { name: "Promedios y muestras de Bonita" }),
     ).toHaveTextContent("Generar lotes");
-    expect(
-      screen.getAllByText("No disponible: requiere adjudicación y cierre"),
-    ).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Suministros movilizados" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Resolución mediante consorcios" })).toBeInTheDocument();
+    expect(screen.getByText(/Sin cantidades movilizadas declaradas/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Exportar" })).toBeEnabled();
   });
 

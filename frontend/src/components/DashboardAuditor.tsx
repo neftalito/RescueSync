@@ -16,10 +16,6 @@ import {
   filtrosMetricasFormSchema,
   type FiltrosMetricasForm,
 } from "../schemas/metricas";
-import {
-  indicadoresPendientes,
-  motivoIndicadoresPendientes,
-} from "../utils/exportarMetricas";
 import { GraficoMetricas } from "./GraficoMetricas";
 import { ExportarMetricasMenu } from "./ExportarMetricasMenu";
 import { IndicadoresProceso } from "./IndicadoresProceso";
@@ -465,19 +461,6 @@ export function DashboardAuditor(): ReactElement {
           </>
         )}
       </section>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {indicadoresPendientes.map((titulo) => (
-          <article
-            key={titulo}
-            className="rounded-2xl border border-dashed border-slate-300 bg-slate-100/60 p-5"
-          >
-            <h3 className="font-semibold text-slate-700">{titulo}</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              {motivoIndicadoresPendientes}
-            </p>
-          </article>
-        ))}
-      </div>
     </section>
   );
 }

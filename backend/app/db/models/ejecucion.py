@@ -161,6 +161,7 @@ class FinalizacionLocal(Base):
     solicitada_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    ejecucion: Mapped[dict[str, JsonValue] | None] = mapped_column(JSONB)
 
 
 class CierreLocal(Base):

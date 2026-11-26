@@ -3,9 +3,15 @@ import { useRef, useState, type ReactElement } from "react";
 import { Link, useParams } from "react-router";
 import { consultarComandos, consultarEvaluacion, consultarSeguimiento, enviarComando } from "../api/ejecucion";
 import { ResumenCompetencia } from "../components/PerfilCompetencia";
+import { FormularioFinalizacionOng } from "../components/FormularioFinalizacionOng";
 import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
 import { validarSeleccion } from "../schemas/ejecucion";
+
+function plazoIso(datos: FormData, campo: string): string | undefined {
+  const valor = datos.get(campo);
+  return typeof valor === "string" && valor ? new Date(valor).toISOString() : undefined;
+}
 
 export function EjecucionPage({ session }: { session: Session }): ReactElement {
   const id = Number(useParams().emergenciaId);
@@ -50,12 +56,17 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
     return intencion.current.id;
   }
 
-  function seleccionar(): void {
+  function seleccionar(formulario: HTMLFormElement): void {
     if (!evaluacion.data || !v) return;
     const error = validarSeleccion(evaluacion.data, cantidades);
     if (error) { setErrorLocal(error); return; }
     const aportes = evaluacion.data.aportes.filter(a => cantidades[a.aporteId] && cantidades[a.aporteId] !== "0").map(a => ({ aporteId: a.aporteId, cantidad: (cantidades[a.aporteId] ?? "").replace(",", ".") }));
-    const body = { validacionId: v.validacionId, revision: v.revision, aportes };
+    const plazos = new FormData(formulario);
+    const body = {
+      validacionId: v.validacionId, revision: v.revision, aportes,
+      plazoAportesEn: plazoIso(plazos, "plazoAportesEn"),
+      plazoResolucionEn: plazoIso(plazos, "plazoResolucionEn"),
+    };
     const uuid = identidad(body);
     if (uuid) mutation.mutate({ ruta: "adjudicaciones", body: { ...body, adjudicacionId: uuid } });
   }
@@ -85,13 +96,24 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
       <h2 className="text-xl font-bold">Cobertura compatible</h2>
       <p>{v.lotesCompatiblesCubiertos ? "Todos los lotes tienen cobertura compatible." : "Hay necesidades pendientes de cobertura."} Esta disponibilidad se vuelve a verificar al comprometer.</p>
       {v.cobertura.map(l => <p key={l.loteId}>Lote {l.loteId}: {l.cantidadAsignable} de {l.cantidadRequerida} {l.unidad}; faltante {l.faltante}.</p>)}
-      {esMunicipio && v.vigente && !bloqueada && <form onSubmit={e => { e.preventDefault(); seleccionar(); }} className="space-y-4">
+      {esMunicipio && v.vigente && !bloqueada && <form onSubmit={e => { e.preventDefault(); seleccionar(e.currentTarget); }} className="space-y-4">
         <h3 className="font-bold">Seleccionar aportes</h3>
         {!evaluacion.data?.aportes.length && <p>No hay aportes compatibles para seleccionar.</p>}
         {evaluacion.data?.aportes.map(a => <label key={a.aporteId} className="block rounded-xl border border-slate-200 p-3">
           {a.descripcion || `Oferta ${a.ofertaId}`} · {a.nombreOng || `ONG ${a.ongId}`} · {a.tipoNecesidad || `Lote ${a.loteId}`} · ofrecido {a.cantidadOfrecida}, disponible {a.cantidadDisponible} {a.unidad}
           <input aria-label={`Cantidad aporte ${a.aporteId}`} inputMode="decimal" className="ml-3 w-32 rounded border p-2" value={cantidades[a.aporteId] ?? ""} onChange={e => setCantidades({ ...cantidades, [a.aporteId]: e.target.value })} />
         </label>)}
+        <fieldset className="grid min-w-0 gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
+          <legend className="px-1 font-medium">Plazos opcionales en hora local</legend>
+          <label className="block min-w-0">
+            Finalización de los aportes
+            <input type="datetime-local" name="plazoAportesEn" max="9999-12-31T23:59" className="block w-full min-w-0 rounded border p-2" />
+          </label>
+          <label className="block min-w-0">
+            Resolución de la emergencia
+            <input type="datetime-local" name="plazoResolucionEn" max="9999-12-31T23:59" className="block w-full min-w-0 rounded border p-2" />
+          </label>
+        </fieldset>
         {!v.lotesCompatiblesCubiertos && !evaluacion.data?.permiteParcial && <p>El coordinador debe autorizar continuar con cobertura parcial.</p>}
         <button className="action-button action-primary" disabled={mutation.isPending || !evaluacion.data?.aportes.length || (!v.lotesCompatiblesCubiertos && !evaluacion.data?.permiteParcial)}>Solicitar adjudicación</button>
       </form>}
@@ -106,10 +128,25 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
       {!seguimiento.data.adjudicaciones.length && <p>Todavía no hay una selección enviada.</p>}
       {seguimiento.data.adjudicaciones.map(a => <div key={a.adjudicacionId} className="space-y-3">
         <p>Adjudicación: {a.estado.replaceAll("_", " ")} · integración: {a.estadoIntegracion.replaceAll("_", " ")}</p>
+        {a.plazoAportesEn && <p>Plazo de los aportes · {new Date(a.plazoAportesEn).toLocaleString("es-AR")}</p>}
+        {!esOng && a.plazoResolucionEn && <p>Plazo de resolución · {new Date(a.plazoResolucionEn).toLocaleString("es-AR")}</p>}
         {a.estado !== "CONFIRMADA" && <p>La ejecución se habilita después de confirmar el compromiso nacional.</p>}
         {a.participantes.map(p => <div key={p.participacionId} className="rounded-xl bg-slate-50 p-3">
           <p>ONG {p.ongId}: {p.estado === "FINALIZACION_SOLICITADA" ? "Finalización informada; liberación pendiente" : p.estado === "LIBERADA" ? "Recursos liberados" : "En ejecución"}</p>
-          {esOng && p.estado === "EN_EJECUCION" && <button className="action-button" disabled={mutation.isPending} onClick={() => mutation.mutate({ ruta: `participaciones/${p.participacionId}/finalizacion` })}>Informar finalización</button>}
+          {esOng && p.estado === "EN_EJECUCION" && (
+            p.lotes.length > 0 ? (
+              <FormularioFinalizacionOng
+                lotes={p.lotes}
+                pendiente={mutation.isPending}
+                onFinalizar={cantidades => mutation.mutate({
+                  ruta: `participaciones/${p.participacionId}/finalizacion`,
+                  body: { cantidades },
+                })}
+              />
+            ) : (
+              <button className="action-button" disabled={mutation.isPending} onClick={() => mutation.mutate({ ruta: `participaciones/${p.participacionId}/finalizacion` })}>Informar finalización</button>
+            )
+          )}
         </div>)}
       </div>)}
       {rol === "COORDINADOR_REGIONAL" && <button className="action-button action-primary" disabled={mutation.isPending || !seguimiento.data.puedeSolicitarCierre || seguimiento.data.cierre !== null} onClick={() => mutation.mutate({ ruta: "solicitudes-cierre" })}>Solicitar cierre de emergencia</button>}

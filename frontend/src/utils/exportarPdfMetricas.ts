@@ -36,7 +36,7 @@ export function generarPdfMetricas(
   pdf.aviso(
     "Alcance del reporte",
     [
-      "Se seleccionan emergencias por fecha de alta y se informa la situación actual de sus datos relacionados. Las cantidades representan ofrecimientos.",
+      "Se seleccionan emergencias por fecha de alta y se informa la situación actual de sus datos relacionados.",
       `Fuentes: datos locales disponibles. Bonita: ${tiempos?.disponibilidad ?? "NO_DISPONIBLE"}.`,
     ],
     "neutro",
@@ -146,11 +146,12 @@ export function generarPdfMetricas(
     );
   }
 
-  if (indicadoresPendientes.length) {
+  const pendientes = indicadoresPendientes(locales);
+  if (pendientes.length) {
     pdf.aviso(
       "Indicadores no disponibles",
-      indicadoresPendientes.map(
-        (indicador) => `- ${indicador}: ${motivoIndicadoresPendientes}.`,
+      pendientes.map(
+        (indicador) => `- ${indicador}: ${motivoIndicadoresPendientes}`,
       ),
       "aviso",
     );
