@@ -2,7 +2,7 @@ import { ListadoLocal } from "./ListadoProgresivo";
 import type { ReactElement, ReactNode } from "react";
 import type { IndicadoresProceso as Indicadores } from "../schemas/metricas";
 import { gravedadLabels } from "../schemas/emergencia";
-import { porcentajeMonitoreo, horasMonitoreo } from "../utils/formatoMonitoreo";
+import { etiquetaUmbral, porcentajeMonitoreo, horasMonitoreo } from "../utils/formatoMonitoreo";
 import { GraficoMetricas } from "./GraficoMetricas";
 
 export function TablaMonitoreo({ titulo, columnas, filas, descripcion, vacio = "Sin hechos confirmados para los filtros seleccionados." }: {
@@ -24,23 +24,44 @@ export function TablaMonitoreo({ titulo, columnas, filas, descripcion, vacio = "
   </article>;
 }
 
-export function IndicadoresProceso({ datos }: { datos: Indicadores; }): ReactElement {
+export function IndicadoresProceso({ datos, umbralAportes, umbralResolucion }: {
+  datos: Indicadores;
+  umbralAportes: number;
+  umbralResolucion: number;
+}): ReactElement {
   const cobertura = datos.cobertura_cierres;
   const movilizados = datos.suministros_movilizados;
   const consorcios = datos.resolucion_consorcios;
+  const limiteAportes = etiquetaUmbral(umbralAportes);
+  const limiteResolucion = etiquetaUmbral(umbralResolucion);
+  const resolucionesConTiempo = datos.resolucion_por_gravedad.flatMap(
+    r => r.tasa_dentro_del_umbral === null ? [] : [{
+      nombre: gravedadLabels[r.gravedad], valor: r.tasa_dentro_del_umbral,
+    }],
+  );
   const filasCobertura: ReactNode[][] = cobertura.total + cobertura.parcial > 0
     ? [["Total", cobertura.total, porcentajeMonitoreo(cobertura.proporcion_total)], ["Parcial", cobertura.parcial, porcentajeMonitoreo(cobertura.proporcion_parcial)]]
     : [];
   return <section aria-labelledby="indicadores-proceso" className="min-w-0 space-y-4">
     <h3 id="indicadores-proceso" className="text-xl font-bold text-slate-900">Resultados del proceso</h3>
-    <p className="text-sm text-slate-600">{datos.emergencias_con_hechos} emergencias con hechos confirmados · {datos.emergencias_sin_hechos} sin evidencia de resultados. Los casos sin evidencia no aportan tiempos ni porcentajes de cumplimiento.</p>
-    <TablaMonitoreo titulo="Resolución por gravedad" columnas={["Gravedad", "Emergencias", "Resueltas", "Cierres confirmados", "Sin evidencia de cierre", "Tasa de resolución", "Con plazo", "En término", "Tasa en término", "Tiempo medio", "Tiempo medio en término"]}
-      filas={datos.resolucion_por_gravedad.map(r => [gravedadLabels[r.gravedad], r.emergencias, r.resueltas, r.cierres_confirmados, r.resueltas_sin_cierre, porcentajeMonitoreo(r.tasa_resolucion), r.con_plazo, r.en_termino, porcentajeMonitoreo(r.tasa_en_termino), horasMonitoreo(r.promedio_segundos), horasMonitoreo(r.promedio_en_termino_segundos)])} />
-    {datos.resolucion_por_gravedad.some(r => r.tasa_en_termino !== null) && <GraficoMetricas titulo="Resolución en término por gravedad" unidad="%" datos={datos.resolucion_por_gravedad.filter(r => r.tasa_en_termino !== null).map(r => ({ nombre: gravedadLabels[r.gravedad], valor: r.tasa_en_termino ?? 0 }))} />}
+    <p className="text-sm text-slate-600">{datos.emergencias_con_hechos} emergencias con hechos confirmados · {datos.emergencias_sin_hechos} sin evidencia de resultados.</p>
+    <TablaMonitoreo titulo="Resolución por gravedad"
+      columnas={["Gravedad", "Emergencias", "Resueltas", "Cierres confirmados", "Sin evidencia de cierre", "Tasa de resolución", "Cierres con tiempo medido", `Cierres en hasta ${limiteResolucion}`, `% en hasta ${limiteResolucion}`, "Tiempo medio", "Tiempo medio dentro del umbral"]}
+      filas={datos.resolucion_por_gravedad.map(r => [
+        gravedadLabels[r.gravedad], r.emergencias, r.resueltas, r.cierres_confirmados, r.resueltas_sin_cierre,
+        porcentajeMonitoreo(r.tasa_resolucion), r.cierres_con_tiempo, r.dentro_del_umbral,
+        porcentajeMonitoreo(r.tasa_dentro_del_umbral), horasMonitoreo(r.promedio_segundos),
+        horasMonitoreo(r.promedio_dentro_del_umbral_segundos),
+      ])} />
+    {resolucionesConTiempo.length > 0 && <GraficoMetricas titulo={`Resolución en hasta ${limiteResolucion} por gravedad`} unidad="%" datos={resolucionesConTiempo} />}
     <TablaMonitoreo titulo="Reaperturas y reformulaciones" columnas={["Emergencia", "Reaperturas", "Reformulaciones"]}
       filas={datos.reiteradas.map(r => [`#${r.emergencia_id}`, r.reaperturas, r.reformulaciones])} />
-    <TablaMonitoreo titulo="ONG por recursos adjudicados y cumplimiento" columnas={["ONG", "Capacidad", "Unidad", "Cantidad adjudicada", "Aportes", "Finalizados", "Pendientes", "Finalizados con plazo", "Cumplimiento en término"]}
-      filas={datos.ranking_ongs.map(r => [r.ong, r.capacidad, r.unidad, r.cantidad, r.aportes, r.finalizados, r.aportes - r.finalizados, r.con_plazo_finalizados, porcentajeMonitoreo(r.tasa_cumplimiento)])} />
+    <TablaMonitoreo titulo="ONG por recursos adjudicados y cumplimiento"
+      columnas={["ONG", "Capacidad", "Unidad", "Cantidad adjudicada", "Aportes", "Finalizados", "Pendientes", "Finalizados con tiempo medido", `Finalizados en hasta ${limiteAportes}`, `% en hasta ${limiteAportes}`]}
+      filas={datos.ranking_ongs.map(r => [
+        r.ong, r.capacidad, r.unidad, r.cantidad, r.aportes, r.finalizados, r.aportes - r.finalizados,
+        r.finalizados_con_tiempo, r.dentro_del_umbral, porcentajeMonitoreo(r.tasa_dentro_del_umbral),
+      ])} />
     <TablaMonitoreo titulo="Cobertura efectiva al cierre" columnas={["Cobertura", "Cierres", "Proporción"]}
       filas={filasCobertura}
       descripcion={cobertura.sin_evidencia ? `${cobertura.sin_evidencia} emergencias resueltas sin evidencia completa de cobertura.` : undefined}

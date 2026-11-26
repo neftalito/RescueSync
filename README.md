@@ -585,8 +585,9 @@ Los indicadores de resultado usan las confirmaciones de adjudicación, liberaci�
 y cierre que guarda el flujo operativo.
 
 El [monitoreo de procesos](docs/monitoreo-procesos.md) explica los cálculos,
-incluidos los suministros movilizados y la resolución mediante consorcios. Al
-adjudicar, el municipio puede fijar plazos. Al finalizar, cada ONG informa
+incluidos los suministros movilizados y la resolución mediante consorcios.
+El auditor elige los umbrales de duración para aportes y cierres en el
+dashboard. Al finalizar, cada ONG informa
 cuánto movilizó y cumplió por lote. Actualizá la base con `alembic upgrade head`
 para habilitar el registro de estas cantidades.
 

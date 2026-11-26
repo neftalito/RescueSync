@@ -35,7 +35,6 @@ class AdjudicacionOperativa:
     emergencia_id: int
     ronda: int
     confirmada_en: datetime
-    plazos: dto.PlazosEjecucion
     cantidades: dict[tuple[int, int], Decimal]
     finalizaciones: dict[int, FinalizacionOperativa]
     por_consorcio: bool
@@ -140,12 +139,10 @@ def obtener_ejecucion(session: Session, ids: list[int]) -> EjecucionMonitoreo:
             for item in compromiso.items:
                 cantidades[ong_id, int(item.lote_id)] += item.cantidad
                 seleccionadas[int(item.oferta_id), item.version].add(ong_id)
-        plazos = dto.AdjudicacionRequest.model_validate(a.seleccion)
         adjudicaciones[a.id] = AdjudicacionOperativa(
             emergencia_id=c.emergencia_id,
             ronda=c.numero,
             confirmada_en=confirmacion.confirmacion.registrado_en,
-            plazos=plazos,
             cantidades=cantidades,
             finalizaciones=finalizaciones[a.id],
             por_consorcio=any(

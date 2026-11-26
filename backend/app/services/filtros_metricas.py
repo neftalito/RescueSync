@@ -5,10 +5,12 @@ from datetime import UTC, datetime, time, timedelta
 from sqlalchemy import Select, select
 
 from app.db.models import Emergencia
-from app.schemas.metricas import ZONA_REPORTES, FiltrosMetricas
+from app.schemas.metricas import ZONA_REPORTES, FiltrosEmergenciasMetricas
 
 
-def emergencias_filtradas(filtros: FiltrosMetricas) -> Select[tuple[Emergencia]]:
+def emergencias_filtradas(
+    filtros: FiltrosEmergenciasMetricas,
+) -> Select[tuple[Emergencia]]:
     """Aplica fechas civiles inclusivas convirtiéndolas en límites UTC."""
     desde = datetime.combine(filtros.fecha_desde, time.min, ZONA_REPORTES)
     hasta = datetime.combine(

@@ -1,15 +1,23 @@
 import { z } from "zod";
 import { estados, gravedades } from "./emergencia";
 
-export const filtrosMetricasFormSchema = z
-  .object({
-    fecha_desde: z.iso.date("Ingresá una fecha desde válida."),
-    fecha_hasta: z.iso.date("Ingresá una fecha hasta válida."),
-    municipio_id: z
-      .string()
-      .regex(/^$|^[1-9]\d*$/, "Elegí un municipio válido."),
-    gravedad: z.union([z.enum(gravedades), z.literal("")]),
-    estado: z.union([z.enum(estados), z.literal("")]),
+export const horasUmbrales = [8, 12, 24, 48, 72, 168, 720] as const;
+const umbralHorasSchema = z.literal(horasUmbrales);
+const umbralHorasFormSchema = z.enum(horasUmbrales.map(String));
+const filtrosEmergenciasFormSchema = z.object({
+  fecha_desde: z.iso.date("Ingresá una fecha desde válida."),
+  fecha_hasta: z.iso.date("Ingresá una fecha hasta válida."),
+  municipio_id: z
+    .string()
+    .regex(/^$|^[1-9]\d*$/, "Elegí un municipio válido."),
+  gravedad: z.union([z.enum(gravedades), z.literal("")]),
+  estado: z.union([z.enum(estados), z.literal("")]),
+});
+
+export const filtrosMetricasFormSchema = filtrosEmergenciasFormSchema
+  .extend({
+    umbral_aportes_horas: umbralHorasFormSchema,
+    umbral_resolucion_horas: umbralHorasFormSchema,
   })
   .refine((f) => f.fecha_desde <= f.fecha_hasta, {
     message: "La fecha desde debe ser anterior o igual a la fecha hasta.",
@@ -17,6 +25,7 @@ export const filtrosMetricasFormSchema = z
   });
 
 export type FiltrosMetricasForm = z.infer<typeof filtrosMetricasFormSchema>;
+export type FiltrosEmergenciasMetricasForm = z.infer<typeof filtrosEmergenciasFormSchema>;
 
 const filtrosSchema = z.object({
   fecha_desde: z.iso.date(),
@@ -24,6 +33,10 @@ const filtrosSchema = z.object({
   municipio_id: z.number().int().positive().nullable(),
   gravedad: z.enum(gravedades).nullable(),
   estado: z.enum(estados).nullable(),
+});
+const filtrosMetricasSchema = filtrosSchema.extend({
+  umbral_aportes_horas: umbralHorasSchema,
+  umbral_resolucion_horas: umbralHorasSchema,
 });
 const conteoSchema = z.object({
   categoria: z.string(),
@@ -40,11 +53,11 @@ export const indicadoresProcesoSchema = z.object({
   emergencias_sin_hechos: z.number().int().nonnegative(),
   resolucion_por_gravedad: z.array(z.object({
     gravedad: z.enum(gravedades), emergencias: z.number().int().nonnegative(),
-    resueltas: z.number().int().nonnegative(), con_plazo: z.number().int().nonnegative(),
+    resueltas: z.number().int().nonnegative(), cierres_con_tiempo: z.number().int().nonnegative(),
     cierres_confirmados: z.number().int().nonnegative(), resueltas_sin_cierre: z.number().int().nonnegative(),
-    en_termino: z.number().int().nonnegative(), tasa_resolucion: porcentaje,
-    tasa_en_termino: porcentaje, promedio_segundos: segundos,
-    promedio_en_termino_segundos: segundos,
+    dentro_del_umbral: z.number().int().nonnegative(), tasa_resolucion: porcentaje,
+    tasa_dentro_del_umbral: porcentaje, promedio_segundos: segundos,
+    promedio_dentro_del_umbral_segundos: segundos,
   })),
   reiteradas: z.array(z.object({
     emergencia_id: z.number().int().positive(), reaperturas: z.number().int().nonnegative(),
@@ -53,8 +66,8 @@ export const indicadoresProcesoSchema = z.object({
   ranking_ongs: z.array(z.object({
     ong_id: z.number().int().positive(), ong: z.string(), capacidad: z.string(),
     unidad: z.string(), cantidad, aportes: z.number().int().positive(),
-    finalizados: z.number().int().nonnegative(), con_plazo_finalizados: z.number().int().nonnegative(),
-    en_termino: z.number().int().nonnegative(), tasa_cumplimiento: porcentaje,
+    finalizados: z.number().int().nonnegative(), finalizados_con_tiempo: z.number().int().nonnegative(),
+    dentro_del_umbral: z.number().int().nonnegative(), tasa_dentro_del_umbral: porcentaje,
   })),
   cobertura_cierres: z.object({
     total: z.number().int().nonnegative(), parcial: z.number().int().nonnegative(),
@@ -80,7 +93,7 @@ export const indicadoresProcesoSchema = z.object({
 export type IndicadoresProceso = z.infer<typeof indicadoresProcesoSchema>;
 export const reporteMetricasSchema = z.object({
   generado_en: z.iso.datetime({ offset: true }),
-  filtros: filtrosSchema,
+  filtros: filtrosMetricasSchema,
   municipios: z.array(
     z.object({ id: z.number().int().positive(), nombre: z.string() }),
   ),
@@ -166,5 +179,7 @@ export function filtrosInicialesMetricas(): FiltrosMetricasForm {
     municipio_id: "",
     gravedad: "",
     estado: "",
+    umbral_aportes_horas: "24",
+    umbral_resolucion_horas: "72",
   };
 }

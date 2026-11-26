@@ -26,7 +26,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.main import app
-from app.schemas.metricas import FiltrosMetricas
+from app.schemas.metricas import FiltrosMetricas, UmbralHoras
 from app.schemas.monitoreo import (
     AdjudicacionConfirmada,
     AporteAdjudicado,
@@ -110,7 +110,9 @@ def guardar(
     )
 
 
-def cerrar(session: Session, a: AdjudicacionConfirmada, parcial: bool = False) -> None:
+def cerrar(
+    session: Session, a: AdjudicacionConfirmada, parcial: bool = False, horas: int = 6
+) -> None:
     for ong_id in {p.ong_id for p in a.aportes}:
         guardar(
             session,
@@ -128,7 +130,7 @@ def cerrar(session: Session, a: AdjudicacionConfirmada, parcial: bool = False) -
         "cierre",
         ResolucionEmergencia(
             tipo="RESOLUCION_EMERGENCIA",
-            ocurrido_en=ALERTA + timedelta(hours=6),
+            ocurrido_en=ALERTA + timedelta(hours=horas),
             convocatoria_numero=a.convocatoria_numero,
             alerta_en=ALERTA,
             plazo_en=ALERTA + timedelta(hours=7),
@@ -181,7 +183,7 @@ def test_seis_indicadores_cruzan_hechos_y_negocio_sin_confundir_ofrecido(
     reporte = obtener_indicadores(escenario, FILTROS)
     fila = next(r for r in reporte.resolucion_por_gravedad if r.cierres_confirmados)
     assert fila.promedio_segundos == 6 * 3600
-    assert fila.tasa_en_termino == 100
+    assert fila.tasa_dentro_del_umbral == 100
     assert reporte.alerta_adjudicacion_promedio_segundos == 3 * 3600
     assert reporte.alerta_adjudicacion_muestras == 1
     assert reporte.reiteradas[0].reformulaciones == 1
@@ -190,7 +192,7 @@ def test_seis_indicadores_cruzan_hechos_y_negocio_sin_confundir_ofrecido(
         p.unidad_publicada.lower(): p.cantidad_publicada
         for p in escenario.scalars(select(ConvocatoriaLote))
     }
-    assert all(r.tasa_cumplimiento == 100 for r in reporte.ranking_ongs)
+    assert all(r.tasa_dentro_del_umbral == 100 for r in reporte.ranking_ongs)
     assert {r.unidad: r.cantidad for r in reporte.demanda_rubros} == {
         p.unidad_publicada.lower(): p.cantidad_publicada
         for p in escenario.scalars(select(ConvocatoriaLote))
@@ -247,23 +249,39 @@ def test_rechaza_cierre_prematuro_y_cobertura_imposible(escenario: Session) -> N
         guardar(escenario, "cierre", cierre)
 
 
-def test_cobertura_parcial_y_falta_de_sla_no_se_convierten_en_ceros(
+def test_umbral_de_resolucion_recalcula_cierres_sin_cambiar_el_ranking(
     escenario: Session,
 ) -> None:
     a = adjudicacion(escenario)
     for aporte in a.aportes:
         aporte.plazo_en = None
     guardar(escenario, "adjudicacion", a)
-    cerrar(escenario, a, parcial=True)
-    reporte = obtener_indicadores(escenario, FILTROS)
+    cerrar(escenario, a, parcial=True, horas=12)
+    reporte = obtener_indicadores(
+        escenario,
+        FILTROS.model_copy(update={"umbral_resolucion_horas": UmbralHoras.DOCE_HORAS}),
+    )
     assert reporte.cobertura_cierres.proporcion_parcial == 100
-    assert all(r.tasa_cumplimiento is None for r in reporte.ranking_ongs)
+    assert all(r.tasa_dentro_del_umbral == 100 for r in reporte.ranking_ongs)
+    fila = next(r for r in reporte.resolucion_por_gravedad if r.cierres_confirmados)
+    assert fila.cierres_con_tiempo == fila.dentro_del_umbral == 1
+    assert fila.tasa_dentro_del_umbral == 100
+    assert fila.promedio_dentro_del_umbral_segundos == 12 * 3600
+    corto = obtener_indicadores(
+        escenario,
+        FILTROS.model_copy(update={"umbral_resolucion_horas": UmbralHoras.OCHO_HORAS}),
+    )
+    fuera = next(r for r in corto.resolucion_por_gravedad if r.cierres_confirmados)
+    assert fuera.cierres_con_tiempo == 1
+    assert fuera.tasa_dentro_del_umbral == 0
+    assert fuera.promedio_dentro_del_umbral_segundos is None
+    assert corto.ranking_ongs == reporte.ranking_ongs
     vacio = obtener_indicadores(
         escenario, FILTROS.model_copy(update={"municipio_id": 999999})
     )
     assert vacio.alerta_adjudicacion_promedio_segundos is None
     assert vacio.cobertura_cierres.proporcion_total is None
-    assert all(r.tasa_en_termino is None for r in vacio.resolucion_por_gravedad)
+    assert all(r.tasa_dentro_del_umbral is None for r in vacio.resolucion_por_gravedad)
 
 
 def test_ranking_distribuye_consorcio_y_mide_cada_ong_independientemente(
@@ -299,22 +317,36 @@ def test_ranking_distribuye_consorcio_y_mide_cada_ong_independientemente(
         "final",
         FinalizacionOng(
             tipo="FINALIZACION_ONG",
-            ocurrido_en=ALERTA + timedelta(hours=6),
+            ocurrido_en=a.ocurrido_en + timedelta(hours=12),
             convocatoria_numero=a.convocatoria_numero,
             adjudicacion_ref=a.adjudicacion_ref,
             ong_id=otra.id,
         ),
     )
-    reporte = obtener_indicadores(escenario, FILTROS)
+    reporte = obtener_indicadores(
+        escenario,
+        FILTROS.model_copy(update={"umbral_aportes_horas": UmbralHoras.OCHO_HORAS}),
+    )
     assert all(
-        r.finalizados == r.aportes and r.tasa_cumplimiento == 0
+        r.finalizados == r.finalizados_con_tiempo == r.aportes
+        and r.tasa_dentro_del_umbral == 0
         for r in reporte.ranking_ongs
         if r.ong_id == otra.id
     )
     assert all(
-        r.finalizados == 0 and r.tasa_cumplimiento is None
+        r.finalizados_con_tiempo == r.finalizados == 0
+        and r.tasa_dentro_del_umbral is None
         for r in reporte.ranking_ongs
         if r.ong_id != otra.id
+    )
+    ampliado = obtener_indicadores(
+        escenario,
+        FILTROS.model_copy(update={"umbral_aportes_horas": UmbralHoras.DOCE_HORAS}),
+    )
+    assert all(
+        r.dentro_del_umbral == r.aportes and r.tasa_dentro_del_umbral == 100
+        for r in ampliado.ranking_ongs
+        if r.ong_id == otra.id
     )
 
 

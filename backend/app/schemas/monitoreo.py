@@ -150,12 +150,12 @@ class ResolucionGravedad(BaseModel):
     resueltas: int
     cierres_confirmados: int
     resueltas_sin_cierre: int
-    con_plazo: int
-    en_termino: int
+    cierres_con_tiempo: int
+    dentro_del_umbral: int
     tasa_resolucion: float | None
-    tasa_en_termino: float | None
+    tasa_dentro_del_umbral: float | None
     promedio_segundos: float | None
-    promedio_en_termino_segundos: float | None
+    promedio_dentro_del_umbral_segundos: float | None
 
 
 class RankingOng(BaseModel):
@@ -166,9 +166,9 @@ class RankingOng(BaseModel):
     cantidad: Decimal
     aportes: int
     finalizados: int
-    con_plazo_finalizados: int
-    en_termino: int
-    tasa_cumplimiento: float | None
+    finalizados_con_tiempo: int
+    dentro_del_umbral: int
+    tasa_dentro_del_umbral: float | None
 
 
 class DemandaRubro(BaseModel):
@@ -205,7 +205,7 @@ class ResolucionConsorcios(BaseModel):
 
 
 class IndicadoresProceso(BaseModel):
-    """Las ausencias de hechos/plazos se expresan como null y con cobertura."""
+    """Las ausencias de evidencia se expresan como null y con cobertura."""
 
     emergencias_con_hechos: int
     emergencias_sin_hechos: int

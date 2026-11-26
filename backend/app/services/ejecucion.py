@@ -807,7 +807,10 @@ def finalizar(
         ContratoFinalizacion(participacion_id=p.id, finalizacion_id=f_id),
     )
     f = FinalizacionLocal(
-        id=f_id, participacion_id=p.id, ejecucion=objeto(datos) if datos else None
+        id=f_id,
+        participacion_id=p.id,
+        solicitada_en=datetime.now(UTC),
+        ejecucion=objeto(datos) if datos else None,
     )
     session.add(f)
     for c in compromisos:

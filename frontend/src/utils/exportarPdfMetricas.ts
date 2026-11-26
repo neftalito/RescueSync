@@ -1,5 +1,6 @@
 import type { ReporteMetricas, ReporteTiempos } from "../schemas/metricas";
 import { etiquetasMetricas } from "./coloresMetricas";
+import { etiquetaUmbral } from "./formatoMonitoreo";
 import { filasMonitoreo } from "./filasMonitoreo";
 import {
   indicadoresPendientes,
@@ -37,6 +38,7 @@ export function generarPdfMetricas(
     "Alcance del reporte",
     [
       "Se seleccionan emergencias por fecha de alta y se informa la situación actual de sus datos relacionados.",
+      `Umbrales aplicados · Aportes hasta ${etiquetaUmbral(locales.filtros.umbral_aportes_horas)} · Resolución hasta ${etiquetaUmbral(locales.filtros.umbral_resolucion_horas)}.`,
       `Fuentes: datos locales disponibles. Bonita: ${tiempos?.disponibilidad ?? "NO_DISPONIBLE"}.`,
     ],
     "neutro",

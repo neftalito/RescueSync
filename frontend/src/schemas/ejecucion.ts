@@ -37,8 +37,6 @@ export type LoteAdjudicado = z.infer<typeof loteAdjudicadoSchema>;
 
 export const adjudicacionSchema = z.object({
   adjudicacionId: z.string().uuid(), estado: z.string(), estadoIntegracion: z.string(),
-  plazoAportesEn: z.iso.datetime({ offset: true }).nullable().optional(),
-  plazoResolucionEn: z.iso.datetime({ offset: true }).nullable().optional(),
   participantes: z.array(z.object({
     participacionId: z.string().uuid(), ongId: z.number(), estado: z.string(),
     compromisoIds: z.array(z.string().uuid()), finalizacionId: z.string().uuid().nullable(),

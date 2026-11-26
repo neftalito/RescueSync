@@ -145,7 +145,6 @@ def adjudicar(
     esc: Escenario,
     coord: Usuario,
     datos: dto.PerfilesRequest,
-    plazos: dto.PlazosEjecucion | None = None,
 ) -> dto.AdjudicacionPreparada:
     evaluaciones.guardar_perfiles(db, esc.emergencia.id, 4242, datos)
     decision = servicio.decidir(
@@ -168,7 +167,6 @@ def adjudicar(
         esc.emergencia,
         esc.operador_municipal,
         dto.AdjudicacionRequest(
-            **(plazos or dto.PlazosEjecucion()).model_dump(),
             adjudicacion_id=uuid4(),
             validacion_id=datos.validacion_id,
             revision=datos.revision,
@@ -617,12 +615,7 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
     base = f"/api/v1/emergencias/{escenario.emergencia.id}"
     datos = preparar(db_session, escenario, capacidad)
     plazo = datetime.now(UTC) + timedelta(hours=1)
-    plazos = (
-        dto.PlazosEjecucion(plazo_aportes_en=plazo, plazo_resolucion_en=plazo)
-        if con_registro
-        else None
-    )
-    prep = adjudicar(db_session, escenario, coordinador, datos, plazos)
+    prep = adjudicar(db_session, escenario, coordinador, datos)
     filtros = filtros_del_caso(escenario)
     assert obtener_indicadores(db_session, filtros).ranking_ongs == []
     consulta = client.get(
@@ -768,11 +761,12 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
     assert ranking[0]["ong_id"] == escenario.ong.id
     assert Decimal(ranking[0]["cantidad"]) == Decimal(100)
     assert ranking[0]["finalizados"] == 1
-    assert ranking[0]["tasa_cumplimiento"] == (100 if con_registro else None)
+    assert ranking[0]["finalizados_con_tiempo"] == 1
+    assert ranking[0]["tasa_dentro_del_umbral"] == 100
     resolucion = next(r for r in reporte["resolucion_por_gravedad"] if r["resueltas"])
     assert resolucion["cierres_confirmados"] == 1
     assert resolucion["promedio_segundos"] >= 0
-    assert resolucion["tasa_en_termino"] == (100 if con_registro else None)
+    assert resolucion["tasa_dentro_del_umbral"] == 100
     assert reporte["cobertura_cierres"]["parcial"] == int(con_registro)
     assert reporte["cobertura_cierres"]["sin_evidencia"] == int(not con_registro)
     movilizados = reporte["suministros_movilizados"]
@@ -810,7 +804,7 @@ def test_recorrido_http_consulta_confirmacion_finalizacion_liberacion_y_resolver
         assert len(consolidada) == 1
         assert consolidada[0].cantidad == Decimal(100)
         assert consolidada[0].aportes == consolidada[0].finalizados == 1
-        assert consolidada[0].tasa_cumplimiento == 100
+        assert consolidada[0].tasa_dentro_del_umbral == 100
 
 
 def test_recuperacion_no_vuelve_a_seleccion_ante_incertidumbre(

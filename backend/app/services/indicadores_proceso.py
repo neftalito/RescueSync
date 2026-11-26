@@ -39,11 +39,13 @@ from app.services.monitoreo_ejecucion import AdjudicacionOperativa, obtener_ejec
 
 DEFINICIONES = [
     "El período selecciona emergencias por fecha de alta. Sus resultados reflejan toda su vida hasta la consulta.",
-    "Tasa de resolución = emergencias resueltas por estado local o cierre confirmado / emergencias de la gravedad. En término = cierres dentro del plazo / cierres con plazo explícito.",
+    "Tasa de resolución = emergencias resueltas por estado local o cierre confirmado / emergencias de la gravedad.",
     "La alerta operativa comienza con el alta municipal. Una alerta explícita registrada para el caso conserva su fecha. Los tiempos usan la confirmación nacional de adjudicación o cierre.",
+    "El porcentaje de resolución dentro del umbral compara el tiempo entre la alerta y el cierre confirmado con el límite del informe. Usa los cierres con duración verificable.",
     "Reaperturas y reformulaciones cuentan decisiones confirmadas por emergencia y ronda.",
     "El ranking agrupa cantidades adjudicadas por ONG, capacidad y unidad. Cada aporte corresponde a una ONG y un lote por adjudicación.",
-    "El cumplimiento compara la fecha en que la ONG informó la finalización con el plazo del aporte, una vez confirmada la liberación. La tasa usa los aportes finalizados con plazo.",
+    "El porcentaje de aportes dentro del umbral compara la duración entre la adjudicación confirmada y la finalización informada por la ONG. Usa aportes con liberación confirmada y duración verificable.",
+    "Los umbrales se aplican a las duraciones transcurridas e incluyen el valor límite. Una semana equivale a 168 horas y un mes a 720 horas.",
     "La cobertura total exige que se cumplan todos los lotes de la ronda de cierre. Las proporciones usan cierres con evidencia completa de cantidades cumplidas.",
     "La demanda suma necesidades publicadas por capacidad y unidad, incluyendo nuevas rondas.",
     "Los suministros movilizados suman las cantidades declaradas por cada ONG al finalizar una participación liberada. Se informa la cantidad de participaciones con y sin registro.",
@@ -63,34 +65,39 @@ def promedio(muestras: list[float]) -> float | None:
     return sum(muestras) / len(muestras) if muestras else None
 
 
+def _duracion(inicio: datetime, fin: datetime) -> float | None:
+    return (fin - inicio).total_seconds() if fin >= inicio else None
+
+
 @dataclass
 class AcumuladoRanking:
     cantidad: Decimal = Decimal(0)
     aportes: int = 0
     finalizados: int = 0
-    con_plazo: int = 0
-    en_termino: int = 0
+    finalizados_con_tiempo: int = 0
+    dentro_del_umbral: int = 0
 
     def agregar(
         self,
         cantidad: Decimal,
+        adjudicado_en: datetime,
         finalizado_en: datetime | None,
-        plazo_en: datetime | None,
+        umbral_segundos: int,
     ) -> None:
         self.cantidad += cantidad
         self.aportes += 1
         if finalizado_en is not None:
             self.finalizados += 1
-            if plazo_en is not None:
-                self.con_plazo += 1
-                self.en_termino += finalizado_en <= plazo_en
+            duracion = _duracion(adjudicado_en, finalizado_en)
+            if duracion is not None:
+                self.finalizados_con_tiempo += 1
+                self.dentro_del_umbral += duracion <= umbral_segundos
 
 
 @dataclass(frozen=True)
 class CierreMonitoreado:
     ocurrido_en: datetime
     alerta_en: datetime
-    plazo_en: datetime | None
     cobertura_total: bool | None
 
 
@@ -123,7 +130,9 @@ def _cobertura_operativa(
 
 
 def _resoluciones_por_gravedad(
-    emergencias: list[Emergencia], cierres: dict[int, CierreMonitoreado]
+    emergencias: list[Emergencia],
+    cierres: dict[int, CierreMonitoreado],
+    umbral_segundos: int,
 ) -> list[ResolucionGravedad]:
     resoluciones: list[ResolucionGravedad] = []
     for gravedad in GravedadEmergencia:
@@ -133,11 +142,13 @@ def _resoluciones_por_gravedad(
             e.estado == EstadoEmergencia.RESUELTA and e.id not in cierres
             for e in seleccionadas
         )
-        con_plazo = [h for h in resueltas if h.plazo_en is not None]
-        en_termino = [
-            h
-            for h in con_plazo
-            if h.plazo_en is not None and h.ocurrido_en <= h.plazo_en
+        duraciones = [
+            segundos
+            for h in resueltas
+            if (segundos := _duracion(h.alerta_en, h.ocurrido_en)) is not None
+        ]
+        dentro_del_umbral = [
+            segundos for segundos in duraciones if segundos <= umbral_segundos
         ]
         resoluciones.append(
             ResolucionGravedad(
@@ -146,26 +157,16 @@ def _resoluciones_por_gravedad(
                 resueltas=len(resueltas) + sin_cierre,
                 cierres_confirmados=len(resueltas),
                 resueltas_sin_cierre=sin_cierre,
-                con_plazo=len(con_plazo),
-                en_termino=len(en_termino),
+                cierres_con_tiempo=len(duraciones),
+                dentro_del_umbral=len(dentro_del_umbral),
                 tasa_resolucion=porcentaje(
                     len(resueltas) + sin_cierre, len(seleccionadas)
                 ),
-                tasa_en_termino=porcentaje(len(en_termino), len(con_plazo)),
-                promedio_segundos=promedio(
-                    [
-                        (h.ocurrido_en - h.alerta_en).total_seconds()
-                        for h in resueltas
-                        if h.ocurrido_en >= h.alerta_en
-                    ]
+                tasa_dentro_del_umbral=porcentaje(
+                    len(dentro_del_umbral), len(duraciones)
                 ),
-                promedio_en_termino_segundos=promedio(
-                    [
-                        (h.ocurrido_en - h.alerta_en).total_seconds()
-                        for h in en_termino
-                        if h.ocurrido_en >= h.alerta_en
-                    ]
-                ),
+                promedio_segundos=promedio(duraciones),
+                promedio_dentro_del_umbral_segundos=promedio(dentro_del_umbral),
             )
         )
     return resoluciones
@@ -175,6 +176,7 @@ def obtener_indicadores(
     session: Session, filtros: FiltrosMetricas
 ) -> IndicadoresProceso:
     """Cruza las fuentes por emergencia y ronda para evitar duplicar resultados."""
+    umbral_aportes_segundos = filtros.umbral_aportes_horas * 3600
     emergencias = list(session.scalars(emergencias_filtradas(filtros)))
     alertas = {e.id: e.creada_en for e in emergencias}
     ids = list(alertas)
@@ -229,7 +231,6 @@ def obtener_indicadores(
             cierres[eid] = CierreMonitoreado(
                 ocurrido_en=h.ocurrido_en,
                 alerta_en=h.alerta_en,
-                plazo_en=h.plazo_en,
                 cobertura_total=all(
                     c.cantidad
                     >= publicaciones[eid, h.convocatoria_numero, c.lote_id][
@@ -255,25 +256,15 @@ def obtener_indicadores(
     for a in ejecucion.adjudicaciones:
         eid, ronda = a.emergencia_id, a.ronda
         primeras[eid] = min(primeras.get(eid, a.confirmada_en), a.confirmada_en)
-        # Una adjudicación operativa cubre la ronda. Una copia equivalente del
-        # callback puede aportar un plazo histórico que no estaba en la selección.
-        equivalentes = [
-            h
-            for h in antiguas.pop((eid, ronda), [])
-            if {(p.ong_id, p.lote_id): p.cantidad for p in h.aportes} == a.cantidades
-        ]
-        plazos = (
-            {(p.ong_id, p.lote_id): p.plazo_en for p in equivalentes[0].aportes}
-            if len(equivalentes) == 1
-            else {}
-        )
+        antiguas.pop((eid, ronda), None)
         for (ong, lote), cantidad in a.cantidades.items():
             _, capacidad, unidad = publicaciones[eid, ronda, lote]
             f = a.finalizaciones.get(ong)
             ranking[ong, capacidad, unidad].agregar(
                 cantidad,
+                a.confirmada_en,
                 f.informada_en if f else None,
-                a.plazos.plazo_aportes_en or plazos.get((ong, lote)),
+                umbral_aportes_segundos,
             )
         for f in a.finalizaciones.values():
             if f.cantidades is None:
@@ -292,7 +283,7 @@ def obtener_indicadores(
                 _, capacidad, unidad = publicaciones[eid, ronda, a.lote_id]
                 finalizado_en = finalizaciones.get((eid, h.adjudicacion_ref, a.ong_id))
                 ranking[a.ong_id, capacidad, unidad].agregar(
-                    a.cantidad, finalizado_en, a.plazo_en
+                    a.cantidad, h.ocurrido_en, finalizado_en, umbral_aportes_segundos
                 )
                 if finalizado_en is not None:
                     sin_participaciones.add((h.adjudicacion_ref, a.ong_id))
@@ -306,8 +297,6 @@ def obtener_indicadores(
         cierres[eid] = CierreMonitoreado(
             ocurrido_en=c.cerrado_en,
             alerta_en=alertas[eid],
-            plazo_en=c.adjudicacion.plazos.plazo_resolucion_en
-            or (anterior.plazo_en if anterior else None),
             cobertura_total=anterior.cobertura_total
             if cobertura is None and anterior
             else cobertura,
@@ -318,7 +307,9 @@ def obtener_indicadores(
         if decision in {"REABRIR", "REFORMULAR"}:
             reiteradas[eid][0 if decision == "REABRIR" else 1] += 1
 
-    resoluciones = _resoluciones_por_gravedad(emergencias, cierres)
+    resoluciones = _resoluciones_por_gravedad(
+        emergencias, cierres, filtros.umbral_resolucion_horas * 3600
+    )
     resueltas = sum(r.resueltas for r in resoluciones)
     totales = sum(h.cobertura_total is True for h in cierres.values())
     parciales = sum(h.cobertura_total is False for h in cierres.values())
@@ -354,9 +345,11 @@ def obtener_indicadores(
                 cantidad=f.cantidad,
                 aportes=f.aportes,
                 finalizados=f.finalizados,
-                con_plazo_finalizados=f.con_plazo,
-                en_termino=f.en_termino,
-                tasa_cumplimiento=porcentaje(f.en_termino, f.con_plazo),
+                finalizados_con_tiempo=f.finalizados_con_tiempo,
+                dentro_del_umbral=f.dentro_del_umbral,
+                tasa_dentro_del_umbral=porcentaje(
+                    f.dentro_del_umbral, f.finalizados_con_tiempo
+                ),
             )
             for (ong, capacidad, unidad), f in sorted(
                 ranking.items(),

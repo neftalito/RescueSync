@@ -80,7 +80,7 @@ export function generarCsvMetricas(
     ["fuentes", "bonita", "", tiempos?.disponibilidad ?? "NO_DISPONIBLE", ""],
   );
   for (const [clave, valor] of Object.entries(locales.filtros))
-    filas.push(["filtros", clave, "", valor ?? "Todos", ""]);
+    filas.push(["filtros", clave, "", valor ?? "Todos", clave.endsWith("_horas") ? "horas" : ""]);
   for (const [clave, valor] of Object.entries(locales.resumen))
     filas.push(["resumen", clave, "", valor, "cantidad"]);
   for (const clave of [

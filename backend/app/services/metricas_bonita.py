@@ -19,7 +19,7 @@ from app.integrations.bonita.contratos import TareaActiva, TransicionTareaArchiv
 from app.schemas.metricas import (
     ActividadActual,
     DisponibilidadBonita,
-    FiltrosMetricas,
+    FiltrosEmergenciasMetricas,
     ReporteTiempos,
     ResumenActividad,
     TiempoEtapa,
@@ -160,7 +160,7 @@ def duraciones_tareas(
 
 
 def obtener_tiempos(
-    session: Session, filtros: FiltrosMetricas, cliente: ClienteBonita
+    session: Session, filtros: FiltrosEmergenciasMetricas, cliente: ClienteBonita
 ) -> ReporteTiempos:
     """Consulta casos ligados a datos locales; tolera indisponibilidad parcial."""
     emergencias = session.scalars(emergencias_filtradas(filtros)).all()

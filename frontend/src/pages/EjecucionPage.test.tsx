@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -34,24 +34,21 @@ function pagina(rol: Role): void {
 }
 
 describe("Evaluación y ejecución", () => {
-  it("envía cantidades exactas y revisión vigente con CSRF", async () => {
+  it("envía cantidades exactas y revisión vigente con CSRF sin pedir plazos", async () => {
     const usuario = userEvent.setup();
     let payload: unknown;
     let csrf: string | null = null;
     server.use(http.post(`${base}/adjudicaciones`, async ({ request }) => { payload = await request.json(); csrf = request.headers.get("X-CSRF-Token"); return HttpResponse.json({}); }));
     pagina("OPERADOR_MUNICIPAL");
     await usuario.type(await screen.findByLabelText("Cantidad aporte 20"), "6");
-    const plazoAportes = "2099-12-20T15:00";
-    const plazoResolucion = "2099-12-21T15:00";
-    fireEvent.change(screen.getByLabelText("Finalización de los aportes"), { target: { value: plazoAportes } });
-    fireEvent.change(screen.getByLabelText("Resolución de la emergencia"), { target: { value: plazoResolucion } });
+    expect(screen.queryByText("Plazos opcionales en hora local")).not.toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Solicitar adjudicación" }));
     await screen.findByText(/Solicitud guardada/);
     expect(payload).toMatchObject({
       validacionId, revision: 2, aportes: [{ aporteId: 20, cantidad: "6" }],
-      plazoAportesEn: new Date(plazoAportes).toISOString(),
-      plazoResolucionEn: new Date(plazoResolucion).toISOString(),
     });
+    expect(payload).not.toHaveProperty("plazoAportesEn");
+    expect(payload).not.toHaveProperty("plazoResolucionEn");
     expect(csrf).toBe("csrf-firmado");
   });
 

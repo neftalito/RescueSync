@@ -16,17 +16,22 @@ ocurridos exclusivamente dentro del mes ni una reconstrucción histórica al
 
 | Indicador | Fuente y cálculo |
 | --- | --- |
-| Resolución por gravedad | Resueltas por estado local o cierre confirmado sobre emergencias de esa gravedad. El tiempo se mide desde el alta municipal o la alerta explícita hasta el cierre confirmado. La tasa en término usa los cierres con plazo informado. |
+| Resolución por gravedad | Resueltas por estado local o cierre confirmado sobre emergencias de esa gravedad. El tiempo se mide desde el alta municipal o la alerta explícita hasta el cierre confirmado. La tasa dentro del umbral usa los cierres con duración verificable. |
 | Reaperturas y reformulaciones | Decisiones `REABRIR` y `REFORMULAR` por emergencia y ronda, una vez completado el despacho en Bonita. |
-| Ranking de ONG | Cantidades confirmadas por ONG, capacidad y unidad. Los miembros de consorcios cuentan por sus aportes propios. Se mide un aporte por ONG y lote en cada adjudicación. Una vez confirmada la liberación, se compara la fecha en que la ONG informó la finalización con el plazo establecido para los aportes. |
+| Ranking de ONG | Cantidades confirmadas por ONG, capacidad y unidad. Se mide un aporte por ONG y lote en cada adjudicación. Una vez confirmada la liberación, se compara el tiempo entre la adjudicación confirmada y la finalización informada por la ONG con el umbral del reporte. |
 | Cobertura del cierre | Total cuando las cantidades cumplidas cubren todos los lotes de la ronda de cierre. Parcial cuando hay un faltante. El porcentaje usa cierres con cantidades verificables. |
 | Demanda por rubro | Suma de necesidades publicadas por capacidad y unidad, incluyendo nuevas rondas. Los rubros se ordenan por cantidad dentro de cada unidad. |
 | Alerta a adjudicación | Primera adjudicación nacional confirmada menos la fecha de alta municipal o la alerta explícita. Una muestra por emergencia. |
 | Suministros movilizados | Cantidades movilizadas declaradas por cada ONG al finalizar, una vez confirmada su liberación. Se agrupan por capacidad y unidad para las emergencias seleccionadas y se informa cuántas participaciones liberadas tienen cantidades registradas. |
 | Resolución mediante consorcios | Cierres con al menos dos integrantes adjudicados de una misma oferta conjunta confirmada, aunque el caso también haya tenido adjudicaciones individuales. El porcentaje usa cierres con adjudicación verificable. |
 
+**Umbrales del informe** permite fijar un límite de duración independiente para
+aportes y cierres. Los valores están expresados en horas transcurridas y se
+incluye el límite exacto. Una semana equivale a 168 horas y un mes a 720 horas.
+JSON, CSV y PDF incluyen los umbrales aplicados.
+
 Las cantidades se conservan como `Decimal` y se exportan como strings.
-Denominadores vacíos, plazos ausentes y duraciones sin evidencia se representan
+Los denominadores vacíos y las duraciones sin evidencia se representan
 con `null`/«Sin datos». Un cero observado conserva su significado. No se usa
 `actualizada_en` como cierre ni se confunden ofrecimientos, adjudicaciones y
 cantidades efectivamente cumplidas.
@@ -42,9 +47,8 @@ La integración pagina resultados y verifica el caso raíz.
 
 ## Registro durante la ejecución
 
-El municipio puede indicar un plazo para los aportes seleccionados y otro
-para resolver la emergencia en **Solicitar adjudicación**. Los plazos quedan
-asociados a esa selección. Cada ONG registra sus cantidades reales por lote
+El municipio selecciona los aportes en **Solicitar adjudicación**. Cada ONG
+registra sus cantidades reales por lote
 en **Informar finalización**. Puede declarar cero. La cantidad cumplida puede
 ser como máximo la movilizada, y esta, como máximo la adjudicada.
 
@@ -58,9 +62,10 @@ de cobertura total y parcial.
 
 La migración `20261015_0014` agregó `hecho_monitoreo`. El dashboard conserva
 esa evidencia para los casos históricos. Si existe una adjudicación operativa
-confirmada en la misma ronda, se cuenta esa adjudicación una sola vez. Una
-adjudicación histórica equivalente puede aportar plazos. Los cierres
-históricos aportan cobertura cuando faltan las cantidades operativas.
+confirmada en la misma ronda, se cuenta esa adjudicación una sola vez. Los
+plazos históricos se conservan en los registros. El dashboard aplica los
+umbrales del informe a las duraciones verificables. Los cierres históricos
+aportan cobertura cuando faltan las cantidades operativas.
 
 Callback técnico:
 

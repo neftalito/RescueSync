@@ -211,6 +211,8 @@ class Seleccion(Contrato):
 
 
 class PlazosEjecucion(Contrato):
+    """Conserva el contrato de clientes y adjudicaciones anteriores."""
+
     plazo_aportes_en: AwareDatetime | None = None
     plazo_resolucion_en: AwareDatetime | None = None
 

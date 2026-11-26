@@ -63,7 +63,11 @@ async function simularApi(
       await route.fulfill({
         json: {
           generado_en: "2026-10-15T12:00:00Z",
-          filtros,
+          filtros: {
+            ...filtros,
+            umbral_aportes_horas: Number(url.searchParams.get("umbral_aportes_horas") ?? 24),
+            umbral_resolucion_horas: Number(url.searchParams.get("umbral_resolucion_horas") ?? 72),
+          },
           municipios: [{ id: 1, nombre: "Municipio del Delta" }],
           resumen: {
             emergencias: 2,
@@ -96,9 +100,9 @@ async function simularApi(
           ],
           indicadores_proceso: {
             emergencias_con_hechos: 1, emergencias_sin_hechos: 1,
-            resolucion_por_gravedad: [{ gravedad: "ALTA", emergencias: 2, resueltas: 1, cierres_confirmados: 1, resueltas_sin_cierre: 0, con_plazo: 1, en_termino: 1, tasa_resolucion: 50, tasa_en_termino: 100, promedio_segundos: 7200, promedio_en_termino_segundos: 7200 }],
+            resolucion_por_gravedad: [{ gravedad: "ALTA", emergencias: 2, resueltas: 1, cierres_confirmados: 1, resueltas_sin_cierre: 0, cierres_con_tiempo: 1, dentro_del_umbral: 1, tasa_resolucion: 50, tasa_dentro_del_umbral: 100, promedio_segundos: 7200, promedio_dentro_del_umbral_segundos: 7200 }],
             reiteradas: [{ emergencia_id: 9, reaperturas: 1, reformulaciones: 0 }],
-            ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 1, finalizados: 1, con_plazo_finalizados: 1, en_termino: 1, tasa_cumplimiento: 100 }],
+            ranking_ongs: [{ ong_id: 4, ong: "Ayuda", capacidad: "AGUA", unidad: "litros", cantidad: "100.125", aportes: 1, finalizados: 1, finalizados_con_tiempo: 1, dentro_del_umbral: 1, tasa_dentro_del_umbral: 100 }],
             cobertura_cierres: { total: 1, parcial: 0, proporcion_total: 100, proporcion_parcial: 0 },
             suministros_movilizados: {
               cantidades: [{ capacidad: "AGUA", unidad: "litros", cantidad: "90.125" }],
@@ -144,10 +148,14 @@ test("auditor usa gráficos, filtros y exportaciones sin desbordamiento", async 
     page.getByRole("table", { name: "Emergencias por estado" }),
   ).toContainText("Resuelta");
   await page.getByLabel("Desde", { exact: true }).fill("2026-09-01");
+  await page.getByLabel("Umbral de finalización de aportes").selectOption("12");
+  await page.getByLabel("Umbral de resolución de emergencias").selectOption("720");
   const consulta = page.waitForRequest(
     (request) =>
       request.url().includes("/metricas?") &&
-      request.url().includes("fecha_desde=2026-09-01"),
+      request.url().includes("fecha_desde=2026-09-01") &&
+      request.url().includes("umbral_aportes_horas=12") &&
+      request.url().includes("umbral_resolucion_horas=720"),
   );
   await page.getByRole("button", { name: "Aplicar filtros" }).click();
   await consulta;
@@ -159,9 +167,13 @@ test("auditor usa gráficos, filtros y exportaciones sin desbordamiento", async 
   if (archivo === null) throw new Error("No se descargó el reporte JSON.");
   const contenido = await readFile(archivo, "utf-8");
   expect(contenido).toContain('"fecha_desde": "2026-09-01"');
+  expect(contenido).toContain('"umbral_aportes_horas": 12');
+  expect(contenido).toContain('"umbral_resolucion_horas": 720');
   expect(contenido).toContain('"bonita": "PARCIAL"');
   expect(contenido).toContain('"cantidad": "100.125"');
   await expect(page.getByRole("heading", { name: "Resultados del proceso" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Finalizados en hasta 12 h" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Cierres en hasta 1 mes (30 días)" })).toBeVisible();
   await expect(page.getByRole("table", { name: "Suministros movilizados" })).toContainText("90.125");
   await expect(page.getByText(/1 de 1 cierres con adjudicación verificable/)).toBeVisible();
   await expect(page.getByRole("table", { name: "Tareas en ejecución y pendientes" })).toContainText("Revisar necesidades");

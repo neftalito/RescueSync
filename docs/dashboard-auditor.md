@@ -29,6 +29,12 @@ municipio, gravedad y estado actuales. Los lotes, convocatorias y ofertas
 relacionados se agregan en su situación actual, aunque se hayan creado después
 del período. No es una reconstrucción histórica al último día elegido.
 
+En **Umbrales del informe**, el auditor elige cuánto tiempo considera para la
+finalización de aportes y para la resolución de emergencias. Los valores
+iniciales son 24 y 72 horas, respectivamente. **Aplicar filtros** recalcula las
+mediciones con las fechas registradas. Cada umbral ofrece 8, 12, 24, 48 o 72
+horas, una semana (168 horas) y un mes (720 horas).
+
 | Indicador | Cálculo |
 | --- | --- |
 | Emergencias | Cantidad de emergencias seleccionadas, una vez cada una. |
@@ -86,7 +92,8 @@ siguen disponibles durante un fallo del motor.
 
 Ambos aceptan `fecha_desde`, `fecha_hasta` (ISO `YYYY-MM-DD`), `municipio_id`
 (positivo), `gravedad` y `estado` (enums existentes). Un período invertido o un
-filtro inválido devuelve 422; sin sesión, 401; otro rol, 403. El contrato completo
+filtro inválido devuelve 422; sin sesión, 401; otro rol, 403. El resumen local
+también acepta `umbral_aportes_horas` y `umbral_resolucion_horas`. El contrato completo
 está en `/docs`. La migración `20261126_0019` habilita el registro de cantidades
 movilizadas y cumplidas en las finalizaciones de las ONG. Los indicadores usan
 las confirmaciones locales que ya produce Bonita 1.5.
