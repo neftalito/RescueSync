@@ -1,5 +1,6 @@
 import type { ReporteMetricas, ReporteTiempos } from "../schemas/metricas";
 import { etiquetasMetricas } from "./coloresMetricas";
+import { etiquetaUmbral } from "./formatoMonitoreo";
 import { filasMonitoreo } from "./filasMonitoreo";
 import {
   indicadoresPendientes,
@@ -36,7 +37,8 @@ export function generarPdfMetricas(
   pdf.aviso(
     "Alcance del reporte",
     [
-      "Se seleccionan emergencias por fecha de alta y se informa la situación actual de sus datos relacionados. Las cantidades representan ofrecimientos.",
+      "Se seleccionan emergencias por fecha de alta y se informa la situación actual de sus datos relacionados.",
+      `Umbrales aplicados · Aportes hasta ${etiquetaUmbral(locales.filtros.umbral_aportes_horas)} · Resolución hasta ${etiquetaUmbral(locales.filtros.umbral_resolucion_horas)}.`,
       `Fuentes: datos locales disponibles. Bonita: ${tiempos?.disponibilidad ?? "NO_DISPONIBLE"}.`,
     ],
     "neutro",
@@ -146,11 +148,12 @@ export function generarPdfMetricas(
     );
   }
 
-  if (indicadoresPendientes.length) {
+  const pendientes = indicadoresPendientes(locales);
+  if (pendientes.length) {
     pdf.aviso(
       "Indicadores no disponibles",
-      indicadoresPendientes.map(
-        (indicador) => `- ${indicador}: ${motivoIndicadoresPendientes}.`,
+      pendientes.map(
+        (indicador) => `- ${indicador}: ${motivoIndicadoresPendientes}`,
       ),
       "aviso",
     );

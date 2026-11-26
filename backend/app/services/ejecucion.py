@@ -286,11 +286,17 @@ def adjudicar(
     previa = session.get(AdjudicacionLocal, datos.adjudicacion_id)
     if previa is not None:
         if (
-            previa.seleccion != objeto(datos)
+            dto.AdjudicacionRequest.model_validate(previa.seleccion) != datos
             or session.get(ComandoBonita, previa.id).emergencia_id != e.id
         ):
             raise IntegracionLocalError("La adjudicación ya tiene otro contenido.")
         return previa
+    ahora = datetime.now(UTC)
+    if any(
+        plazo is not None and plazo < ahora
+        for plazo in (datos.plazo_aportes_en, datos.plazo_resolucion_en)
+    ):
+        raise IntegracionLocalError("Los plazos deben ser futuros.", 422)
     v = _evaluacion(session, e, datos.validacion_id, datos.revision)
     disponibles = {
         a.aporte_id: a for a in elegibles(session, v, leer_resultado(v.resultado))
@@ -411,25 +417,59 @@ def preparacion_adjudicacion(
     )
 
 
+def lotes_adjudicados(
+    session: Session,
+    p: ParticipacionLocal,
+    compromisos: list[CompromisoLocal],
+) -> list[dto.LoteAdjudicado]:
+    """Agrupa cantidades confirmadas de la ONG usando el lote publicado."""
+    cantidades: dict[int, Decimal] = {}
+    for compromiso in compromisos:
+        for item in dto.DetalleCompromiso.model_validate(compromiso.detalle).items:
+            lote_id = int(item.lote_id)
+            cantidades[lote_id] = cantidades.get(lote_id, Decimal(0)) + item.cantidad
+    convocatoria_id = session.get(AdjudicacionLocal, p.adjudicacion_id).convocatoria_id
+    return [
+        dto.LoteAdjudicado(
+            lote_id=pub.lote_id,
+            capacidad=pub.codigo_capacidad_publicada or tipo,
+            cantidad=cantidades[pub.lote_id],
+            unidad=pub.unidad_publicada,
+            admite_fracciones=pub.admite_fracciones_publicada is not False,
+        )
+        for pub, tipo in session.execute(
+            select(ConvocatoriaLote, Lote.tipo_necesidad)
+            .join(Lote, Lote.id == ConvocatoriaLote.lote_id)
+            .where(
+                ConvocatoriaLote.convocatoria_id == convocatoria_id,
+                ConvocatoriaLote.lote_id.in_(cantidades),
+            )
+            .order_by(ConvocatoriaLote.lote_id)
+        )
+    ]
+
+
 def participacion_response(
     session: Session, p: ParticipacionLocal
 ) -> dto.ParticipacionResponse:
     f = session.scalar(
         select(FinalizacionLocal).where(FinalizacionLocal.participacion_id == p.id)
     )
+    compromisos = list(
+        session.scalars(
+            select(CompromisoLocal)
+            .where(CompromisoLocal.participacion_id == p.id)
+            .order_by(CompromisoLocal.id)
+        )
+    )
     return dto.ParticipacionResponse(
         participacion_id=p.id,
         ong_id=p.ong_id,
         ong_nacional_id=p.ong_nacional_id,
-        compromiso_ids=list(
-            session.scalars(
-                select(CompromisoLocal.id)
-                .where(CompromisoLocal.participacion_id == p.id)
-                .order_by(CompromisoLocal.id)
-            )
-        ),
+        compromiso_ids=[c.id for c in compromisos],
         estado=p.estado,
         finalizacion_id=f.id if f else None,
+        lotes=lotes_adjudicados(session, p, compromisos),
     )
 
 
@@ -444,6 +484,7 @@ def adjudicacion_response(
     )
     if ong_id is not None:
         query = query.where(ParticipacionLocal.ong_id == ong_id)
+    seleccion = dto.AdjudicacionRequest.model_validate(adj.seleccion)
     return dto.AdjudicacionResponse(
         adjudicacion_id=adj.id,
         version=1,
@@ -451,6 +492,8 @@ def adjudicacion_response(
         operacion_compromiso_id=op.id,
         estado_integracion=op.estado,
         proyecto_id=adj.proyecto_id,
+        plazo_aportes_en=seleccion.plazo_aportes_en,
+        plazo_resolucion_en=seleccion.plazo_resolucion_en,
         participantes=[
             participacion_response(session, p) for p in session.scalars(query)
         ],
@@ -687,7 +730,11 @@ def informar_resultado(
 
 
 def finalizar(
-    session: Session, e: Emergencia, usuario: Usuario, identidad: UUID
+    session: Session,
+    e: Emergencia,
+    usuario: Usuario,
+    identidad: UUID,
+    datos: dto.FinalizacionRequest | None = None,
 ) -> FinalizacionLocal:
     p = session.get(ParticipacionLocal, identidad)
     if p is None or session.get(ComandoBonita, p.adjudicacion_id).emergencia_id != e.id:
@@ -703,13 +750,51 @@ def finalizar(
         raise IntegracionLocalError(
             "Sólo la ONG participante puede informar su finalización.", 403
         )
+    if datos is not None:
+        datos = dto.FinalizacionRequest(
+            cantidades=sorted(datos.cantidades, key=lambda c: c.lote_id)
+        )
     previa = session.scalar(
         select(FinalizacionLocal).where(FinalizacionLocal.participacion_id == p.id)
     )
     if previa is not None:
+        if datos is not None and (
+            previa.ejecucion is None
+            or dto.FinalizacionRequest.model_validate(previa.ejecucion) != datos
+        ):
+            raise IntegracionLocalError("La finalización ya tiene otras cantidades.")
         return previa
     if e.estado != EstadoEmergencia.EN_EJECUCION or p.estado != "EN_EJECUCION":
         raise IntegracionLocalError("La participación aún no está en ejecución.")
+    compromisos = list(
+        session.scalars(
+            select(CompromisoLocal)
+            .where(CompromisoLocal.participacion_id == p.id)
+            .order_by(CompromisoLocal.id)
+        )
+    )
+    if datos is not None:
+        lotes = {l.lote_id: l for l in lotes_adjudicados(session, p, compromisos)}
+        if (
+            len(datos.cantidades) != len(lotes)
+            or {c.lote_id for c in datos.cantidades} != lotes.keys()
+        ):
+            raise IntegracionLocalError(
+                "Informá las cantidades de cada lote adjudicado a tu ONG una sola vez.",
+                422,
+            )
+        for c in datos.cantidades:
+            lote = lotes[c.lote_id]
+            if (
+                c.cumplida > c.movilizada
+                or c.movilizada > lote.cantidad
+                or (not lote.admite_fracciones and (c.movilizada % 1 or c.cumplida % 1))
+            ):
+                raise IntegracionLocalError(
+                    f"Revisá las cantidades del lote {c.lote_id}. La cantidad cumplida "
+                    "debe ser como máximo la movilizada y esta, como máximo la adjudicada.",
+                    422,
+                )
     f_id = uuid4()
     _comando(
         session,
@@ -721,13 +806,14 @@ def finalizar(
         str(p.id),
         ContratoFinalizacion(participacion_id=p.id, finalizacion_id=f_id),
     )
-    f = FinalizacionLocal(id=f_id, participacion_id=p.id)
+    f = FinalizacionLocal(
+        id=f_id,
+        participacion_id=p.id,
+        solicitada_en=datetime.now(UTC),
+        ejecucion=objeto(datos) if datos else None,
+    )
     session.add(f)
-    for c in session.scalars(
-        select(CompromisoLocal)
-        .where(CompromisoLocal.participacion_id == p.id)
-        .order_by(CompromisoLocal.id)
-    ):
+    for c in compromisos:
         op = _operacion(
             session,
             e,

@@ -10,6 +10,8 @@ const locales: ReporteMetricas = {
     municipio_id: 12,
     gravedad: "ALTA",
     estado: null,
+    umbral_aportes_horas: 24,
+    umbral_resolucion_horas: 72,
   },
   municipios: [{ id: 12, nombre: "Delta" }],
   resumen: {

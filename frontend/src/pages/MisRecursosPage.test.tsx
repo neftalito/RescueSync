@@ -121,6 +121,22 @@ function renderPage(vista: "inicio" | "inventario" | "perfil-competencia" = "inv
 }
 
 describe("Mis recursos nacionales", () => {
+  it("busca recursos por nombre o código en el inventario", async () => {
+    recursos = [recurso, { ...recurso, id: "00000000-0000-4000-8000-000000000105", codigoInterno: "MED-02", nombre: "Módulo de oxígeno" }];
+    renderPage("inventario");
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "Ambulancias de rescate" });
+    const busqueda = screen.getByRole("searchbox", { name: "Buscar recursos" });
+
+    await user.type(busqueda, "OXIGENO");
+    expect(screen.getByRole("heading", { name: "Módulo de oxígeno" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Ambulancias de rescate" })).not.toBeInTheDocument();
+    await user.clear(busqueda);
+    await user.type(busqueda, "amb-01");
+    expect(screen.getByRole("heading", { name: "Ambulancias de rescate" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Módulo de oxígeno" })).not.toBeInTheDocument();
+  });
+
   it("ofrece dos tarjetas y navega a vistas independientes sin cargar datos ajenos", async () => {
     let consultasInventario = 0;
     let consultasPerfiles = 0;

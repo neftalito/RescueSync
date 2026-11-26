@@ -23,6 +23,9 @@ type Cantidad = Annotated[
 type Disponible = Annotated[
     CantidadExacta, Field(ge=0, max_digits=18, decimal_places=3, allow_inf_nan=False)
 ]
+type CantidadEjecutada = Annotated[
+    CantidadExacta, Field(ge=0, max_digits=14, decimal_places=3, allow_inf_nan=False)
+]
 type IdLocal = Annotated[int, Field(gt=0)]
 
 
@@ -207,7 +210,14 @@ class Seleccion(Contrato):
     cantidad: Cantidad
 
 
-class AdjudicacionRequest(Contrato):
+class PlazosEjecucion(Contrato):
+    """Conserva el contrato de clientes y adjudicaciones anteriores."""
+
+    plazo_aportes_en: AwareDatetime | None = None
+    plazo_resolucion_en: AwareDatetime | None = None
+
+
+class AdjudicacionRequest(PlazosEjecucion):
     adjudicacion_id: UUID
     validacion_id: UUID
     revision: IdLocal
@@ -283,6 +293,24 @@ class ConfirmarCompromisosRequest(Contrato):
     compromisos: list[DetalleCompromiso] = Field(min_length=1)
 
 
+class LoteAdjudicado(Contrato):
+    lote_id: IdLocal
+    capacidad: str
+    cantidad: Cantidad
+    unidad: str
+    admite_fracciones: bool
+
+
+class CantidadFinalizada(Contrato):
+    lote_id: IdLocal
+    movilizada: CantidadEjecutada
+    cumplida: CantidadEjecutada
+
+
+class FinalizacionRequest(Contrato):
+    cantidades: list[CantidadFinalizada] = Field(min_length=1, max_length=5000)
+
+
 class ParticipacionResponse(Contrato):
     participacion_id: UUID
     ong_id: IdLocal
@@ -290,9 +318,10 @@ class ParticipacionResponse(Contrato):
     compromiso_ids: list[UUID]
     estado: Literal["EN_EJECUCION", "FINALIZACION_SOLICITADA", "LIBERADA"]
     finalizacion_id: UUID | None = None
+    lotes: list[LoteAdjudicado] = Field(default_factory=list)
 
 
-class AdjudicacionResponse(Contrato):
+class AdjudicacionResponse(PlazosEjecucion):
     adjudicacion_id: UUID
     version: IdLocal
     estado: Literal["PENDIENTE_COMPROMISO", "CONFIRMADA", "REQUIERE_REVISION"]

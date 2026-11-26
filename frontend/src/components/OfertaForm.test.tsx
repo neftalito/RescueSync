@@ -83,6 +83,27 @@ const ofertaPropia = {
   emergencia: convocatorias[0]?.emergencia,
 };
 
+const capacidadAguaId = "00000000-0000-4000-8000-000000000101";
+const inventarioAgua = ["201", "202"].map((sufijo, index) => ({
+  id: `00000000-0000-4000-8000-000000000${sufijo}`,
+  ongId: "00000000-0000-4000-8000-000000000301",
+  capacidadId: capacidadAguaId,
+  codigoInterno: `AGUA-${index + 1}`,
+  nombre: `Tanque ${index + 1}`,
+  capacidad: "Agua",
+  unidad: "litros",
+  admiteFracciones: true,
+  cantidadTotal: "1000.000",
+  cantidadComprometida: "0.000",
+  cantidadDisponible: "1000.000",
+  activo: true,
+  actualizadoEn: "2026-10-14T12:00:00Z",
+}));
+const convocatoriasConInventario = [{
+  ...convocatorias[0],
+  lotes: [{ ...convocatorias[0]?.lotes[0], capacidad_nacional_id: capacidadAguaId }],
+}];
+
 const server = setupServer(
   http.get(`${API_URL}/ofertas`, () => HttpResponse.json([])),
 );
@@ -171,28 +192,70 @@ describe("OfertaForm", () => {
     expect(screen.queryByLabelText("Cantidad ofrecida")).not.toBeInTheDocument();
   });
 
-  it("desglosa una oferta usando recursos propios y envía cantidades exactas", async () => {
-    const capacidadId = "00000000-0000-4000-8000-000000000101";
-    const recursoId = "00000000-0000-4000-8000-000000000201";
+  it("deshabilita el selector al agregar el último lote y lo habilita al quitar uno", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatorias)),
+    );
+    const user = userEvent.setup();
+    renderForm(undefined, 55);
+
+    const selector = await screen.findByRole("combobox", { name: "Lote para agregar" });
+    const agregar = screen.getByRole("button", { name: "Agregar lote" });
+    expect(selector).toBeEnabled();
+
+    await agregarLote(user, "54");
+    expect(selector).toBeDisabled();
+    expect(selector).toHaveDisplayValue("No quedan lotes para agregar");
+    expect(agregar).toBeDisabled();
+
+    await user.click(screen.getAllByRole("button", { name: "Quitar lote" })[1]!);
+    expect(selector).toBeEnabled();
+    expect(selector).toHaveDisplayValue("Seleccioná un lote");
+    expect(screen.getByRole("option", { name: /Agua potable/ })).toBeInTheDocument();
+  });
+
+  it("calcula, valida y envía el total a partir del desglose de recursos", async () => {
+    const [tanque1, tanque2] = inventarioAgua;
     let cuerpo: unknown;
     server.use(
-      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json([{ ...convocatorias[0], lotes: [{ ...convocatorias[0]?.lotes[0], capacidad_nacional_id: capacidadId }] }])),
-      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json([{ id: recursoId, ongId: "00000000-0000-4000-8000-000000000301", capacidadId, codigoInterno: "AGUA", nombre: "Agua de mi ONG", capacidad: "Agua", unidad: "litros", admiteFracciones: true, cantidadTotal: "1000.000", cantidadComprometida: "0.000", cantidadDisponible: "1000.000", activo: true, actualizadoEn: "2026-10-14T12:00:00Z" }])),
-      http.post(`${API_URL}/ofertas`, async ({ request }) => { cuerpo = await request.json(); return HttpResponse.json(ofertaCreada, { status: 201 }); }),
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatoriasConInventario)),
+      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json(inventarioAgua)),
+      http.post(`${API_URL}/ofertas`, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json(ofertaCreada, { status: 201 });
+      }),
     );
-    renderForm();
+    renderForm(undefined, 54);
     const user = userEvent.setup();
-    await user.selectOptions(await screen.findByLabelText("Convocatoria"), "8");
-    await agregarLote(user, "54");
-    await user.type(screen.getByLabelText("Cantidad ofrecida"), "250,500");
+
+    const total = await screen.findByLabelText("Cantidad ofrecida");
+    expect(total).toHaveTextContent("—");
     await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
     expect(await screen.findByText("Agregá recursos de tu inventario para este lote.")).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "Agregar recurso" }));
-    await user.selectOptions(await screen.findByLabelText("Recurso"), recursoId);
-    await user.type(screen.getByLabelText("Cantidad del recurso"), "250,500");
+    await user.selectOptions(screen.getByLabelText("Recurso"), tanque1!.id);
+    const primeraCantidad = screen.getByLabelText("Cantidad del recurso");
+    await user.type(primeraCantidad, "1000,001");
+    await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
+    expect(await screen.findByText("La cantidad ofrecida no puede superar 1.000,00 litros.")).toBeInTheDocument();
+    expect(cuerpo).toBeUndefined();
+
+    await user.clear(primeraCantidad);
+    await user.type(primeraCantidad, "250,125");
+    await user.click(screen.getByRole("button", { name: "Agregar recurso" }));
+    await user.selectOptions(screen.getAllByLabelText("Recurso")[1]!, tanque2!.id);
+    await user.type(screen.getAllByLabelText("Cantidad del recurso")[1]!, "0,375");
+    expect(total).toHaveTextContent("250,5");
+
+    await user.click(screen.getAllByRole("button", { name: "Quitar recurso" })[1]!);
+    expect(total).toHaveTextContent("250,125");
     await user.click(screen.getByRole("button", { name: "Presentar oferta" }));
     expect(await screen.findByText(/presentada correctamente/)).toBeInTheDocument();
-    expect(cuerpo).toMatchObject({ items: [{ cantidad_ofrecida: "250.500", aportes: [{ recurso_nacional_id: recursoId, cantidad: "250.500" }] }] });
+    expect(cuerpo).toMatchObject({ items: [{
+      cantidad_ofrecida: "250.125",
+      aportes: [{ recurso_nacional_id: tanque1!.id, cantidad: "250.125" }],
+    }] });
   });
 
   it("explica que se necesita conectar la cuenta nacional para elegir recursos", async () => {
@@ -385,6 +448,51 @@ describe("OfertaForm", () => {
         },
       ],
     });
+  });
+
+  it("recalcula una oferta existente al cambiar la cantidad de un recurso", async () => {
+    const recurso = inventarioAgua[0]!;
+    let cuerpo: unknown;
+    const ofertaConInventario = {
+      ...ofertaPropia,
+      items: [{
+        ...ofertaPropia.items[0],
+        cantidad_ofrecida: "250.501",
+        aportes: [{
+          id: 1,
+          ong_id: ofertaPropia.ong_creadora_id,
+          recurso_nacional_id: recurso.id,
+          capacidad_nacional_id: capacidadAguaId,
+          cantidad: "250.501",
+          unidad: recurso.unidad,
+        }],
+      }],
+    };
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatoriasConInventario)),
+      http.get(`${API_URL}/mi-ong/recursos`, () => HttpResponse.json(inventarioAgua)),
+      http.get(`${API_URL}/ofertas`, () => HttpResponse.json([ofertaConInventario])),
+      http.put(`${API_URL}/ofertas/92`, async ({ request }) => {
+        cuerpo = await request.json();
+        return HttpResponse.json({ ...ofertaConInventario, version_actual: 2 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderForm(92);
+
+    const total = await screen.findByLabelText("Cantidad ofrecida");
+    expect(total).toHaveTextContent("250,501");
+    const cantidad = screen.getByLabelText("Cantidad del recurso");
+    await user.clear(cantidad);
+    await user.type(cantidad, "251,125");
+    expect(total).toHaveTextContent("251,125");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    expect(await screen.findByText(/actualizada correctamente/)).toBeInTheDocument();
+    expect(cuerpo).toMatchObject({ items: [{
+      cantidad_ofrecida: "251.125",
+      aportes: [{ recurso_nacional_id: recurso.id, cantidad: "251.125" }],
+    }] });
   });
 
   it("muestra estados accesibles de carga, error y lista vacía", async () => {

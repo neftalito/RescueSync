@@ -33,6 +33,8 @@ En **Lotes publicados**, **Crear oferta** queda deshabilitado cuando la ONG ya
 ofertó ese lote en la convocatoria vigente. Para sumar otros lotes de esa misma
 convocatoria se debe editar la oferta existente desde **Mis ofertas**. Las ofertas
 de rondas anteriores no bloquean una convocatoria nueva.
+Al ofertar para un lote vinculado al catálogo nacional, la **Cantidad ofrecida**
+se calcula con las cantidades ingresadas en **Recursos de mi ONG**.
 
 El formulario de lotes usa un selector de capacidades nacionales y determina
 automáticamente el nombre y la unidad de cada necesidad. El coordinador completa
@@ -99,6 +101,7 @@ persistencia del buzón no depende de ese bus.
 - Docker Engine con Docker Compose v2, o Docker Desktop.
 - En WSL 2, integración de Docker Desktop con la distribución donde está clonado
   el repositorio.
+- Minikube y kubectl para el [despliegue con Kubernetes](#despliegue-con-kubernetes).
 - Bonita Studio 2025.2 solamente si se dispone externamente del proyecto fuente
   y se necesita generar otra versión del `.bar`.
 
@@ -189,6 +192,9 @@ BONITA_BIZ_DB_PASS=bpm
 
 # URL de FastAPI accesible desde el navegador
 VITE_API_URL=http://localhost:8000/api/v1
+
+# Servicio de prioridad en la red de Compose
+PRIORIDAD_BASE_URL=http://prioridad:8000
 
 # Adaptador nacional del backend local
 NACIONAL_BASE_URL=http://host.docker.internal:8001/api/v1
@@ -323,6 +329,12 @@ para una instalación existente.
    ```bash
    docker compose up --build
    ```
+
+   Compose levanta también el servicio `prioridad`, que el backend usa para la
+   consulta previa al alta municipal. El valor predeterminado es
+   `PRIORIDAD_BASE_URL=http://prioridad:8000`. Para la demo de escalado o para
+   servir la prioridad desde un clúster, seguí el
+   [despliegue con Kubernetes](#despliegue-con-kubernetes).
 
 3. Opcionalmente, cargar el escenario demo de desarrollo. Configurar antes
    `NACIONAL_ENCRYPTION_KEY` y la cuenta de integración del
@@ -459,6 +471,41 @@ deploy. Revisar [el procedimiento de transición a Render](docs/bonita/despliegu
 antes de cambiar un entorno con casos. El health de Bonita comprueba el proceso
 habilitado, pero no prueba su autenticación nacional.
 
+## Prioridad de emergencias
+
+Antes del alta, el operador municipal consulta la prioridad por gravedad y zona.
+
+### Despliegue con Kubernetes
+
+Para usar el priorizador en Kubernetes, ejecutá estos comandos desde la raíz
+de RescueSync. El manifiesto usa la
+[imagen publicada en Docker Hub](https://hub.docker.com/r/neftalito/rescuesync-prioridad/tags).
+
+```bash
+minikube start --driver=docker
+minikube addons enable metrics-server
+kubectl --context minikube apply -f prioridad-emergencias/k8s.yaml
+kubectl --context minikube rollout status deployment/prioridad
+```
+
+Si querés que **el alta municipal use el priorizador del clúster**, levantá
+primero RescueSync con Compose. Desde otra terminal, con el driver Docker y el
+perfil predeterminado de Minikube, recreá el backend con la URL del Service y
+conectalo a la red Docker del clúster.
+
+```bash
+IP_MINIKUBE=$(minikube ip)
+PUERTO_PRIORIDAD=$(kubectl --context minikube get service prioridad -o jsonpath='{.spec.ports[0].nodePort}')
+PRIORIDAD_BASE_URL="http://${IP_MINIKUBE}:${PUERTO_PRIORIDAD}" \
+  docker compose up -d --no-deps --force-recreate backend
+docker network connect minikube "$(docker compose ps -q backend)"
+```
+
+En un clúster remoto, usá como `PRIORIDAD_BASE_URL` la URL base del priorizador
+que pueda alcanzar el backend. Para probar el autoescalado desde la terminal,
+seguí la [guía de despliegue en PDF](docs/despliegue-prioridad-kubernetes.pdf)
+o su [versión en Markdown](docs/despliegue-prioridad-kubernetes.md).
+
 ## Cliente reutilizable de Bonita
 
 [`docs/RescueSync-1.5.bar`](docs/RescueSync-1.5.bar) es la fuente de verdad del
@@ -534,12 +581,15 @@ El perfil **Auditor / Directivo** dispone de un [dashboard global de indicadores
 con filtros, gráficos interactivos, tiempos por tarea de Bonita y exportación CSV/JSON/PDF.
 Se actualiza por WebSocket e incluye alertas de tareas fallidas de Bonita; el seed
 contiene una demo ampliada para recorrer distintas métricas y estados.
-Los indicadores que requieren adjudicación y cierre se identifican como no disponibles.
+Los indicadores de resultado usan las confirmaciones de adjudicación, liberación
+y cierre que guarda el flujo operativo.
 
-El [monitoreo de procesos](docs/monitoreo-procesos.md) agrega tareas activas y
-los seis indicadores BAM del material de clase, con evidencia confirmada,
-fórmulas, cobertura de datos y exportación. La guía distingue las consultas
-disponibles con el BPM 1.2 de las emisiones que corresponden a T35–T37.
+El [monitoreo de procesos](docs/monitoreo-procesos.md) explica los cálculos,
+incluidos los suministros movilizados y la resolución mediante consorcios.
+El auditor elige los umbrales de duración para aportes y cierres en el
+dashboard. Al finalizar, cada ONG informa
+cuánto movilizó y cumplió por lote. Actualizá la base con `alembic upgrade head`
+para habilitar el registro de estas cantidades.
 
 El [índice de `docs/`](docs/README.md) organiza las guías por tema. Los accesos
 principales son:

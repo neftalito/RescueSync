@@ -10,7 +10,12 @@ from app.core.permissions import OperacionProtegida
 from app.db.models import Usuario
 from app.db.session import get_db
 from app.schemas import ErrorResponse
-from app.schemas.metricas import FiltrosMetricas, ReporteMetricas, ReporteTiempos
+from app.schemas.metricas import (
+    FiltrosEmergenciasMetricas,
+    FiltrosMetricas,
+    ReporteMetricas,
+    ReporteTiempos,
+)
 from app.services.metricas import obtener_metricas
 from app.services.metricas_bonita import obtener_tiempos
 
@@ -19,6 +24,7 @@ UsuarioAuditor = Annotated[
     Usuario, Depends(requerir_operacion(OperacionProtegida.CONSULTAR_METRICAS))
 ]
 Filtros = Annotated[FiltrosMetricas, Query()]
+FiltrosTiempos = Annotated[FiltrosEmergenciasMetricas, Query()]
 BaseDatos = Annotated[Session, Depends(get_db)]
 ERRORES = {codigo: {"model": ErrorResponse} for codigo in (401, 403, 422)}
 
@@ -28,7 +34,7 @@ ERRORES = {codigo: {"model": ErrorResponse} for codigo in (401, 403, 422)}
     response_model=ReporteMetricas,
     responses=ERRORES,
     summary="Consultar indicadores globales",
-    description="Solo AUDITOR_DIRECTIVO. Filtra por fecha de alta de la emergencia; los datos relacionados reflejan su situación actual. Incluye seis indicadores de proceso calculados sobre evidencia confirmada, fórmulas y cobertura de datos. Las fechas son inclusivas en America/Argentina/Buenos_Aires.",
+    description="Solo AUDITOR_DIRECTIVO. Filtra por fecha de alta de la emergencia. Incluye indicadores sobre evidencia confirmada y compara las duraciones de aportes y cierres con los umbrales elegidos en horas. Las fechas son inclusivas en America/Argentina/Buenos_Aires.",
 )
 def consultar_metricas(
     filtros: Filtros, session: BaseDatos, _usuario: UsuarioAuditor
@@ -45,7 +51,7 @@ def consultar_metricas(
     description="Solo AUDITOR_DIRECTIVO. Promedios de tareas completadas con inicio observable y tareas activas por emergencia/caso con antigüedad, vencimiento y carga por etapa. Informa cobertura independiente de historial y actividad; los fallos parciales no sustituyen datos ausentes por cero.",
 )
 def consultar_tiempos(
-    filtros: Filtros,
+    filtros: FiltrosTiempos,
     session: BaseDatos,
     _usuario: UsuarioAuditor,
     cliente: ClienteBonitaDep,

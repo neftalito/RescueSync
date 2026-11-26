@@ -72,6 +72,27 @@ async function completar(): Promise<ReturnType<typeof userEvent.setup>> {
 }
 
 describe("CatalogoNacionalPage", () => {
+  it("busca por código entre capacidades que aún no se muestran", async () => {
+    const otrasCapacidades = Array.from({ length: 21 }, (_, indice) => ({
+      ...capacidad,
+      id: `00000000-0000-4000-8000-${String(indice + 201).padStart(12, "0")}`,
+      codigo: `RECURSO_${indice}`,
+      nombre: `Recurso ${indice}`,
+    }));
+    server.use(http.get(`${API}/capacidades`, () => HttpResponse.json([...otrasCapacidades, capacidad])));
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByRole("heading", { name: "Recurso 0" });
+    expect(screen.queryByRole("heading", { name: "Alimentos" })).not.toBeInTheDocument();
+
+    const busqueda = screen.getByRole("searchbox", { name: "Buscar capacidades" });
+    await user.type(busqueda, "alimentos");
+    expect(screen.getByRole("heading", { name: "Alimentos" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Recurso 0" })).not.toBeInTheDocument();
+    await user.clear(busqueda);
+    expect(screen.getByRole("heading", { name: "Recurso 0" })).toBeInTheDocument();
+  });
+
   it("crea usando una unidad existente y actualiza los catálogos de administración, coordinación e inventario", async () => {
     let creado = false;
     let cuerpo: unknown;

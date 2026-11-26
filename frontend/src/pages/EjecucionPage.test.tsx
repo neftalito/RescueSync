@@ -34,16 +34,21 @@ function pagina(rol: Role): void {
 }
 
 describe("Evaluación y ejecución", () => {
-  it("envía cantidades exactas y revisión vigente con CSRF", async () => {
+  it("envía cantidades exactas y revisión vigente con CSRF sin pedir plazos", async () => {
     const usuario = userEvent.setup();
     let payload: unknown;
     let csrf: string | null = null;
     server.use(http.post(`${base}/adjudicaciones`, async ({ request }) => { payload = await request.json(); csrf = request.headers.get("X-CSRF-Token"); return HttpResponse.json({}); }));
     pagina("OPERADOR_MUNICIPAL");
     await usuario.type(await screen.findByLabelText("Cantidad aporte 20"), "6");
+    expect(screen.queryByText("Plazos opcionales en hora local")).not.toBeInTheDocument();
     await usuario.click(screen.getByRole("button", { name: "Solicitar adjudicación" }));
     await screen.findByText(/Solicitud guardada/);
-    expect(payload).toMatchObject({ validacionId, revision: 2, aportes: [{ aporteId: 20, cantidad: "6" }] });
+    expect(payload).toMatchObject({
+      validacionId, revision: 2, aportes: [{ aporteId: 20, cantidad: "6" }],
+    });
+    expect(payload).not.toHaveProperty("plazoAportesEn");
+    expect(payload).not.toHaveProperty("plazoResolucionEn");
     expect(csrf).toBe("csrf-firmado");
   });
 
@@ -110,6 +115,33 @@ describe("Evaluación y ejecución", () => {
     expect(screen.getByRole("button", { name: "Solicitar cierre de emergencia" })).toBeDisabled();
   });
 
+  it("actualiza el mensaje cuando se confirma el cierre de esa emergencia", async () => {
+    const usuario = userEvent.setup();
+    const solicitudCierreId = "00000000-0000-4000-8000-000000000103";
+    const operacionCierreId = "00000000-0000-4000-8000-000000000104";
+    let confirmado = false;
+    server.use(http.get(`${base}/adjudicaciones`, () => HttpResponse.json({
+      ...seguimiento,
+      estado: confirmado ? "RESUELTA" : "EN_EJECUCION",
+      cierre: { solicitudCierreId, operacionCierreId, operacionesInciertas: false },
+      operaciones: [
+        { operacionId: validacionId, tipo: "LIBERACION", estadoIntegracion: "CONFIRMADA" },
+        { operacionId: operacionCierreId, tipo: "CIERRE", estadoIntegracion: confirmado ? "CONFIRMADA" : "PENDIENTE" },
+      ],
+    })));
+    pagina("COORDINADOR_REGIONAL");
+    const espera = "Cierre solicitado. La resolución espera la confirmación nacional.";
+    expect(await screen.findByText(espera)).toBeInTheDocument();
+    expect(screen.queryByText("Cierre confirmado.")).not.toBeInTheDocument();
+
+    confirmado = true;
+    await usuario.click(screen.getByRole("button", { name: "Actualizar seguimiento" }));
+
+    expect(await screen.findByText("Cierre confirmado.")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("heading", { name: "Seguimiento · RESUELTA" })).toBeInTheDocument();
+    expect(screen.queryByText(espera)).not.toBeInTheDocument();
+  });
+
   it("permite corregir cantidades cuando la API rechaza el comando sin efectos", async () => {
     const usuario = userEvent.setup();
     const solicitudes: unknown[] = [];
@@ -135,5 +167,41 @@ describe("Evaluación y ejecución", () => {
     expect(await screen.findByText(/Finalización informada; liberación pendiente/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Informar finalización" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Solicitar adjudicación" })).not.toBeInTheDocument();
+  });
+
+  it("envía las cantidades reales y permite declarar cero por lote al finalizar", async () => {
+    const usuario = userEvent.setup();
+    let payload: unknown;
+    server.use(
+      http.get(`${base}/adjudicaciones`, () => HttpResponse.json({
+        ...seguimiento,
+        estado: "EN_EJECUCION",
+        adjudicaciones: [{
+          adjudicacionId: validacionId, estado: "CONFIRMADA", estadoIntegracion: "CONFIRMADA",
+          participantes: [{
+            participacionId, ongId: 2, estado: "EN_EJECUCION", compromisoIds: [validacionId], finalizacionId: null,
+            lotes: [{ loteId: 1, capacidad: "AGUA", cantidad: "20.000", unidad: "litros", admiteFracciones: true }],
+          }],
+        }],
+      })),
+      http.post(`${base}/participaciones/${participacionId}/finalizacion`, async ({ request }) => {
+        payload = await request.json();
+        return HttpResponse.json({});
+      }),
+    );
+    pagina("REPRESENTANTE_ONG");
+    const movilizada = await screen.findByLabelText("Cantidad movilizada");
+    const cumplida = screen.getByLabelText("Cantidad cumplida");
+    await usuario.type(movilizada, "19,125");
+    await usuario.type(cumplida, "20");
+    const finalizar = screen.getByRole("button", { name: "Informar finalización" });
+    await usuario.click(finalizar);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revisá el lote 1");
+    expect(payload).toBeUndefined();
+    await usuario.clear(cumplida);
+    await usuario.type(cumplida, "0");
+    await usuario.click(finalizar);
+    await screen.findByText(/Solicitud guardada/);
+    expect(payload).toEqual({ cantidades: [{ loteId: 1, movilizada: "19.125", cumplida: "0" }] });
   });
 });

@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useForm } from "react-hook-form";
 import { Link } from "react-router";
 import { ActionIcon } from "../components/ActionIcon";
+import { CampoBusqueda } from "../components/CampoBusqueda";
 import { ApiError } from "../api/client";
 import { PerfilCompetenciaPanel } from "../components/PerfilCompetencia";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
@@ -20,6 +21,7 @@ import {
   type RecursoForm,
   type RegistroNacionalForm,
 } from "../schemas/inventario";
+import { normalizarBusqueda } from "../utils/busqueda";
 
 const panel = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
 function mensaje(error: unknown): string {
@@ -58,6 +60,13 @@ function GestionRecursosOngPage({
   const [feedback, setFeedback] = useState("");
   const [editando, setEditando] = useState<Recurso | null>(null);
   const [mostrarRegistro, setMostrarRegistro] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const termino = normalizarBusqueda(busqueda);
+  const recursos = inventario.recursos.data?.filter((recurso) =>
+    [recurso.nombre, recurso.codigoInterno, recurso.capacidad].some((campo) =>
+      normalizarBusqueda(campo).includes(termino),
+    ),
+  );
   return (
     <main className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
@@ -274,18 +283,21 @@ function GestionRecursosOngPage({
                   <span className="sr-only">Actualizar listado</span>
                 </button>
               </div>
+              <div className="mt-4 max-w-md">
+                <CampoBusqueda etiqueta="Buscar recursos" ejemplo="Nombre, código o capacidad" valor={busqueda} cambiar={setBusqueda} />
+              </div>
               {inventario.recursos.isPending ? (
                 <p role="status" className="mt-4">
                   Cargando recursos…
                 </p>
               ) : inventario.recursos.isError ? (
                 <ErrorMensaje error={inventario.recursos.error} />
-              ) : inventario.recursos.data.length === 0 ? (
-                <p className="mt-4 rounded-xl bg-slate-50 p-4 text-slate-600">
-                  Tu ONG todavía no tiene recursos registrados.
+              ) : !recursos?.length ? (
+                <p role="status" className="mt-4 rounded-xl bg-slate-50 p-4 text-slate-600">
+                  {termino ? "No encontramos recursos que coincidan con la búsqueda." : "Tu ONG todavía no tiene recursos registrados."}
                 </p>
               ) : (
-                <ListadoLocal items={inventario.recursos.data} etiqueta="Recursos registrados" className="mt-4">
+                <ListadoLocal key={termino} items={recursos} etiqueta="Recursos registrados" className="mt-4">
                   {(visibles) => (
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       {visibles.map((recurso) => (

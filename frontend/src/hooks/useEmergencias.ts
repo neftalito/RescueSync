@@ -7,7 +7,7 @@ import { useListadoPaginado } from "./useListadoPaginado";
 
 export const emergenciasQueryKey = ["emergencias"] as const;
 
-export function useEmergenciasPaginadas(tieneLotes?: boolean, estado?: Estado): UseInfiniteQueryResult<EmergenciaEnBandeja[], Error> {
+export function useEmergenciasPaginadas(tieneLotes?: boolean, estado?: Estado, q = ""): UseInfiniteQueryResult<EmergenciaEnBandeja[], Error> {
   const parametros = new URLSearchParams();
   if (tieneLotes !== undefined) parametros.set("tiene_lotes", String(tieneLotes));
   if (estado !== undefined) parametros.set("estado", estado);
@@ -15,6 +15,8 @@ export function useEmergenciasPaginadas(tieneLotes?: boolean, estado?: Estado): 
     [...emergenciasQueryKey, "bandeja", tieneLotes, estado],
     `/emergencias${parametros.size > 0 ? `?${parametros}` : ""}`,
     emergenciasSchema,
+    true,
+    { q },
   );
 }
 

@@ -11,11 +11,19 @@ export function useListadoPaginado<T extends { id: number | string; }>(
   ruta: string,
   esquema: z.ZodType<T[]>,
   enabled = true,
+  filtros: Record<string, string | boolean | undefined> = {},
 ): UseInfiniteQueryResult<T[], Error> {
+  const parametros = new URLSearchParams();
+  for (const [nombre, valor] of Object.entries(filtros)) {
+    if (valor !== undefined && valor !== "") parametros.set(nombre, String(valor));
+  }
+  const rutaFiltrada = parametros.size === 0
+    ? ruta
+    : `${ruta}${ruta.includes("?") ? "&" : "?"}${parametros}`;
   return useInfiniteQuery({
-    queryKey: [...queryKey, "paginas"],
+    queryKey: parametros.size === 0 ? [...queryKey, "paginas"] : [...queryKey, filtros, "paginas"],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => consultarPagina(ruta, esquema, pageParam),
+    queryFn: ({ pageParam }) => consultarPagina(rutaFiltrada, esquema, pageParam),
     getNextPageParam: (ultima) => ultima.siguiente,
     select: (datos) => {
       // Una inserción concurrente puede desplazar offsets; nunca repite una tarjeta.

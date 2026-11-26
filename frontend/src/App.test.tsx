@@ -463,6 +463,7 @@ describe("autenticación", () => {
             tipo: "MUNICIPIO",
             activa: true,
           },
+          { id: 4, nombre: "Municipio del valle", tipo: "MUNICIPIO", activa: true },
         ]),
       ),
       http.post(`${API_URL}/usuarios`, async ({ request }) => {
@@ -508,7 +509,13 @@ describe("autenticación", () => {
       screen.queryByLabelText("Contraseña temporal"),
     ).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Rol"), "OPERADOR_MUNICIPAL");
+    const buscarOrganizacion = screen.getByRole("searchbox", { name: "Buscar organización por nombre" });
+    await user.type(buscarOrganizacion, "delta");
+    expect(screen.queryByRole("option", { name: "Municipio del valle" })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Organización"), "3");
+    await user.clear(buscarOrganizacion);
+    await user.type(buscarOrganizacion, "valle");
+    expect(screen.getByLabelText("Organización")).toHaveValue("3");
     await user.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     expect(await screen.findByText(
@@ -877,7 +884,8 @@ describe("emergencias del municipio", () => {
       centro_coordinador_id: null,
       creada_por_usuario_id: 7,
       gravedad: "ALTA",
-      zona: "Ribera norte",
+      zona: "NORTE",
+      prioridad: 5,
       descripcion: "Inundación con familias evacuadas",
       estado: "REGISTRADA",
       tiene_lotes: false,
@@ -889,12 +897,16 @@ describe("emergencias del municipio", () => {
     server.use(
       http.get(`${API_URL}/auth/me`, () => HttpResponse.json(session)),
       http.get(`${API_URL}/emergencias`, () => HttpResponse.json(emergencias)),
+      http.post(`${API_URL}/emergencias/prioridad`, () =>
+        HttpResponse.json({ prioridad: 5, comprobante: "comprobante-firmado" }),
+      ),
       http.post(`${API_URL}/emergencias`, async ({ request }) => {
         expect(request.headers.get("X-CSRF-Token")).toBe(session.csrf_token);
         expect(await request.json()).toEqual({
           gravedad: "ALTA",
-          zona: "Ribera norte",
+          zona: "NORTE",
           descripcion: "Inundación con familias evacuadas",
+          comprobante_prioridad: "comprobante-firmado",
         });
         emergencias = [emergencia];
         return HttpResponse.json(emergencia, { status: 201 });
@@ -920,7 +932,9 @@ describe("emergencias del municipio", () => {
       screen.queryByRole("heading", { name: "Mis emergencias" }),
     ).not.toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Gravedad"), "ALTA");
-    await user.type(screen.getByLabelText("Zona afectada"), "Ribera norte");
+    await user.selectOptions(screen.getByLabelText("Zona afectada"), "NORTE");
+    await user.click(screen.getByRole("button", { name: "Consultar prioridad" }));
+    await screen.findByText("Prioridad 5 de 10");
     await user.type(
       screen.getByLabelText("Descripción inicial"),
       "Inundación con familias evacuadas",
@@ -931,11 +945,11 @@ describe("emergencias del municipio", () => {
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: "Ver mis emergencias" }));
-    expect(await screen.findByText("Alta · Ribera norte")).toBeInTheDocument();
+    expect(await screen.findByText("Alta · NORTE")).toBeInTheDocument();
     expect(
       screen.queryByText("Todavía no registraste emergencias."),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByText("Alta · Ribera norte"));
+    await user.click(screen.getByText("Alta · NORTE"));
     expect(
       screen.getByRole("button", { name: "Vincular con Bonita" }),
     ).toBeInTheDocument();

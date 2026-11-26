@@ -18,6 +18,7 @@ from app.db.models import (
 from app.schemas.emergencia import EmergenciaCreate
 from app.schemas.paginacion import SIN_PAGINACION, Paginacion
 from app.services.auth import organizacion_vigente_de_tipo
+from app.services.busqueda import coincide_numero, contiene_texto
 from app.services.notificaciones import notificar_emergencia_registrada
 
 
@@ -49,6 +50,8 @@ def registrar_emergencia(
     session: Session,
     usuario: Usuario,
     datos: EmergenciaCreate,
+    *,
+    prioridad: int | None = None,
 ) -> Emergencia:
     """Persiste una emergencia en estado REGISTRADA para el municipio autenticado.
 
@@ -56,6 +59,7 @@ def registrar_emergencia(
         session: Sesión SQLAlchemy con la que se confirma la transacción.
         usuario: Operador municipal vigente cargado desde PostgreSQL.
         datos: Gravedad, zona y descripción ya validadas por Pydantic.
+        prioridad: Puntuación verificada por el flujo de alta.
 
     Returns:
         La emergencia persistida con sincronización Bonita en PENDIENTE.
@@ -76,6 +80,7 @@ def registrar_emergencia(
         creada_por_usuario_id=usuario.id,
         gravedad=datos.gravedad,
         zona=datos.zona,
+        prioridad=prioridad,
         descripcion=datos.descripcion,
         estado=EstadoEmergencia.REGISTRADA,
         bonita_sync=EstadoSincronizacionBonita.PENDIENTE,
@@ -105,6 +110,7 @@ def listar_emergencias(
     *,
     tiene_lotes: bool | None = None,
     estado: EstadoEmergencia | None = None,
+    busqueda: str = "",
 ) -> list[Emergencia]:
     """Filtra la bandeja de emergencias visible según el rol autenticado.
 
@@ -162,6 +168,13 @@ def listar_emergencias(
     else:
         raise EmergenciaError("El rol autenticado no tiene una bandeja de emergencias.")
 
+    if busqueda:
+        enunciado = enunciado.where(
+            or_(
+                coincide_numero(Emergencia.id, busqueda),
+                contiene_texto(Emergencia.descripcion, busqueda),
+            )
+        )
     if estado is not None:
         enunciado = enunciado.where(Emergencia.estado == estado)
     if tiene_lotes is not None:

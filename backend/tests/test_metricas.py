@@ -31,7 +31,7 @@ from app.db.session import get_db
 from app.integrations.bonita.cliente import BonitaNoDisponibleError, ClienteBonita
 from app.integrations.bonita.contratos import TransicionTareaArchivada
 from app.main import app
-from app.schemas.metricas import DisponibilidadBonita, FiltrosMetricas
+from app.schemas.metricas import DisponibilidadBonita, FiltrosMetricas, UmbralHoras
 from app.scripts.seed import seed_development_data
 from app.services.metricas import obtener_metricas
 from app.services.metricas_bonita import obtener_tiempos
@@ -133,6 +133,28 @@ def test_resumen_no_multiplica_emergencias_por_lotes_items_o_versiones(
         "litros": Decimal(3000),
         "kits": Decimal(10),
     }
+
+
+def test_auditor_elige_los_dos_umbrales_y_rechaza_valores_ajenos_al_catalogo(
+    client: TestClient, escenario: Session
+) -> None:
+    autenticar(client, escenario, RolUsuario.AUDITOR_DIRECTIVO)
+    ruta = "/api/v1/metricas"
+    valores = list(UmbralHoras)
+    for aportes, resolucion in zip(valores, reversed(valores), strict=True):
+        respuesta = client.get(
+            ruta,
+            params={
+                "umbral_aportes_horas": aportes.value,
+                "umbral_resolucion_horas": resolucion.value,
+            },
+        )
+        assert respuesta.status_code == 200
+        filtros = respuesta.json()["filtros"]
+        assert filtros["umbral_aportes_horas"] == aportes.value
+        assert filtros["umbral_resolucion_horas"] == resolucion.value
+    assert client.get(ruta, params={"umbral_aportes_horas": 9}).status_code == 422
+    assert client.get(ruta, params={"umbral_resolucion_horas": 0}).status_code == 422
 
 
 def test_periodo_vacio_devuelve_ceros_y_meses_sin_altas(escenario: Session) -> None:

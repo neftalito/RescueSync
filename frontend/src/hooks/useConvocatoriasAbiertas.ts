@@ -7,8 +7,8 @@ import { useListadoPaginado } from "./useListadoPaginado";
 
 export const convocatoriasAbiertasQueryKey = ["convocatorias-abiertas"] as const;
 
-export function useConvocatoriasPaginadas(): UseInfiniteQueryResult<Convocatoria[], Error> {
-  return useListadoPaginado(convocatoriasAbiertasQueryKey, "/convocatorias", convocatoriasSchema);
+export function useConvocatoriasPaginadas(q = "", zona = ""): UseInfiniteQueryResult<Convocatoria[], Error> {
+  return useListadoPaginado(convocatoriasAbiertasQueryKey, "/convocatorias", convocatoriasSchema, true, { q, zona });
 }
 
 export function useConvocatoriasAbiertas(): UseQueryResult<Convocatoria[], Error> {

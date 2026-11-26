@@ -6,20 +6,19 @@ roles, incluido `ADMINISTRADOR`, no pueden consultar sus endpoints. El seed loca
 incluye `auditor@rescuesync.org` / `auditor123`; el administrador también puede
 crear cuentas auditoras sin organización.
 
-El [monitoreo de procesos](./monitoreo-procesos.md) amplía este panel con los seis
-indicadores del material de clase, evidencia confirmada y tareas activas de Bonita.
-Esa guía define fórmulas nuevas, el callback técnico y las emisiones pendientes
-del BPM. Las fórmulas siguientes describen los agregados originales.
+El [monitoreo de procesos](./monitoreo-procesos.md) documenta los indicadores
+del material de clase, sus fuentes operativas y las tareas activas de Bonita.
+Las fórmulas siguientes describen los agregados generales.
 
 ## Alcance respecto del trabajo integrador
 
 La página 3 de `Trabajo integrador 2026.pdf` pide combinar datos locales con
 datos de la API de Bonita, gráficos interactivos y exportación estructurada.
 Esta implementación incorpora esas capacidades sobre los registros disponibles.
-Los ejemplos del PDF de **suministros movilizados** y **porcentaje de resolución
-mediante consorcios** se muestran como no disponibles: necesitan completar el
-registro local de adjudicación, ejecución y cierre. Las cantidades ofrecidas y
-las ofertas conjuntas confirmadas son métricas distintas y se identifican así.
+**Suministros movilizados** suma lo declarado por las ONG en participaciones
+liberadas. **Resolución mediante consorcios** cuenta casos cerrados con al menos
+dos integrantes adjudicados de una misma oferta conjunta confirmada. El panel
+informa la cobertura de datos de ambos indicadores.
 
 ## Período y fórmulas
 
@@ -29,6 +28,12 @@ actual hasta hoy. Se filtra la **fecha de creación de la emergencia**, junto co
 municipio, gravedad y estado actuales. Los lotes, convocatorias y ofertas
 relacionados se agregan en su situación actual, aunque se hayan creado después
 del período. No es una reconstrucción histórica al último día elegido.
+
+En **Umbrales del informe**, el auditor elige cuánto tiempo considera para la
+finalización de aportes y para la resolución de emergencias. Los valores
+iniciales son 24 y 72 horas, respectivamente. **Aplicar filtros** recalcula las
+mediciones con las fechas registradas. Cada umbral ofrece 8, 12, 24, 48 o 72
+horas, una semana (168 horas) y un mes (720 horas).
 
 | Indicador | Cálculo |
 | --- | --- |
@@ -82,15 +87,16 @@ siguen disponibles durante un fallo del motor.
 
 | Método y ruta | Respuesta |
 | --- | --- |
-| `GET /api/v1/metricas` | Resumen, distribuciones, evolución mensual, cantidades y municipios para los filtros. |
+| `GET /api/v1/metricas` | Resumen, distribuciones, evolución mensual, municipios e indicadores de resultado para los filtros. |
 | `GET /api/v1/metricas/tiempos` | Promedios en segundos, número de muestras y cobertura de Bonita. |
 
 Ambos aceptan `fecha_desde`, `fecha_hasta` (ISO `YYYY-MM-DD`), `municipio_id`
 (positivo), `gravedad` y `estado` (enums existentes). Un período invertido o un
-filtro inválido devuelve 422; sin sesión, 401; otro rol, 403. El contrato completo
-está en `/docs`. Las alertas requieren la migración indicada más abajo y el
-registro de hechos requiere `20261015_0014`. No hay cambios del BAR ni de la
-API Nacional; las nuevas emisiones deben integrarse con T35–T37.
+filtro inválido devuelve 422; sin sesión, 401; otro rol, 403. El resumen local
+también acepta `umbral_aportes_horas` y `umbral_resolucion_horas`. El contrato completo
+está en `/docs`. La migración `20261126_0019` habilita el registro de cantidades
+movilizadas y cumplidas en las finalizaciones de las ONG. Los indicadores usan
+las confirmaciones locales que ya produce Bonita 1.5.
 
 TanStack Query mantiene los resultados separados por filtros. **Actualizar
 métricas** vuelve a consultar ambas fuentes. El menú **Exportar** ofrece JSON,
@@ -99,7 +105,7 @@ mientras se está consultando o cuando falla el resumen local. Un fallo de Bonit
 permite exportar el resumen indicando la fuente como no disponible.
 
 JSON incluye filtros, fecha de generación, zona horaria, fuentes, agregados,
-tiempos y motivos de indicadores pendientes con valor `null`. CSV usa UTF-8 con
+resultados, tiempos y cobertura. CSV usa UTF-8 con
 BOM y columnas `seccion,indicador,categoria,valor,unidad`; incluye metadatos,
 filtros y cobertura. Escapa comillas, separadores y campos que puedan interpretarse
 como fórmulas al abrirlos en una planilla.
@@ -165,8 +171,8 @@ espera a que termine la consulta en curso antes de cerrar el cliente HTTP.
 
 Se reutiliza `/api/v1/notificaciones/ws`, autenticado con sesión y origen CORS.
 Las conexiones auditoras reciben `metricas.actualizadas`, sin datos privados,
-después de confirmar altas, lotes, publicación, cierre y cambios de ofertas o
-consorcios. El monitor también publica esa señal en cada sondeo exitoso para
+después de confirmar altas, lotes, publicación, cambios de ofertas, decisiones,
+adjudicaciones, liberaciones y cierres. El monitor publica esa señal en cada sondeo exitoso para
 refrescar los tiempos del motor y detectar datos cargados desde el seed.
 La recepción y la reconexión invalidan las consultas de métricas y el buzón;
 conservan los filtros del formulario y solo vuelven a consultar la selección

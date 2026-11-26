@@ -19,7 +19,7 @@ from app.integrations.bonita.contratos import TareaActiva, TransicionTareaArchiv
 from app.schemas.metricas import (
     ActividadActual,
     DisponibilidadBonita,
-    FiltrosMetricas,
+    FiltrosEmergenciasMetricas,
     ReporteTiempos,
     ResumenActividad,
     TiempoEtapa,
@@ -137,34 +137,30 @@ def duraciones_tareas(
     for filas in tareas.values():
         if not any(f.state == "completed" for f in filas):
             continue
-        try:
-            fechas: list[tuple[str, datetime]] = []
-            for fila in filas:
-                fecha = datetime.fromisoformat(fila.reached_state_date)
-                if fecha.tzinfo is None:
-                    fecha = fecha.replace(tzinfo=zona)
-                fechas.append((fila.state, fecha.astimezone(UTC)))
+        fechas: list[tuple[str, datetime]] = []
+        for fila in filas:
+            fecha = fecha_bonita(fila.reached_state_date, zona)
+            if fecha is None:
+                break
+            fechas.append((fila.state, fecha))
+        else:
             inicios = [
                 fecha
                 for estado, fecha in fechas
                 if estado not in {"completed", "aborted", "cancelled", "skipped"}
             ]
             finales = [fecha for estado, fecha in fechas if estado == "completed"]
-            if not inicios or len({f.name for f in filas}) != 1:
-                descartadas += 1
-                continue
-            segundos = (min(finales) - min(inicios)).total_seconds()
-            if segundos < 0:
-                descartadas += 1
-                continue
-            muestras.append((filas[0].name, segundos))
-        except ValueError:
-            descartadas += 1
+            if inicios and len({f.name for f in filas}) == 1:
+                segundos = (min(finales) - min(inicios)).total_seconds()
+                if segundos >= 0:
+                    muestras.append((filas[0].name, segundos))
+                    continue
+        descartadas += 1
     return muestras, descartadas
 
 
 def obtener_tiempos(
-    session: Session, filtros: FiltrosMetricas, cliente: ClienteBonita
+    session: Session, filtros: FiltrosEmergenciasMetricas, cliente: ClienteBonita
 ) -> ReporteTiempos:
     """Consulta casos ligados a datos locales; tolera indisponibilidad parcial."""
     emergencias = session.scalars(emergencias_filtradas(filtros)).all()

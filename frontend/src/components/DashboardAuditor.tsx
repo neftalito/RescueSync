@@ -15,12 +15,10 @@ import {
 import {
   filtrosInicialesMetricas,
   filtrosMetricasFormSchema,
+  horasUmbrales,
   type FiltrosMetricasForm,
 } from "../schemas/metricas";
-import {
-  indicadoresPendientes,
-  motivoIndicadoresPendientes,
-} from "../utils/exportarMetricas";
+import { etiquetaUmbral } from "../utils/formatoMonitoreo";
 import { GraficoMetricas } from "./GraficoMetricas";
 import { ExportarMetricasMenu } from "./ExportarMetricasMenu";
 import { IndicadoresProceso } from "./IndicadoresProceso";
@@ -159,6 +157,22 @@ export function DashboardAuditor(): ReactElement {
             </select>
           </label>
         </div>
+        <fieldset className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+          <legend className="mb-2 text-sm font-semibold text-slate-700">Umbrales del informe</legend>
+          {([
+            ["umbral_aportes_horas", "Umbral de finalización de aportes"],
+            ["umbral_resolucion_horas", "Umbral de resolución de emergencias"],
+          ] as const).map(([campo, etiqueta]) => (
+            <label key={campo} className="min-w-0 text-sm font-semibold text-slate-700">
+              {etiqueta}
+              <select {...register(campo)} className={estiloCampo}>
+                {horasUmbrales.map((horas) => (
+                  <option key={horas} value={horas}>{etiquetaUmbral(horas)}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </fieldset>
         {errors.fecha_desde && (
           <p
             id="error-fecha-desde"
@@ -346,7 +360,13 @@ export function DashboardAuditor(): ReactElement {
           </article>
         </>
       )}
-      {reporte && !locales.isError && reporte.indicadores_proceso && <IndicadoresProceso datos={reporte.indicadores_proceso} />}
+      {reporte && !locales.isError && reporte.indicadores_proceso && (
+        <IndicadoresProceso
+          datos={reporte.indicadores_proceso}
+          umbralAportes={reporte.filtros.umbral_aportes_horas}
+          umbralResolucion={reporte.filtros.umbral_resolucion_horas}
+        />
+      )}
       <section aria-labelledby="tiempos-bonita" className="space-y-4">
         <div>
           <h3 id="tiempos-bonita" className="text-xl font-bold text-slate-900">
@@ -464,19 +484,6 @@ export function DashboardAuditor(): ReactElement {
           </>
         )}
       </section>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {indicadoresPendientes.map((titulo) => (
-          <article
-            key={titulo}
-            className="rounded-2xl border border-dashed border-slate-300 bg-slate-100/60 p-5"
-          >
-            <h3 className="font-semibold text-slate-700">{titulo}</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              {motivoIndicadoresPendientes}
-            </p>
-          </article>
-        ))}
-      </div>
     </section>
   );
 }

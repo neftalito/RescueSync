@@ -174,7 +174,7 @@ Dónde observar cada paso:
 | 4   | —            | Esperar unos 2 minutos                                                                                 | Bonita cierra la convocatoria, consolida, prepara la evaluación, valida con la API nacional y guarda los perfiles. En Bonita queda lista `Seleccionar ofertas validadas`. |
 | 5   | Municipio    | _Ejecución_ de la emergencia → seleccionar el aporte (2) → **Adjudicar**                               | Adjudicación **CONFIRMADA** y compromiso nacional **ACTIVO** (disponibilidad −2). La ONG recibe la notificación y queda lista `Marcar como finalizada la tarea`.          |
 | 6   | ONG          | _Ejecución_ (o la notificación) → **Finalizar** su participación                                       | Participación **LIBERADA** y compromiso nacional **LIBERADO**; la disponibilidad se restituye.                                                                            |
-| 7   | Coordinador  | _Ejecución_ → **Solicitar cierre**                                                                     | Emergencia **RESUELTA**, proyecto nacional **TERMINADO** y caso Bonita archivado _completed_, sin tareas fallidas.                                                        |
+| 7   | Coordinador  | _Ejecución_ → **Solicitar cierre**                                                                     | Seguimiento muestra **Cierre confirmado** y la emergencia **RESUELTA**. El proyecto nacional queda **TERMINADO** y Bonita archiva el caso como _completed_, sin tareas fallidas. |
 
 ### Caso B — Cobertura parcial → CONTINUAR_PARCIAL
 

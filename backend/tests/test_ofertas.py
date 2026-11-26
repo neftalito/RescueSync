@@ -423,6 +423,11 @@ def test_modifica_oferta_creando_una_version_inmutable(
         "Primera versión",
         "Segunda versión",
     ]
+    _autenticar_con_cookie(client, escenario.representante)
+    assert client.get("/api/v1/ofertas", params={"q": "bidones"}).json() == []
+    assert client.get("/api/v1/ofertas", params={"q": "primera version"}).json() == []
+    vigente = client.get("/api/v1/ofertas", params={"q": "kits completos"})
+    assert [fila["id"] for fila in vigente.json()] == [oferta_id]
 
 
 def test_rechaza_edicion_con_version_desactualizada(
@@ -805,7 +810,14 @@ def test_lista_solo_las_ofertas_de_la_ong_propia(
         client,
         _payload(
             escenario.convocatoria.id,
-            [_item(escenario.lote_kits.id, cantidad=2, unidad="kits")],
+            [
+                _item(
+                    escenario.lote_kits.id,
+                    cantidad=2,
+                    unidad="kits",
+                    descripcion="Mantas térmicas",
+                )
+            ],
         ),
         csrf_otra,
     )
@@ -820,6 +832,24 @@ def test_lista_solo_las_ofertas_de_la_ong_propia(
     assert all(oferta["ong_creadora_id"] == escenario.ong.id for oferta in cuerpo)
     assert client.get("/api/v1/ofertas?limit=1&offset=0").json() == cuerpo
     assert client.get("/api/v1/ofertas?limit=1&offset=1").json() == []
+    for termino in (
+        "BIDONES",
+        "donacion",
+        "emergencia para",
+        f"#{propia.json()['id']}",
+    ):
+        buscada = client.get(
+            "/api/v1/ofertas", params={"q": termino, "estado": "PRESENTADA", "limit": 1}
+        )
+        assert buscada.status_code == 200
+        assert buscada.json() == cuerpo
+    assert client.get("/api/v1/ofertas", params={"q": "mantas termicas"}).json() == []
+    assert (
+        client.get(
+            "/api/v1/ofertas", params={"q": "bidones", "estado": "ADJUDICADA"}
+        ).json()
+        == []
+    )
 
 
 def test_lista_vacia_sin_ofertas_presentadas(

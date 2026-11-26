@@ -22,6 +22,7 @@ from app.db.session import get_db
 from app.integrations.bonita.cliente import ClienteBonita
 from app.integrations.email.cliente import ClienteSMTP
 from app.integrations.nacional.cliente import ClienteNacional
+from app.integrations.prioridad import ClientePrioridad
 from app.services.auth import obtener_usuario_vigente
 from app.services.tiempo_real import GestorTiempoReal
 
@@ -151,6 +152,15 @@ def obtener_cliente_nacional(request: Request) -> ClienteNacional:
 
 
 ClienteNacionalDep = Annotated[ClienteNacional, Depends(obtener_cliente_nacional)]
+
+
+def obtener_cliente_prioridad(request: Request) -> ClientePrioridad:
+    """Entrega el cliente de priorización compartido durante el lifespan."""
+
+    return request.app.state.cliente_prioridad
+
+
+ClientePrioridadDep = Annotated[ClientePrioridad, Depends(obtener_cliente_prioridad)]
 
 
 def validar_csrf(

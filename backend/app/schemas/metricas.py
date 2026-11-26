@@ -2,7 +2,7 @@
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import Self
 from zoneinfo import ZoneInfo
 
@@ -19,7 +19,17 @@ def hoy_reporte() -> date:
     return datetime.now(ZONA_REPORTES).date()
 
 
-class FiltrosMetricas(BaseModel):
+class UmbralHoras(IntEnum):
+    OCHO_HORAS = 8
+    DOCE_HORAS = 12
+    VEINTICUATRO_HORAS = 24
+    CUARENTA_Y_OCHO_HORAS = 48
+    SETENTA_Y_DOS_HORAS = 72
+    UNA_SEMANA = 168
+    TREINTA_DIAS = 720
+
+
+class FiltrosEmergenciasMetricas(BaseModel):
     """Selecciona emergencias por su fecha de alta y atributos vigentes."""
 
     fecha_desde: date = Field(default_factory=lambda: hoy_reporte().replace(day=1))
@@ -38,6 +48,13 @@ class FiltrosMetricas(BaseModel):
         if self.fecha_hasta == date.max:
             raise ValueError("La fecha hasta debe ser anterior a 9999-12-31.")
         return self
+
+
+class FiltrosMetricas(FiltrosEmergenciasMetricas):
+    """Agrega los umbrales de duración elegidos para el reporte local."""
+
+    umbral_aportes_horas: UmbralHoras = UmbralHoras.VEINTICUATRO_HORAS
+    umbral_resolucion_horas: UmbralHoras = UmbralHoras.SETENTA_Y_DOS_HORAS
 
 
 class ConteoMetrica(BaseModel):
@@ -123,7 +140,7 @@ class ResumenActividad(BaseModel):
 
 class ReporteTiempos(BaseModel):
     generado_en: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    filtros: FiltrosMetricas
+    filtros: FiltrosEmergenciasMetricas
     disponibilidad: DisponibilidadBonita
     casos_seleccionados: int
     casos_vinculados: int

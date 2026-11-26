@@ -10,6 +10,8 @@ export function useMetricas(filtros: FiltrosMetricasForm): {
   locales: UseQueryResult<ReporteMetricas>;
   tiempos: UseQueryResult<ReporteTiempos>;
 } {
+  const { fecha_desde, fecha_hasta, municipio_id, gravedad, estado } = filtros;
+  const filtrosTiempos = { fecha_desde, fecha_hasta, municipio_id, gravedad, estado };
   const locales = useQuery({
     queryKey: ["metricas", "locales", filtros],
     queryFn: () => consultarMetricas(filtros),
@@ -17,8 +19,8 @@ export function useMetricas(filtros: FiltrosMetricasForm): {
     retry: false,
   });
   const tiempos = useQuery({
-    queryKey: ["metricas", "tiempos", filtros],
-    queryFn: () => consultarTiempos(filtros),
+    queryKey: ["metricas", "tiempos", filtrosTiempos],
+    queryFn: () => consultarTiempos(filtrosTiempos),
     staleTime: 60_000,
     retry: false,
   });

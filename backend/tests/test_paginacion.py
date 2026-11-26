@@ -186,6 +186,92 @@ def test_aplica_estado_y_existencia_de_lotes_antes_de_paginar(
     assert respuesta.json()[0]["tiene_lotes"] is True
 
 
+def test_busca_emergencias_antes_de_paginar_y_respeta_el_alcance(
+    client: TestClient, db_session: Session, escenario: EscenarioPaginacion
+) -> None:
+    objetivo = escenario.emergencias[3]
+    objetivo.descripcion = "Inundación con 50% de cobertura"
+    escenario.emergencias[5].descripcion = "Inundacio\u0301n con 50% de cobertura"
+    db_session.flush()
+
+    autenticar(client, escenario.usuarios[RolUsuario.COORDINADOR_REGIONAL])
+    respuesta = client.get(
+        "/api/v1/emergencias",
+        params={
+            "q": " INUNDACION ",
+            "tiene_lotes": True,
+            "estado": "REGISTRADA",
+            "limit": 1,
+        },
+    )
+    assert respuesta.status_code == 200
+    assert [fila["id"] for fila in respuesta.json()] == [objetivo.id]
+
+    autenticar(client, escenario.usuarios[RolUsuario.OPERADOR_MUNICIPAL])
+    for termino in ("%", "inundacion"):
+        assert len(client.get("/api/v1/emergencias", params={"q": termino}).json()) == 2
+    por_id = client.get("/api/v1/emergencias", params={"q": f"#{objetivo.id}"}).json()
+    assert [fila["id"] for fila in por_id] == [objetivo.id]
+    assert (
+        client.get("/api/v1/emergencias", params={"q": "no debe aparecer"}).json() == []
+    )
+    assert client.get("/api/v1/emergencias", params={"q": "x" * 121}).status_code == 422
+
+
+def test_busca_usuarios_por_correo_y_organizacion_con_filtros(
+    client: TestClient, db_session: Session, escenario: EscenarioPaginacion
+) -> None:
+    objetivo = escenario.usuarios[RolUsuario.REPRESENTANTE_ONG]
+    assert objetivo.organizacion is not None
+    objetivo.organizacion.nombre = "Asociación del valle"
+    objetivo.activo = False
+    db_session.flush()
+    autenticar(client, escenario.usuarios[RolUsuario.ADMINISTRADOR])
+
+    for termino in ("ASOCIACION", objetivo.email.upper()):
+        respuesta = client.get(
+            "/api/v1/usuarios",
+            params={
+                "q": termino,
+                "rol": objetivo.rol.value,
+                "activo": False,
+                "limit": 1,
+            },
+        )
+        assert respuesta.status_code == 200
+        assert [fila["id"] for fila in respuesta.json()] == [objetivo.id]
+    assert (
+        client.get(
+            "/api/v1/usuarios", params={"q": "asociacion", "activo": True}
+        ).json()
+        == []
+    )
+
+
+def test_busca_organizaciones_por_nombre_con_filtros(
+    client: TestClient, db_session: Session, escenario: EscenarioPaginacion
+) -> None:
+    objetivo = escenario.usuarios[RolUsuario.REPRESENTANTE_ONG].organizacion
+    assert objetivo is not None
+    objetivo.nombre = "Fundación del valle"
+    objetivo.activa = False
+    db_session.flush()
+    autenticar(client, escenario.usuarios[RolUsuario.ADMINISTRADOR])
+
+    respuesta = client.get(
+        "/api/v1/organizaciones",
+        params={"q": "FUNDACION", "tipo": "ONG", "activa": False, "limit": 1},
+    )
+    assert respuesta.status_code == 200
+    assert [fila["id"] for fila in respuesta.json()] == [objetivo.id]
+    assert (
+        client.get(
+            "/api/v1/organizaciones", params={"q": "fundacion", "tipo": "MUNICIPIO"}
+        ).json()
+        == []
+    )
+
+
 @pytest.mark.parametrize("ruta", ["usuarios", "organizaciones"])
 def test_paginas_de_administracion_conservan_el_orden_del_listado_completo(
     client: TestClient,

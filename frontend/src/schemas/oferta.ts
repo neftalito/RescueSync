@@ -43,10 +43,37 @@ function milesimas(valor: string): bigint | null {
   return BigInt(entero + fraccion.padEnd(3, "0"));
 }
 
+export function calcularTotalAportes(
+  aportes: ReadonlyArray<{ cantidad: string }> = [],
+): string | null {
+  if (aportes.length === 0) return null;
+
+  let total = 0n;
+  for (const { cantidad } of aportes) {
+    const aporte = milesimas(cantidad);
+    if (aporte === null || aporte <= 0n) return null;
+    total += aporte;
+  }
+
+  const entero = total / 1000n;
+  const fraccion = (total % 1000n).toString().padStart(3, "0").replace(/0+$/, "");
+  return fraccion ? `${entero}.${fraccion}` : entero.toString();
+}
+
 const aporteFormSchema = z.object({
   recurso_nacional_id: z.string().uuid("Elegí un recurso de tu inventario."),
   cantidad: z.string().regex(cantidadOfrecidaPattern, "Ingresá una cantidad válida.").refine((v) => (milesimas(v) ?? 0n) > 0n, "La cantidad debe ser positiva."),
 });
+
+const cantidadOfrecidaFormSchema = z.string()
+  .regex(
+    cantidadOfrecidaPattern,
+    "Ingresá una cantidad con hasta 11 enteros y 3 decimales.",
+  )
+  .refine(
+    (valor) => Number(valor.replace(",", ".")) > 0,
+    "La cantidad ofrecida debe ser mayor que cero.",
+  );
 
 export const ofertaItemFormSchema = z
   .object({
@@ -59,32 +86,32 @@ export const ofertaItemFormSchema = z
       .trim()
       .min(1, "Describí el aporte.")
       .max(2000, "La descripción no puede superar los 2000 caracteres."),
-    cantidad_ofrecida: z
-      .string()
-      .trim()
-      .regex(
-        cantidadOfrecidaPattern,
-        "Ingresá una cantidad con hasta 11 enteros y 3 decimales.",
-      )
-      .refine(
-        (valor) => Number(valor.replace(",", ".")) > 0,
-        "La cantidad ofrecida debe ser mayor que cero.",
-      ),
+    cantidad_ofrecida: z.string().trim(),
     cantidad_publicada: z.string().regex(cantidadOfrecidaPattern),
     unidad: z.string().min(1, "El lote no tiene una unidad válida."),
   })
-  .superRefine((item, context) => {
-    if (item.requiere_desglose && !item.aportes?.length) {
+  .transform((item, context) => {
+    const totalAportes = calcularTotalAportes(item.aportes);
+    const cantidadOfrecida = item.requiere_desglose ? totalAportes : item.cantidad_ofrecida;
+    if (cantidadOfrecida === null) {
       context.addIssue({ code: "custom", path: ["aportes"], message: "Agregá recursos de tu inventario para este lote." });
+      return z.NEVER;
     }
-    if (item.aportes?.length) {
-      const total = item.aportes.reduce((suma, a) => suma + (milesimas(a.cantidad) ?? 0n), 0n);
-      if (total !== milesimas(item.cantidad_ofrecida)) {
+
+    if (!item.requiere_desglose) {
+      const cantidad = cantidadOfrecidaFormSchema.safeParse(cantidadOfrecida);
+      if (!cantidad.success) {
+        for (const issue of cantidad.error.issues) {
+          context.addIssue({ ...issue, path: ["cantidad_ofrecida"] });
+        }
+        return z.NEVER;
+      }
+      if (totalAportes !== null && milesimas(totalAportes) !== milesimas(cantidadOfrecida)) {
         context.addIssue({ code: "custom", path: ["aportes"], message: "La suma de recursos debe coincidir con la cantidad ofrecida." });
       }
     }
     if (
-      Number(item.cantidad_ofrecida.replace(",", ".")) >
+      Number(cantidadOfrecida.replace(",", ".")) >
       Number(item.cantidad_publicada)
     ) {
       context.addIssue({
@@ -93,6 +120,7 @@ export const ofertaItemFormSchema = z
         message: `La cantidad ofrecida no puede superar ${formatearCantidad(item.cantidad_publicada)} ${item.unidad}.`,
       });
     }
+    return { ...item, cantidad_ofrecida: cantidadOfrecida };
   });
 
 export const ofertaFormSchema = z.object({
