@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { ActionIcon } from "./ActionIcon";
 import { ApiError } from "../api/client";
 import { useMetricas } from "../hooks/useMetricas";
+import { formatearCantidad } from "../utils/cantidades";
 import {
   estados,
   estadoLabels,
@@ -332,9 +333,7 @@ export function DashboardAuditor(): ReactElement {
                         >
                           <td className="py-3 pr-2">{c.capacidad}</td>
                           <td className="px-3 py-3 text-right tabular-nums">
-                            {Number(c.cantidad).toLocaleString("es-AR", {
-                              maximumFractionDigits: 3,
-                            })}
+                            {formatearCantidad(c.cantidad)}
                           </td>
                           <td className="py-3">{c.unidad}</td>
                         </tr>

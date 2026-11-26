@@ -8,7 +8,7 @@ import { ApiError } from "../api/client";
 import { PerfilCompetenciaPanel } from "../components/PerfilCompetencia";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
 import type { Session } from "../schemas/auth";
-import { formatearCantidad } from "../utils/cantidades";
+import { formatearCantidad, formatearCantidadExactaParaFormulario } from "../utils/cantidades";
 import {
   cantidadEnMiles,
   cantidadFormSchema,
@@ -635,8 +635,9 @@ function CantidadFormView({
             return;
           }
           if (cantidad < cantidadEnMiles(recurso.cantidadComprometida)) {
+            const minimo = formatearCantidadExactaParaFormulario(recurso.cantidadComprometida);
             setError("cantidadTotal", {
-              message: `El total debe ser al menos ${formatearCantidad(recurso.cantidadComprometida)}, que ya está comprometido.`,
+              message: `El total debe ser al menos ${minimo}, que ya está comprometido.`,
             });
             return;
           }
@@ -659,7 +660,9 @@ function CantidadFormView({
           aria-describedby={
             errors.cantidadTotal ? "editar-cantidad-error" : undefined
           }
-          {...register("cantidadTotal")}
+          {...register("cantidadTotal", {
+            setValueAs: (valor: string) => valor.replace(",", "."),
+          })}
         />
         {errors.cantidadTotal && (
           <span id="editar-cantidad-error" role="alert">

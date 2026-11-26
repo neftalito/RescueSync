@@ -37,7 +37,8 @@ describe("resultados del proceso", () => {
     expect(screen.getByText(/2 sin evidencia de resultados/)).toBeInTheDocument();
     for (const titulo of ["Resolución por gravedad", "Reaperturas y reformulaciones", "ONG por recursos adjudicados y cumplimiento", "Cobertura efectiva al cierre", "Demanda e inhabilitación por rubro", "De la alerta a la primera adjudicación efectiva"])
       expect(screen.getByRole("heading", { name: titulo })).toBeInTheDocument();
-    expect(screen.getByText("100.125")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "100,13" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "200,25" })).toBeInTheDocument();
     expect(screen.getAllByText("Sin datos")).toHaveLength(3);
     expect(screen.getByText("Se seleccionan emergencias por fecha de alta.")).toBeInTheDocument();
   });

@@ -131,6 +131,22 @@ describe("dashboard del auditor", () => {
     expect(screen.getByRole("button", { name: "Exportar" })).toBeEnabled();
   });
 
+  it("muestra cantidades ofrecidas, incluido cero, con dos decimales", async () => {
+    server.use(
+      http.get(`${base}/metricas`, () => HttpResponse.json({
+        ...locales,
+        cantidades_ofrecidas: [
+          ...locales.cantidades_ofrecidas,
+          { capacidad: "Alimentos", codigo_capacidad: null, cantidad: "0.000", unidad: "kg" },
+        ],
+      })),
+    );
+    mostrar();
+
+    expect(await screen.findByRole("cell", { name: "3.000,00" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "0,00" })).toBeInTheDocument();
+  });
+
   it("valida fechas antes de consultar y envía todos los filtros aplicados con sesión", async () => {
     let ultimaUrl: URL | undefined;
     let credenciales: RequestCredentials | undefined;

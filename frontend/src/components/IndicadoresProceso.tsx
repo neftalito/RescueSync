@@ -2,6 +2,7 @@ import { ListadoLocal } from "./ListadoProgresivo";
 import type { ReactElement, ReactNode } from "react";
 import type { IndicadoresProceso as Indicadores } from "../schemas/metricas";
 import { gravedadLabels } from "../schemas/emergencia";
+import { formatearCantidad } from "../utils/cantidades";
 import { porcentajeMonitoreo, horasMonitoreo } from "../utils/formatoMonitoreo";
 import { GraficoMetricas } from "./GraficoMetricas";
 
@@ -34,11 +35,11 @@ export function IndicadoresProceso({ datos }: { datos: Indicadores; }): ReactEle
     <TablaMonitoreo titulo="Reaperturas y reformulaciones" columnas={["Emergencia", "Reaperturas", "Reformulaciones"]}
       filas={datos.reiteradas.map(r => [`#${r.emergencia_id}`, r.reaperturas, r.reformulaciones])} />
     <TablaMonitoreo titulo="ONG por recursos adjudicados y cumplimiento" columnas={["ONG", "Capacidad", "Unidad", "Cantidad adjudicada", "Aportes", "Finalizados", "Pendientes", "Finalizados con plazo", "Cumplimiento en término"]}
-      filas={datos.ranking_ongs.map(r => [r.ong, r.capacidad, r.unidad, r.cantidad, r.aportes, r.finalizados, r.aportes - r.finalizados, r.con_plazo_finalizados, porcentajeMonitoreo(r.tasa_cumplimiento)])} />
+      filas={datos.ranking_ongs.map(r => [r.ong, r.capacidad, r.unidad, formatearCantidad(r.cantidad), r.aportes, r.finalizados, r.aportes - r.finalizados, r.con_plazo_finalizados, porcentajeMonitoreo(r.tasa_cumplimiento)])} />
     <TablaMonitoreo titulo="Cobertura efectiva al cierre" columnas={["Cobertura", "Cierres", "Proporción"]}
       filas={cobertura.total + cobertura.parcial === 0 ? [] : [["Total", cobertura.total, porcentajeMonitoreo(cobertura.proporcion_total)], ["Parcial", cobertura.parcial, porcentajeMonitoreo(cobertura.proporcion_parcial)]]} />
     <TablaMonitoreo titulo="Demanda e inhabilitación por rubro" columnas={["Capacidad", "Unidad", "Necesidad publicada", "Evaluaciones ONG/lote", "Inhabilitadas", "Tasa de inhabilitación"]}
-      filas={datos.demanda_rubros.map(r => [r.capacidad, r.unidad, r.cantidad, r.evaluaciones, r.inhabilitadas, porcentajeMonitoreo(r.tasa_inhabilitacion)])} />
+      filas={datos.demanda_rubros.map(r => [r.capacidad, r.unidad, formatearCantidad(r.cantidad), r.evaluaciones, r.inhabilitadas, porcentajeMonitoreo(r.tasa_inhabilitacion)])} />
     <article className="rounded-2xl border border-slate-200 bg-white p-5">
       <h3 className="text-lg font-bold text-slate-900">De la alerta a la primera adjudicación efectiva</h3>
       <p className="mt-2 text-2xl font-bold text-cyan-800">{horasMonitoreo(datos.alerta_adjudicacion_promedio_segundos)}</p>

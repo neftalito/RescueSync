@@ -207,6 +207,47 @@ describe("Mis recursos nacionales", () => {
       await screen.findByText("ONG de prueba · Activa"),
     ).toBeInTheDocument();
   });
+  it("informa el mínimo exacto al editar un recurso fraccionable", async () => {
+    recursos = [{
+      ...recurso,
+      unidad: "litros",
+      admiteFracciones: true,
+      cantidadComprometida: "4.004",
+      cantidadDisponible: "5.996",
+    }];
+    const solicitudes: unknown[] = [];
+    server.use(http.patch(`${base}/recursos/${recurso.id}`, async ({ request }) => {
+      solicitudes.push(await request.json());
+      return HttpResponse.json({
+        ...recursos[0],
+        cantidadTotal: "4.004",
+        cantidadDisponible: "0.000",
+      });
+    }));
+    renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Editar AMB-01" }));
+    const cantidad = screen.getByLabelText(/Nuevo total/);
+    const guardar = screen.getByRole("button", { name: "Guardar cantidad" });
+
+    await user.clear(cantidad);
+    await user.type(cantidad, "4.00");
+    await user.click(guardar);
+    expect(await screen.findByText(
+      "El total debe ser al menos 4,004, que ya está comprometido.",
+    )).toBeInTheDocument();
+    expect(solicitudes).toHaveLength(0);
+
+    await user.clear(cantidad);
+    await user.type(cantidad, "4,004");
+    await user.click(guardar);
+    expect(await screen.findByText("Cantidad actualizada.")).toBeInTheDocument();
+    expect(solicitudes).toEqual([{
+      cantidadTotal: "4.004",
+      actualizadoEn: recurso.actualizadoEn,
+    }]);
+  });
+
   it("muestra revisión administrativa ante revocación del acceso", async () => {
     server.use(
       http.get(`${base}/perfil-competencia`, () => {

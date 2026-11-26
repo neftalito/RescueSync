@@ -9,6 +9,12 @@ const formateadorCantidadParaFormulario = new Intl.NumberFormat("es-AR", {
   useGrouping: false,
 });
 
+const formateadorCantidadExactaParaFormulario = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 3,
+  useGrouping: false,
+});
+
 /** Muestra una cantidad con separadores argentinos y dos cifras decimales. */
 export function formatearCantidad(cantidad: string | number): string {
   return formateadorCantidad.format(Number(cantidad));
@@ -17,4 +23,9 @@ export function formatearCantidad(cantidad: string | number): string {
 /** Prepara una cantidad para un campo decimal sin agregar separadores de miles. */
 export function formatearCantidadParaFormulario(cantidad: string | number): string {
   return formateadorCantidadParaFormulario.format(Number(cantidad));
+}
+
+/** Muestra el valor de un campo decimal conservando las milésimas cuando las hay. */
+export function formatearCantidadExactaParaFormulario(cantidad: string): string {
+  return formateadorCantidadExactaParaFormulario.format(Number(cantidad));
 }
