@@ -8,6 +8,7 @@ import { ApiError } from "../api/client";
 import { PerfilCompetenciaPanel } from "../components/PerfilCompetencia";
 import { useInventarioNacional } from "../hooks/useInventarioNacional";
 import type { Session } from "../schemas/auth";
+import { formatearCantidad } from "../utils/cantidades";
 import {
   cantidadEnMiles,
   cantidadFormSchema,
@@ -304,9 +305,9 @@ function GestionRecursosOngPage({
                           </p>
                           <dl className="my-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                             {[
-                              ["Total", recurso.cantidadTotal],
-                              ["Comprometido", recurso.cantidadComprometida],
-                              ["Disponible", recurso.cantidadDisponible],
+                              ["Total", formatearCantidad(recurso.cantidadTotal)],
+                              ["Comprometido", formatearCantidad(recurso.cantidadComprometida)],
+                              ["Disponible", formatearCantidad(recurso.cantidadDisponible)],
                             ].map(([label, value]) => (
                               <div key={label}>
                                 <dt className="text-slate-600">{label}</dt>
@@ -635,7 +636,7 @@ function CantidadFormView({
           }
           if (cantidad < cantidadEnMiles(recurso.cantidadComprometida)) {
             setError("cantidadTotal", {
-              message: `El total debe ser al menos ${recurso.cantidadComprometida}, que ya está comprometido.`,
+              message: `El total debe ser al menos ${formatearCantidad(recurso.cantidadComprometida)}, que ya está comprometido.`,
             });
             return;
           }

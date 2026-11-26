@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { ActionIcon } from "./ActionIcon";
 import type { OfertaFormData } from "../schemas/oferta";
 import type { Recurso } from "../schemas/inventario";
+import { formatearCantidad } from "../utils/cantidades";
 interface Props {
     index: number;
     control: Control<OfertaFormData>;
@@ -20,7 +21,7 @@ export function RecursosOferta({ index, control, register, errores, recursos }: 
       <label>Recurso
         <select className="mt-1 w-full rounded border border-slate-300 bg-white p-2" {...register(`items.${index}.aportes.${aporteIndex}.recurso_nacional_id`)}>
           <option value="">Elegí un recurso</option>
-          {recursos.map((r) => <option key={r.id} value={r.id}>{r.nombre} · {r.cantidadDisponible} {r.unidad} disponibles</option>)}
+          {recursos.map((r) => <option key={r.id} value={r.id}>{r.nombre} · {formatearCantidad(r.cantidadDisponible)} {r.unidad} disponibles</option>)}
         </select>
       </label>
       <label>Cantidad del recurso

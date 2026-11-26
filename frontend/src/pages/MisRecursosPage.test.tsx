@@ -162,9 +162,9 @@ describe("Mis recursos nacionales", () => {
   it("describe recursos sin certificados ni permisos por riesgo", async () => {
     renderPage("perfil-competencia");
     expect(await screen.findByRole("heading", { name: "Ambulancias" })).toBeInTheDocument();
-    expect(screen.getByText("10.000 vehículos")).toBeInTheDocument();
-    expect(screen.getByText("4.000 vehículos")).toBeInTheDocument();
-    expect(screen.getByText("6.000 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("10,00 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("4,00 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("6,00 vehículos")).toBeInTheDocument();
     expect(screen.queryByText(/riesgo permitido/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/acreditaciones/i)).not.toBeInTheDocument();
   });
@@ -175,7 +175,7 @@ describe("Mis recursos nacionales", () => {
     })));
     renderPage("perfil-competencia");
     expect(await screen.findByRole("heading", { name: "Ambulancias" })).toBeInTheDocument();
-    expect(screen.getByText("0.000 vehículos")).toBeInTheDocument();
+    expect(screen.getByText("0,00 vehículos")).toBeInTheDocument();
   });
 
   it("muestra un perfil vacío sin exigir validación", async () => {
@@ -351,7 +351,7 @@ describe("Mis recursos nacionales", () => {
     await user.type(screen.getByLabelText(/Nuevo total/), "3");
     await user.click(screen.getByRole("button", { name: "Guardar cantidad" }));
     expect(
-      await screen.findByText(/El total debe ser al menos 4.000/),
+      await screen.findByText(/El total debe ser al menos 4,00/),
     ).toBeInTheDocument();
     expect(llamadas).toBe(0);
     await user.clear(screen.getByLabelText(/Nuevo total/));
@@ -361,7 +361,7 @@ describe("Mis recursos nacionales", () => {
       await screen.findByText("Cantidad actualizada."),
     ).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(await screen.findByText("12.000")).toBeInTheDocument();
+    expect(await screen.findByText("12,00")).toBeInTheDocument();
   });
   it("muestra revisión administrativa sin pedir contraseña", async () => {
     server.use(

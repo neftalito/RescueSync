@@ -6,6 +6,7 @@ import { ResumenCompetencia } from "../components/PerfilCompetencia";
 import { ApiError } from "../api/client";
 import type { Session } from "../schemas/auth";
 import { validarSeleccion } from "../schemas/ejecucion";
+import { formatearCantidad } from "../utils/cantidades";
 
 export function EjecucionPage({ session }: { session: Session }): ReactElement {
   const id = Number(useParams().emergenciaId);
@@ -81,12 +82,12 @@ export function EjecucionPage({ session }: { session: Session }): ReactElement {
     {v && <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="text-xl font-bold">Cobertura compatible</h2>
       <p>{v.lotesCompatiblesCubiertos ? "Todos los lotes tienen cobertura compatible." : "Hay necesidades pendientes de cobertura."} Esta disponibilidad se vuelve a verificar al comprometer.</p>
-      {v.cobertura.map(l => <p key={l.loteId}>Lote {l.loteId}: {l.cantidadAsignable} de {l.cantidadRequerida} {l.unidad}; faltante {l.faltante}.</p>)}
+      {v.cobertura.map(l => <p key={l.loteId}>Lote {l.loteId}: {formatearCantidad(l.cantidadAsignable)} de {formatearCantidad(l.cantidadRequerida)} {l.unidad}; faltante {formatearCantidad(l.faltante)}.</p>)}
       {esMunicipio && v.vigente && !bloqueada && <form onSubmit={e => { e.preventDefault(); seleccionar(); }} className="space-y-4">
         <h3 className="font-bold">Seleccionar aportes</h3>
         {!evaluacion.data?.aportes.length && <p>No hay aportes compatibles para seleccionar.</p>}
         {evaluacion.data?.aportes.map(a => <label key={a.aporteId} className="block rounded-xl border border-slate-200 p-3">
-          {a.descripcion || `Oferta ${a.ofertaId}`} · {a.nombreOng || `ONG ${a.ongId}`} · {a.tipoNecesidad || `Lote ${a.loteId}`} · ofrecido {a.cantidadOfrecida}, disponible {a.cantidadDisponible} {a.unidad}
+          {a.descripcion || `Oferta ${a.ofertaId}`} · {a.nombreOng || `ONG ${a.ongId}`} · {a.tipoNecesidad || `Lote ${a.loteId}`} · ofrecido {formatearCantidad(a.cantidadOfrecida)}, disponible {formatearCantidad(a.cantidadDisponible)} {a.unidad}
           <input aria-label={`Cantidad aporte ${a.aporteId}`} inputMode="decimal" className="ml-3 w-32 rounded border p-2" value={cantidades[a.aporteId] ?? ""} onChange={e => setCantidades({ ...cantidades, [a.aporteId]: e.target.value })} />
         </label>)}
         {!v.lotesCompatiblesCubiertos && !evaluacion.data?.permiteParcial && <p>El coordinador debe autorizar continuar con cobertura parcial.</p>}
