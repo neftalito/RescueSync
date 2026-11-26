@@ -112,6 +112,7 @@ export function OfertaForm({
   const lotesSinAgregar = lotes.filter(
     (lote) => !lotesAgregados.has(lote.lote_id),
   );
+  const hayLotesParaAgregar = lotesSinAgregar.length > 0;
   const mutationError = editando
     ? actualizarMutation.error
     : registrarMutation.error;
@@ -442,10 +443,12 @@ export function OfertaForm({
                   id="lote-para-agregar"
                   value={loteParaAgregar}
                   onChange={(event) => setLoteParaAgregar(event.target.value)}
-                  className={inputClasses}
-                  disabled={lotesSinAgregar.length === 0}
+                  className={`${inputClasses} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600`}
+                  disabled={!hayLotesParaAgregar}
                 >
-                  <option value="">Seleccioná un lote</option>
+                  <option value="">
+                    {hayLotesParaAgregar ? "Seleccioná un lote" : "No quedan lotes para agregar"}
+                  </option>
                   {lotesSinAgregar.map((lote) => (
                     <option key={lote.lote_id} value={lote.lote_id}>
                       {lote.tipo_necesidad} · hasta{" "}
@@ -458,7 +461,7 @@ export function OfertaForm({
               <button
                 type="button"
                 onClick={agregarLote}
-                disabled={loteParaAgregar === ""}
+                disabled={!hayLotesParaAgregar || loteParaAgregar === ""}
                 className="action-button action-primary action-icon mt-2 sm:mt-7"
                 title="Agregar lote"
               >

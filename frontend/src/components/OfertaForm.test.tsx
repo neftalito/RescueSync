@@ -192,6 +192,28 @@ describe("OfertaForm", () => {
     expect(screen.queryByLabelText("Cantidad ofrecida")).not.toBeInTheDocument();
   });
 
+  it("deshabilita el selector al agregar el último lote y lo habilita al quitar uno", async () => {
+    server.use(
+      http.get(`${API_URL}/convocatorias`, () => HttpResponse.json(convocatorias)),
+    );
+    const user = userEvent.setup();
+    renderForm(undefined, 55);
+
+    const selector = await screen.findByRole("combobox", { name: "Lote para agregar" });
+    const agregar = screen.getByRole("button", { name: "Agregar lote" });
+    expect(selector).toBeEnabled();
+
+    await agregarLote(user, "54");
+    expect(selector).toBeDisabled();
+    expect(selector).toHaveDisplayValue("No quedan lotes para agregar");
+    expect(agregar).toBeDisabled();
+
+    await user.click(screen.getAllByRole("button", { name: "Quitar lote" })[1]!);
+    expect(selector).toBeEnabled();
+    expect(selector).toHaveDisplayValue("Seleccioná un lote");
+    expect(screen.getByRole("option", { name: /Agua potable/ })).toBeInTheDocument();
+  });
+
   it("calcula, valida y envía el total a partir del desglose de recursos", async () => {
     const [tanque1, tanque2] = inventarioAgua;
     let cuerpo: unknown;
